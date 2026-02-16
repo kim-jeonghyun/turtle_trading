@@ -1,0 +1,79 @@
+[project]
+name = "turtle-trading"
+version = "2.0.0"
+description = "터틀 트레이딩 시스템 - 반자동 투자 시스템"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Taptorestart", email = "taptorestart@gmail.com"}
+]
+keywords = ["trading", "turtle-trading", "investment", "backtesting"]
+
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "yfinance>=0.2.30",
+    "ccxt>=4.0.0",
+    "finance-datareader>=0.9.0",
+    "matplotlib>=3.7.0",
+    "plotly>=5.15.0",
+    "streamlit>=1.25.0",
+    "aiohttp>=3.8.0",
+    "pyyaml>=6.0.0",
+    "pyarrow>=12.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+turtle-signal = "scripts.signal_check:main"
+turtle-report = "scripts.daily_report:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,21 @@
+# 터틀 트레이딩 시스템 Cron 설정
+# 시간대: Asia/Seoul (KST)
+
+# 환경 변수
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+PYTHONPATH=/app
+
+# 한국 시장 시그널 체크 (장 마감 후 16:00)
+0 16 * * 1-5 cd /app && python scripts/signal_check.py >> /app/logs/signal_kr.log 2>&1
+
+# 미국 시장 시그널 체크 (한국시간 07:00 = 미국 동부 17:00/18:00)
+0 7 * * 2-6 cd /app && python scripts/signal_check.py >> /app/logs/signal_us.log 2>&1
+
+# 일일 리포트 (매일 08:00)
+0 8 * * * cd /app && python scripts/daily_report.py >> /app/logs/daily_report.log 2>&1
+
+# 캐시 정리 (매주 일요일 03:00)
+0 3 * * 0 find /app/data/cache -type f -mtime +7 -delete >> /app/logs/cleanup.log 2>&1
+
+# 빈 줄 필수

@@ -1,0 +1,58 @@
+# 알림 설정
+
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+  levels:
+    - signal
+    - error
+    - warning
+
+discord:
+  enabled: true
+  webhook_url: ${DISCORD_WEBHOOK_URL}
+  levels:
+    - signal
+    - error
+    - info
+
+email:
+  enabled: true
+  smtp_host: ${SMTP_HOST}
+  smtp_port: ${SMTP_PORT}
+  username: ${EMAIL_USER}
+  password: ${EMAIL_PASSWORD}
+  from_addr: ${EMAIL_USER}
+  to_addrs:
+    - ${EMAIL_TO}
+  levels:
+    - signal
+    - error
+
+# 알림 레벨 설명
+# - info: 일반 정보 (일일 리포트 등)
+# - warning: 경고 (리스크 한도 근접 등)
+# - signal: 매매 시그널
+# - error: 에러 발생
+
+# 시그널 타입별 설정
+signal_types:
+  entry_long:
+    emoji: "🟢"
+    priority: high
+  entry_short:
+    emoji: "🔴"
+    priority: high
+  exit_long:
+    emoji: "⬜"
+    priority: medium
+  exit_short:
+    emoji: "⬜"
+    priority: medium
+  stop_loss:
+    emoji: "🛑"
+    priority: high
+  pyramid:
+    emoji: "📈"
+    priority: medium

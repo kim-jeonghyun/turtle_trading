@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # 시그널 체크 서비스 (Cron 기반)
+  turtle-cron:
+    build: .
+    container_name: turtle-cron
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - turtle-network
+
+  # Streamlit 대시보드
+  turtle-dashboard:
+    build: .
+    container_name: turtle-dashboard
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - turtle-network
+    depends_on:
+      - turtle-cron
+
+networks:
+  turtle-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
