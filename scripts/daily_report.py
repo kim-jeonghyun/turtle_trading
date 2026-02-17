@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 def load_config():
     import os
-    from dotenv import load_dotenv
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        def load_dotenv(): pass
     load_dotenv()
 
     return {

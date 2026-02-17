@@ -371,5 +371,5 @@ class PositionTracker:
             "total_pnl": total_pnl,
             "winning_trades": len(winning_trades),
             "win_rate": len(winning_trades) / len(closed_pos) if closed_pos else 0,
-            "avg_r_multiple": sum(p.r_multiple for p in closed_pos if p.r_multiple) / len(closed_pos) if closed_pos else 0
+            "avg_r_multiple": (lambda rs: sum(rs) / len(rs) if rs else 0)([p.r_multiple for p in closed_pos if p.r_multiple is not None])
         }

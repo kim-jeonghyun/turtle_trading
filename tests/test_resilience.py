@@ -84,33 +84,18 @@ class TestRetryAsync:
 
     def test_exponential_backoff(self):
         """지연 시간이 지수적으로 증가하는지 확인"""
-        sleep_calls = []
 
         @retry_async(max_retries=3, base_delay=1.0, max_delay=30.0)
         async def always_fails():
             raise RuntimeError("오류")
 
         async def run():
-            with patch("src.utils.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                mock_sleep.side_effect = lambda d: asyncio.coroutine(lambda: sleep_calls.append(d))()
-                with pytest.raises(RuntimeError):
-                    await always_fails()
-            return sleep_calls
-
-        # asyncio.sleep을 직접 패치하여 호출 지연값 검증
-        captured = []
-
-        @retry_async(max_retries=3, base_delay=1.0, max_delay=30.0)
-        async def always_fails_v2():
-            raise RuntimeError("오류")
-
-        async def run_v2():
             with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 with pytest.raises(RuntimeError):
-                    await always_fails_v2()
+                    await always_fails()
                 return [c.args[0] for c in mock_sleep.call_args_list]
 
-        delays = run_async(run_v2())
+        delays = run_async(run())
         # 지연: 1.0, 2.0, 4.0
         assert delays == [1.0, 2.0, 4.0]
 

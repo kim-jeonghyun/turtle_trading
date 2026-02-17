@@ -268,7 +268,7 @@ def export_to_csv(positions: List[Position], filepath: Path):
 
         # 데이터
         for pos in sorted(positions, key=lambda p: p.exit_date or "", reverse=True):
-            pnl_pct = pos.pnl_pct * 100 if pos.pnl_pct else None
+            pnl_pct = pos.pnl_pct if pos.pnl_pct else None
 
             writer.writerow([
                 pos.symbol,
