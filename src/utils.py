@@ -3,12 +3,17 @@
 - Atomic write 패턴
 - 스키마 검증
 - 백업 관리
+- 재시도 데코레이터
+- 구조화된 로깅
 """
 
 import json
 import shutil
 import tempfile
 import os
+import time
+import asyncio
+import functools
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -101,3 +106,103 @@ def safe_load_json(filepath: Path, default: Any = None) -> Any:
     except Exception as e:
         logger.error(f"파일 로드 실패: {filepath} - {e}")
         return default if default is not None else []
+
+
+# ---------------------------------------------------------------------------
+# 재시도 데코레이터
+# ---------------------------------------------------------------------------
+
+def retry_async(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exceptions: tuple = (Exception,),
+):
+    """비동기 함수용 지수 백오프 재시도 데코레이터"""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        logger.warning(
+                            f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}"
+                        )
+                        await asyncio.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+def retry_sync(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    exceptions: tuple = (Exception,),
+):
+    """동기 함수용 지수 백오프 재시도 데코레이터"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        logger.warning(
+                            f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}"
+                        )
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+# ---------------------------------------------------------------------------
+# 구조화된 로깅 설정
+# ---------------------------------------------------------------------------
+
+def setup_structured_logging(
+    name: str,
+    log_dir: str = "data/logs",
+    level: int = logging.INFO,
+) -> logging.Logger:
+    """구조화된 로깅 설정 (파일 + 콘솔)"""
+    log_path = Path(log_dir)
+    log_path.mkdir(parents=True, exist_ok=True)
+
+    structured_logger = logging.getLogger(name)
+    structured_logger.setLevel(level)
+
+    # 콘솔 핸들러
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+
+    # 파일 핸들러 (일별 로테이션)
+    from logging.handlers import TimedRotatingFileHandler
+    file_handler = TimedRotatingFileHandler(
+        log_path / f"{name}.log",
+        when="midnight",
+        backupCount=30,
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+    ))
+
+    if not structured_logger.handlers:
+        structured_logger.addHandler(console)
+        structured_logger.addHandler(file_handler)
+
+    return structured_logger

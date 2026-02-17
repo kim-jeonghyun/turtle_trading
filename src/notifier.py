@@ -3,18 +3,22 @@
 - Telegram
 - Discord
 - Email
+- 재시도 (retry) 및 에스컬레이션 로직
 """
 
 import asyncio
 import aiohttp
+import html as html_lib
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from enum import Enum
 import logging
+
+from src.utils import retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +66,9 @@ class TelegramChannel(NotificationChannel):
             text += "```"
         return text
 
-    async def send(self, message: NotificationMessage) -> bool:
+    @retry_async(max_retries=2, base_delay=1.0)
+    async def _send_with_retry(self, message: NotificationMessage) -> bool:
+        """재시도 로직을 포함한 실제 전송 (예외를 그대로 전파하여 retry가 동작)"""
         text = self._format_message(message)
         url = f"{self.base_url}/sendMessage"
         payload = {
@@ -70,17 +76,19 @@ class TelegramChannel(NotificationChannel):
             "text": text,
             "parse_mode": "Markdown"
         }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status == 200:
+                    logger.info(f"Telegram 전송 성공: {message.title}")
+                    return True
+                else:
+                    raise RuntimeError(f"Telegram 전송 실패: HTTP {resp.status}")
+
+    async def send(self, message: NotificationMessage) -> bool:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        logger.info(f"Telegram 전송 성공: {message.title}")
-                        return True
-                    else:
-                        logger.error(f"Telegram 전송 실패: {resp.status}")
-                        return False
+            return await self._send_with_retry(message)
         except Exception as e:
-            logger.error(f"Telegram 오류: {e}")
+            logger.error(f"Telegram 오류 (모든 재시도 소진): {e}")
             return False
 
 
@@ -107,19 +115,23 @@ class DiscordChannel(NotificationChannel):
             ]
         return embed
 
-    async def send(self, message: NotificationMessage) -> bool:
+    @retry_async(max_retries=2, base_delay=1.0)
+    async def _send_with_retry(self, message: NotificationMessage) -> bool:
+        """재시도 로직을 포함한 실제 전송 (예외를 그대로 전파하여 retry가 동작)"""
         payload = {"embeds": [self._format_embed(message)]}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(self.webhook_url, json=payload) as resp:
+                if resp.status in (200, 204):
+                    logger.info(f"Discord 전송 성공: {message.title}")
+                    return True
+                else:
+                    raise RuntimeError(f"Discord 전송 실패: HTTP {resp.status}")
+
+    async def send(self, message: NotificationMessage) -> bool:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.webhook_url, json=payload) as resp:
-                    if resp.status in (200, 204):
-                        logger.info(f"Discord 전송 성공: {message.title}")
-                        return True
-                    else:
-                        logger.error(f"Discord 전송 실패: {resp.status}")
-                        return False
+            return await self._send_with_retry(message)
         except Exception as e:
-            logger.error(f"Discord 오류: {e}")
+            logger.error(f"Discord 오류 (모든 재시도 소진): {e}")
             return False
 
 
@@ -144,13 +156,13 @@ class EmailChannel(NotificationChannel):
         html = f"""
         <html>
         <body>
-        <h2>{message.title}</h2>
-        <p>{message.body}</p>
+        <h2>{html_lib.escape(message.title)}</h2>
+        <p>{html_lib.escape(message.body)}</p>
         """
         if message.data:
             html += "<table border='1' cellpadding='5'>"
             for k, v in message.data.items():
-                html += f"<tr><td><b>{k}</b></td><td>{v}</td></tr>"
+                html += f"<tr><td><b>{html_lib.escape(str(k))}</b></td><td>{html_lib.escape(str(v))}</td></tr>"
             html += "</table>"
         html += "</body></html>"
         return html
@@ -166,7 +178,7 @@ class EmailChannel(NotificationChannel):
             msg.attach(MIMEText(message.body, "plain"))
             msg.attach(MIMEText(html_content, "html"))
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._send_email, msg)
             logger.info(f"Email 전송 성공: {message.title}")
             return True
@@ -184,20 +196,92 @@ class EmailChannel(NotificationChannel):
 class NotificationManager:
     def __init__(self):
         self.channels: List[NotificationChannel] = []
+        # 채널별 성공/실패 카운터
+        self._health: Dict[str, Dict[str, int]] = {}
 
     def add_channel(self, channel: NotificationChannel):
         self.channels.append(channel)
+        channel_name = channel.__class__.__name__
+        if channel_name not in self._health:
+            self._health[channel_name] = {"success": 0, "failure": 0}
 
     async def send_all(self, message: NotificationMessage) -> Dict[str, bool]:
-        results = {}
-        tasks = []
-        for channel in self.channels:
-            channel_name = channel.__class__.__name__
-            tasks.append((channel_name, channel.send(message)))
+        """모든 채널에 병렬 전송; ERROR 레벨 시 전체 실패 시 CRITICAL 로그"""
+        if not self.channels:
+            return {}
 
-        for channel_name, task in tasks:
-            results[channel_name] = await task
+        channel_names = [ch.__class__.__name__ for ch in self.channels]
+        tasks = [ch.send(message) for ch in self.channels]
+
+        # 병렬 전송
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+        results: Dict[str, bool] = {}
+        for name, result in zip(channel_names, results_list):
+            if isinstance(result, Exception):
+                success = False
+            else:
+                success = bool(result)
+            results[name] = success
+            # 건강 지표 업데이트
+            if name not in self._health:
+                self._health[name] = {"success": 0, "failure": 0}
+            if success:
+                self._health[name]["success"] += 1
+            else:
+                self._health[name]["failure"] += 1
+
+        # ERROR 레벨이고 모든 채널이 실패하면 CRITICAL 로그
+        if message.level == NotificationLevel.ERROR and not any(results.values()):
+            logger.critical(
+                f"[ESCALATION] 모든 알림 채널 전송 실패: {message.title} - "
+                f"채널: {list(results.keys())}"
+            )
+
         return results
+
+    def get_channel_health(self) -> Dict[str, Dict[str, int]]:
+        """채널별 성공/실패 횟수 반환"""
+        return dict(self._health)
+
+    async def send_with_escalation(self, message: NotificationMessage) -> Dict[str, bool]:
+        """
+        레벨에 따른 에스컬레이션 전송:
+        - INFO/WARNING: 첫 번째 사용 가능한 채널에만 전송
+        - SIGNAL: 모든 채널에 전송
+        - ERROR: 모든 채널에 전송, 1차 실패 시 나머지 채널로 재시도
+        """
+        if not self.channels:
+            return {}
+
+        if message.level in (NotificationLevel.INFO, NotificationLevel.WARNING):
+            # 첫 번째 채널에만 시도
+            for channel in self.channels:
+                name = channel.__class__.__name__
+                success = await channel.send(message)
+                if name not in self._health:
+                    self._health[name] = {"success": 0, "failure": 0}
+                if success:
+                    self._health[name]["success"] += 1
+                    return {name: True}
+                else:
+                    self._health[name]["failure"] += 1
+            return {}
+
+        if message.level == NotificationLevel.SIGNAL:
+            return await self.send_all(message)
+
+        if message.level == NotificationLevel.ERROR:
+            results = await self.send_all(message)
+            # 전체 실패 시 이미 send_all에서 CRITICAL 처리됨
+            return results
+
+        # 기타 레벨은 send_all
+        return await self.send_all(message)
+
+    async def send_message(self, message: 'NotificationMessage') -> Dict[str, bool]:
+        """send_with_escalation alias for backward compatibility"""
+        return await self.send_with_escalation(message)
 
     async def send_signal(
         self,

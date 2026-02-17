@@ -20,6 +20,10 @@ from src.notifier import (
     NotificationMessage,
     NotificationLevel
 )
+from src.position_tracker import PositionTracker
+from src.risk_manager import PortfolioRiskManager
+from src.analytics import TradeAnalytics
+from src.market_calendar import get_market_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,8 +74,12 @@ def setup_notifier(config: dict) -> NotificationManager:
     return notifier
 
 
-def generate_report(data_store: ParquetDataStore) -> dict:
-    """일일 리포트 데이터 생성"""
+def generate_report(
+    data_store: ParquetDataStore,
+    tracker: PositionTracker = None,
+    risk_manager: PortfolioRiskManager = None
+) -> dict:
+    """Enhanced 일일 리포트 데이터 생성"""
     today = datetime.now().strftime("%Y-%m-%d")
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -79,7 +87,7 @@ def generate_report(data_store: ParquetDataStore) -> dict:
     today_signals = data_store.load_signals(today.replace("-", ""))
     signal_count = len(today_signals) if not today_signals.empty else 0
 
-    # 최근 거래
+    # 최근 30일 거래
     trades = data_store.load_trades(
         start_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
         end_date=today
@@ -99,12 +107,65 @@ def generate_report(data_store: ParquetDataStore) -> dict:
     # 캐시 상태
     cache_stats = data_store.get_cache_stats()
 
+    # 마켓 상태
+    try:
+        kr_status = get_market_status("KR")
+        us_status = get_market_status("US")
+        market_status_text = f"KR: {kr_status} | US: {us_status}"
+    except Exception as e:
+        logger.warning(f"마켓 상태 조회 실패: {e}")
+        market_status_text = "마켓 상태 조회 불가"
+
+    # 오픈 포지션 (PositionTracker가 전달된 경우)
+    open_positions = []
+    position_data = []
+    if tracker is not None:
+        try:
+            open_positions = tracker.get_open_positions()
+            for pos in open_positions:
+                position_data.append({
+                    "symbol": pos.symbol,
+                    "system": pos.system,
+                    "entry_price": pos.entry_price,
+                    "units": pos.units,
+                    "direction": pos.direction,
+                })
+        except Exception as e:
+            logger.warning(f"오픈 포지션 조회 실패: {e}")
+
+    # 리스크 요약 (PortfolioRiskManager가 전달된 경우)
+    risk_summary = {}
+    if risk_manager is not None:
+        try:
+            risk_summary = risk_manager.get_risk_summary()
+        except Exception as e:
+            logger.warning(f"리스크 요약 조회 실패: {e}")
+
+    # R-배수 분포 (최근 30일 거래 기반)
+    r_distribution = {}
+    system_comparison = {}
+    if not trades.empty:
+        try:
+            # DataFrame을 딕셔너리 리스트로 변환
+            recent_trade_dicts = trades.to_dict(orient="records")
+            analytics = TradeAnalytics(recent_trade_dicts)
+            r_distribution = analytics.get_r_distribution()
+            system_comparison = analytics.get_system_comparison()
+        except Exception as e:
+            logger.warning(f"R-배수 분석 실패: {e}")
+
     return {
         "날짜": today,
+        "마켓 상태": market_status_text,
         "오늘 시그널": signal_count,
+        "오픈 포지션": len(open_positions),
+        "포지션 상세": position_data,
+        "리스크 요약": risk_summary,
         "30일 거래수": total_trades,
         "30일 승률": f"{win_rate:.1f}%",
         "30일 수익": f"${total_pnl:,.2f}",
+        "R배수 분포": r_distribution,
+        "시스템 비교": system_comparison,
         "캐시 파일": cache_stats["cache_files"],
         "데이터 크기": f"{cache_stats['total_size_mb']:.1f}MB"
     }
@@ -117,8 +178,12 @@ async def main():
     notifier = setup_notifier(config)
     data_store = ParquetDataStore()
 
+    # 추가 모듈 인스턴스화
+    tracker = PositionTracker()
+    risk_manager = PortfolioRiskManager()
+
     # 리포트 생성
-    report_data = generate_report(data_store)
+    report_data = generate_report(data_store, tracker, risk_manager)
     logger.info(f"리포트 데이터: {report_data}")
 
     # 알림 전송

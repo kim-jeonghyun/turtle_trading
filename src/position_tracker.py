@@ -292,6 +292,10 @@ class PositionTracker:
 
         return None
 
+    def get_all_positions(self) -> List[Position]:
+        """모든 포지션 반환 (오픈 + 청산)"""
+        return self._load_positions()
+
     def get_open_positions(self, symbol: Optional[str] = None) -> List[Position]:
         """오픈 포지션 조회"""
         positions = self._load_positions()

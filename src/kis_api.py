@@ -84,7 +84,7 @@ class KISAPIClient:
                     logger.info("KIS 토큰 발급 성공")
                     return self.token.access_token
                 else:
-                    raise Exception(f"토큰 발급 실패: {data}")
+                    raise Exception(f"토큰 발급 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
 
     def _get_headers(self, token: str, tr_id: str) -> Dict[str, str]:
         return {
@@ -124,7 +124,7 @@ class KISAPIClient:
                         "open": float(output.get("stck_oprc", 0))
                     }
                 else:
-                    logger.error(f"가격 조회 실패: {data}")
+                    logger.error(f"가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
                     return {}
 
     async def get_overseas_price(self, symbol: str, market: KISMarket = KISMarket.USA) -> Dict[str, Any]:
@@ -163,7 +163,7 @@ class KISAPIClient:
                         "open": float(output.get("open", 0))
                     }
                 else:
-                    logger.error(f"해외 가격 조회 실패: {data}")
+                    logger.error(f"해외 가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
                     return {}
 
     async def get_balance(self) -> Dict[str, Any]:
@@ -213,7 +213,7 @@ class KISAPIClient:
                         "positions": positions
                     }
                 else:
-                    logger.error(f"잔고 조회 실패: {data}")
+                    logger.error(f"잔고 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
                     return {}
 
     async def place_order(
@@ -256,7 +256,7 @@ class KISAPIClient:
                         "order_time": output.get("ORD_TMD")
                     }
                 else:
-                    logger.error(f"주문 실패: {data}")
+                    logger.error(f"주문 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
                     return {
                         "success": False,
                         "message": data.get("msg1", "Unknown error")
@@ -310,7 +310,7 @@ class KISAPIClient:
                         "order_time": output.get("ORD_TMD")
                     }
                 else:
-                    logger.error(f"해외 주문 실패: {data}")
+                    logger.error(f"해외 주문 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
                     return {
                         "success": False,
                         "message": data.get("msg1", "Unknown error")
