@@ -35,6 +35,10 @@ htmlcov/
 data/cache/
 data/trades/
 data/signals/
+data/positions/
+data/entries/
+data/backups/
+data/backtest_results/
 logs/
 *.parquet
 *.db

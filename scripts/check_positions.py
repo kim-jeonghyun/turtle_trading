@@ -12,6 +12,7 @@ import os
 import asyncio
 import fcntl
 import logging
+import yaml
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -28,6 +29,8 @@ from src.notifier import (
     NotificationMessage,
     NotificationLevel
 )
+from src.risk_manager import PortfolioRiskManager, AssetGroup, Direction, RiskLimits
+from src.market_calendar import should_check_signals, get_market_status, infer_market
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,7 +68,6 @@ def release_lock(fd):
 
 def load_config():
     """환경 변수에서 설정 로드"""
-    import os
     from dotenv import load_dotenv
     load_dotenv()
 
@@ -87,6 +89,45 @@ def setup_notifier(config: dict) -> NotificationManager:
         logger.info("Telegram 채널 활성화")
 
     return notifier
+
+
+def setup_risk_manager() -> PortfolioRiskManager:
+    """리스크 매니저 설정"""
+    config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
+    symbol_groups = {}
+
+    if not config_path.exists():
+        logger.warning(f"상관그룹 설정 파일 없음: {config_path}. 기본 그룹으로 운영합니다.")
+        return PortfolioRiskManager(symbol_groups=symbol_groups)
+
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        if not config or 'groups' not in config:
+            logger.warning("상관그룹 설정이 비어있습니다.")
+            return PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        group_mapping = {
+            'kr_equity': AssetGroup.KR_EQUITY,
+            'us_equity': AssetGroup.US_EQUITY,
+            'us_etf': AssetGroup.US_EQUITY,
+            'crypto': AssetGroup.CRYPTO,
+            'commodity': AssetGroup.COMMODITY,
+            'bond': AssetGroup.BOND,
+        }
+
+        for group_name, symbols in config.get('groups', {}).items():
+            asset_group = group_mapping.get(group_name, AssetGroup.US_EQUITY)
+            for symbol in symbols:
+                symbol_groups[symbol] = asset_group
+
+        logger.info(f"상관그룹 설정 로드: {len(symbol_groups)}개 심볼")
+
+    except yaml.YAMLError as e:
+        logger.error(f"상관그룹 YAML 파싱 오류: {e}. 기본 그룹으로 운영합니다.")
+
+    return PortfolioRiskManager(symbol_groups=symbol_groups)
 
 
 def check_entry_signals(df, symbol: str, system: int = 1) -> list:
@@ -167,11 +208,16 @@ async def main():
 async def _run_checks():
     logger.info("=== 통합 포지션 & 시그널 체크 시작 ===")
 
+    # Log market status
+    for market in ['KR', 'US']:
+        logger.info(get_market_status(market))
+
     config = load_config()
     notifier = setup_notifier(config)
     data_fetcher = DataFetcher()
     data_store = ParquetDataStore()
     tracker = PositionTracker()
+    risk_manager = setup_risk_manager()
 
     # 테스트용 종목 리스트
     test_symbols = [
@@ -184,6 +230,11 @@ async def _run_checks():
     # 1. 오픈 포지션 체크 (청산 & 피라미딩)
     open_positions = tracker.get_open_positions()
     logger.info(f"오픈 포지션: {len(open_positions)}개")
+
+    # Load current open positions into risk manager
+    for pos in open_positions:
+        direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
+        risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, direction)
 
     for pos in open_positions:
         try:
@@ -204,6 +255,8 @@ async def _run_checks():
             if pos.direction == "LONG" and today["low"] <= pos.stop_loss:
                 logger.warning(f"스톱로스 발동: {pos.symbol} @ {today['low']}")
                 tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
+                direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
+                risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action="🛑 STOP LOSS",
@@ -222,6 +275,8 @@ async def _run_checks():
                     exit_signal['price'],
                     exit_signal['message']
                 )
+                direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
+                risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action=f"EXIT System {pos.system}",
@@ -258,10 +313,9 @@ async def _run_checks():
         try:
             logger.info(f"시그널 체크: {name}")
 
-            # 이미 오픈 포지션이 있는지 확인
-            existing = tracker.get_open_positions(symbol)
-            if existing:
-                logger.info(f"이미 포지션 보유 중: {symbol}")
+            # 마켓 활성 시간 체크
+            if not should_check_signals(symbol):
+                logger.info(f"마켓 비활동 시간: {symbol} ({infer_market(symbol)}) 스킵")
                 continue
 
             # 데이터 페칭
@@ -271,12 +325,38 @@ async def _run_checks():
 
             df = add_turtle_indicators(df)
 
-            # System 1 & 2 시그널 체크
-            signals_s1 = check_entry_signals(df, symbol, system=1)
-            signals_s2 = check_entry_signals(df, symbol, system=2)
+            # System 1/2 독립 운영 - 각 시스템별로 기존 포지션 확인
+            existing_positions = tracker.get_open_positions(symbol)
+            existing_systems = {p.system for p in existing_positions}
 
-            all_signals.extend(signals_s1)
-            all_signals.extend(signals_s2)
+            signals_s1 = []
+            signals_s2 = []
+
+            if 1 not in existing_systems:
+                signals_s1 = check_entry_signals(df, symbol, system=1)
+            else:
+                logger.info(f"System 1 포지션 보유 중: {symbol}")
+
+            if 2 not in existing_systems:
+                signals_s2 = check_entry_signals(df, symbol, system=2)
+            else:
+                logger.info(f"System 2 포지션 보유 중: {symbol}")
+
+            # 리스크 매니저 필터링
+            for signal in signals_s1 + signals_s2:
+                direction = Direction.LONG if signal["direction"] == "LONG" else Direction.SHORT
+                can_add, reason = risk_manager.can_add_position(
+                    symbol=signal["symbol"],
+                    units=1,
+                    n_value=signal["n"],
+                    direction=direction
+                )
+                if can_add:
+                    all_signals.append(signal)
+                    # 리스크 상태 업데이트 (후속 시그널 정확한 체크를 위해)
+                    risk_manager.add_position(signal["symbol"], 1, signal["n"], direction)
+                else:
+                    logger.info(f"리스크 제한으로 시그널 스킵: {signal['symbol']} - {reason}")
 
         except Exception as e:
             logger.error(f"{symbol} 처리 오류: {e}")
@@ -307,6 +387,9 @@ async def _run_checks():
     # 4. 요약 리포트
     summary = tracker.get_summary()
     logger.info(f"포지션 요약: {summary}")
+
+    risk_summary = risk_manager.get_risk_summary()
+    logger.info(f"리스크 요약: {risk_summary}")
 
     logger.info("=== 체크 완료 ===")
 

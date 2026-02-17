@@ -36,8 +36,8 @@ async def test_telegram():
         print('❌ TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID가 설정되지 않았습니다.')
         return False
 
-    print(f'✅ Bot Token: {bot_token[:10]}...')
-    print(f'✅ Chat ID: {chat_id}')
+    print(f'✅ Bot Token: {"[SET]" if bot_token else "[NOT SET]"}')
+    print(f'✅ Chat ID: {"[SET]" if chat_id else "[NOT SET]"}')
 
     channel = TelegramChannel(bot_token, chat_id)
     message = NotificationMessage(
@@ -73,7 +73,7 @@ async def test_discord():
         print('⏭️  Discord 웹훅이 설정되지 않았습니다. 건너뜁니다.')
         return None
 
-    print(f'✅ Webhook URL: {webhook_url[:40]}...')
+    print(f'✅ Webhook URL: {"[SET]" if webhook_url else "[NOT SET]"}')
 
     channel = DiscordChannel(webhook_url)
     message = NotificationMessage(

@@ -63,6 +63,11 @@ class PortfolioRiskManager:
         n_value: float,
         direction: Direction
     ) -> Tuple[bool, str]:
+        if n_value < 0:
+            return False, f"N값이 음수입니다: {n_value}"
+        if units <= 0:
+            return False, f"유닛 수가 0 이하입니다: {units}"
+
         group = self.get_group(symbol)
 
         # 단일 종목 한도
@@ -84,12 +89,18 @@ class PortfolioRiskManager:
                 return False, "숏 방향 한도 초과"
 
         # N 노출 한도
-        if self.state.total_n_exposure + units > self.limits.max_total_n_exposure:
+        new_n_exposure = n_value * units
+        if self.state.total_n_exposure + new_n_exposure > self.limits.max_total_n_exposure:
             return False, "전체 N 노출 한도 초과"
 
         return True, "OK"
 
     def add_position(self, symbol: str, units: int, n_value: float, direction: Direction):
+        if n_value < 0:
+            raise ValueError(f"n_value must be non-negative, got {n_value}")
+        if units <= 0:
+            raise ValueError(f"units must be positive, got {units}")
+
         group = self.get_group(symbol)
 
         self.state.units_by_symbol[symbol] = self.state.units_by_symbol.get(symbol, 0) + units
@@ -100,9 +111,9 @@ class PortfolioRiskManager:
         else:
             self.state.short_units += units
 
-        self.state.total_n_exposure += units
+        self.state.total_n_exposure += n_value * units
 
-    def remove_position(self, symbol: str, units: int, direction: Direction):
+    def remove_position(self, symbol: str, units: int, direction: Direction, n_value: float):
         group = self.get_group(symbol)
 
         self.state.units_by_symbol[symbol] = max(0, self.state.units_by_symbol.get(symbol, 0) - units)
@@ -113,7 +124,7 @@ class PortfolioRiskManager:
         else:
             self.state.short_units = max(0, self.state.short_units - units)
 
-        self.state.total_n_exposure = max(0, self.state.total_n_exposure - units)
+        self.state.total_n_exposure = max(0, self.state.total_n_exposure - n_value * units)
 
     def get_risk_summary(self) -> Dict:
         return {
