@@ -202,7 +202,7 @@ class TurtleBacktester:
                         self._open_position(symbol, date, row["close"], n_value, direction)
 
             # 일일 자본 기록
-            self._record_equity(date)
+            self._record_equity(date, data)
 
         # 결과 계산
         return self._calculate_results()
@@ -215,7 +215,7 @@ class TurtleBacktester:
         n_value: float,
         direction: PyramidDirection
     ):
-        unit_size = calculate_unit_size(self.account.current_equity, n_value, self.config.risk_percent)
+        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
 
@@ -234,7 +234,7 @@ class TurtleBacktester:
         if not position:
             return
 
-        unit_size = calculate_unit_size(self.account.current_equity, n_value, self.config.risk_percent)
+        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         cost = unit_size * price * (1 + self.config.commission_pct)
         if cost > self.account.cash:
             return
@@ -280,12 +280,19 @@ class TurtleBacktester:
         self.pyramid_manager.close_position(symbol)
         logger.debug(f"청산: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({reason})")
 
-    def _record_equity(self, date: datetime):
-        # 미실현 손익 계산
+    def _record_equity(self, date: datetime, data: Dict[str, pd.DataFrame] = None):
         unrealized = 0.0
         for symbol, position in self.pyramid_manager.positions.items():
-            # 실제로는 현재가가 필요하지만 간단히 평균 진입가 사용
-            pass
+            if data and symbol in data:
+                df_slice = data[symbol][data[symbol]["date"] <= date]
+                if not df_slice.empty:
+                    current_price = df_slice.iloc[-1]["close"]
+                    avg_entry = position.average_entry_price
+                    qty = position.total_units
+                    if position.direction == PyramidDirection.LONG:
+                        unrealized += (current_price - avg_entry) * qty
+                    else:
+                        unrealized += (avg_entry - current_price) * qty
 
         equity = self.account.cash + unrealized
         self.equity_history.append({

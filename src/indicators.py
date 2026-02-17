@@ -16,9 +16,9 @@ class ATRMethod(Enum):
 
 def calculate_true_range(df: pd.DataFrame) -> pd.Series:
     """True Range 계산"""
-    high = df['High']
-    low = df['Low']
-    prev_close = df['Close'].shift(1)
+    high = df['high']
+    low = df['low']
+    prev_close = df['close'].shift(1)
 
     tr1 = high - low
     tr2 = abs(high - prev_close)
@@ -57,10 +57,12 @@ def calculate_donchian_channel(
     """Donchian Channel 계산"""
     result = pd.DataFrame(index=df.index)
 
-    result['EntryHigh'] = df['High'].shift(1).rolling(window=entry_period).max()
-    result['EntryLow'] = df['Low'].shift(1).rolling(window=entry_period).min()
-    result['ExitHigh'] = df['High'].shift(1).rolling(window=exit_period).max()
-    result['ExitLow'] = df['Low'].shift(1).rolling(window=exit_period).min()
+    result['dc_high_55'] = df['high'].shift(1).rolling(window=entry_period).max()
+    result['dc_low_55'] = df['low'].shift(1).rolling(window=entry_period).min()
+    result['dc_high_20'] = df['high'].shift(1).rolling(window=exit_period).max()
+    result['dc_low_20'] = df['low'].shift(1).rolling(window=exit_period).min()
+    result['dc_high_10'] = df['high'].shift(1).rolling(window=10).max()
+    result['dc_low_10'] = df['low'].shift(1).rolling(window=10).min()
 
     return result
 

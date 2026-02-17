@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-터틀 트레이딩 시그널 체크 스크립트
+[DEPRECATED] 이 스크립트는 scripts/check_positions.py로 통합되었습니다.
+새로운 기능은 check_positions.py에 추가하세요.
+
+원래 기능: 터틀 트레이딩 시그널 체크 스크립트
 - Cron으로 매일 실행
 - 시그널 발생 시 알림 전송
 """
@@ -125,6 +128,7 @@ def check_signals(df, symbol: str, system: int = 1) -> list:
 
 
 async def main():
+    logger.warning("⚠️ 이 스크립트는 deprecated입니다. scripts/check_positions.py를 사용하세요.")
     logger.info("=== 터틀 트레이딩 시그널 체크 시작 ===")
 
     config = load_config()

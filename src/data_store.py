@@ -11,6 +11,8 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 import logging
 import json
+import tempfile
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class ParquetDataStore:
 
     def save_ohlcv(self, symbol: str, df: pd.DataFrame):
         path = self._get_cache_path(symbol, "ohlcv")
-        df.to_parquet(path, compression="snappy")
+        self._atomic_write_parquet(path, df)
         logger.info(f"OHLCV 저장: {symbol} -> {path}")
 
     def load_ohlcv(
@@ -66,7 +68,21 @@ class ParquetDataStore:
 
     def save_indicators(self, symbol: str, df: pd.DataFrame):
         path = self._get_cache_path(symbol, "indicators")
-        df.to_parquet(path, compression="snappy")
+        self._atomic_write_parquet(path, df)
+
+    def _atomic_write_parquet(self, path: Path, df: pd.DataFrame):
+        """Atomic Parquet write: temp file → rename"""
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix='.tmp')
+        os.close(fd)
+        try:
+            df.to_parquet(tmp_path, compression="snappy")
+            os.rename(tmp_path, str(path))
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def load_indicators(self, symbol: str) -> Optional[pd.DataFrame]:
         path = self._get_cache_path(symbol, "indicators")
@@ -84,7 +100,7 @@ class ParquetDataStore:
         else:
             df = pd.DataFrame([trade])
 
-        df.to_parquet(path, compression="snappy")
+        self._atomic_write_parquet(path, df)
         logger.info(f"거래 기록 저장: {trade.get('symbol')}")
 
     def load_trades(
@@ -115,7 +131,7 @@ class ParquetDataStore:
         else:
             df = pd.DataFrame([signal])
 
-        df.to_parquet(path, compression="snappy")
+        self._atomic_write_parquet(path, df)
 
     def load_signals(self, date: Optional[str] = None) -> pd.DataFrame:
         if date:
