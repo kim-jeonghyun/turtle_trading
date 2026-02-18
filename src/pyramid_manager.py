@@ -8,12 +8,8 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
-from enum import Enum
 
-
-class PyramidDirection(Enum):
-    LONG = "long"
-    SHORT = "short"
+from src.types import Direction
 
 
 @dataclass
@@ -29,7 +25,7 @@ class PyramidEntry:
 @dataclass
 class PyramidPosition:
     symbol: str
-    direction: PyramidDirection
+    direction: Direction
     entries: List[PyramidEntry] = field(default_factory=list)
     max_units: int = 4
     pyramid_interval_n: float = 0.5
@@ -58,7 +54,7 @@ class PyramidPosition:
         if not self.entries:
             return 0.0
         interval = current_n * self.pyramid_interval_n
-        if self.direction == PyramidDirection.LONG:
+        if self.direction == Direction.LONG:
             return self.entries[-1].entry_price + interval
         return self.entries[-1].entry_price - interval
 
@@ -69,7 +65,7 @@ class PyramidPosition:
             return True, "초기 진입 가능"
 
         pyramid_price = self.get_next_pyramid_price(current_n)
-        if self.direction == PyramidDirection.LONG:
+        if self.direction == Direction.LONG:
             if current_price >= pyramid_price:
                 return True, f"피라미딩 가격 도달: {current_price:.2f} >= {pyramid_price:.2f}"
         else:
@@ -80,7 +76,7 @@ class PyramidPosition:
 
     def add_entry(self, date: datetime, price: float, units: int, n_value: float):
         stop_distance = n_value * self.stop_distance_n
-        if self.direction == PyramidDirection.LONG:
+        if self.direction == Direction.LONG:
             stop_price = price - stop_distance
         else:
             stop_price = price + stop_distance
@@ -102,7 +98,7 @@ class PyramidPosition:
             return
         latest_stop = self.entries[-1].stop_price
         for entry in self.entries[:-1]:
-            if self.direction == PyramidDirection.LONG:
+            if self.direction == Direction.LONG:
                 entry.stop_price = max(entry.stop_price, latest_stop)
             else:
                 entry.stop_price = min(entry.stop_price, latest_stop)
@@ -110,7 +106,7 @@ class PyramidPosition:
     def check_stop_hit(self, current_price: float) -> bool:
         if not self.entries:
             return False
-        if self.direction == PyramidDirection.LONG:
+        if self.direction == Direction.LONG:
             return current_price <= self.current_stop
         return current_price >= self.current_stop
 
@@ -124,7 +120,7 @@ class PyramidManager:
     def create_position(
         self,
         symbol: str,
-        direction: PyramidDirection,
+        direction: Direction,
         date: datetime,
         price: float,
         units: int,

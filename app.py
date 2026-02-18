@@ -8,9 +8,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore

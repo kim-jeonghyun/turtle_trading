@@ -7,9 +7,8 @@ import pytest
 from src.risk_manager import (
     PortfolioRiskManager,
     RiskLimits,
-    AssetGroup,
-    Direction
 )
+from src.types import AssetGroup, Direction
 
 
 @pytest.fixture

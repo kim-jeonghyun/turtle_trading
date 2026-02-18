@@ -84,3 +84,126 @@ class TestBacktestBasic:
         assert config.max_units == 4
         assert config.pyramid_interval_n == 0.5
         assert config.stop_distance_n == 2.0
+
+
+class TestBacktestSystem1:
+    """System 1 백테스트: 20일 돌파, 10일 청산, 필터 적용"""
+
+    def _make_breakout_data(self):
+        """20일 돌파 발생하는 데이터 생성"""
+        np.random.seed(123)
+        dates = pd.date_range(start="2025-01-01", periods=120, freq="B")
+        price = 100.0
+        rows = []
+        for i, date in enumerate(dates):
+            if i < 60:
+                # 횡보 구간
+                change = np.random.normal(0, 0.5)
+            elif i < 80:
+                # 강한 상승 (20일 최고가 돌파 유도)
+                change = abs(np.random.normal(1.5, 0.5))
+            elif i < 100:
+                # 하락 (10일 최저가 이탈 유도)
+                change = -abs(np.random.normal(1.5, 0.5))
+            else:
+                # 재횡보
+                change = np.random.normal(0, 0.5)
+
+            open_price = price
+            close = price + change
+            high = max(open_price, close) + abs(np.random.normal(0.3, 0.1))
+            low = min(open_price, close) - abs(np.random.normal(0.3, 0.1))
+            rows.append({
+                "date": date,
+                "open": round(open_price, 2),
+                "high": round(high, 2),
+                "low": round(low, 2),
+                "close": round(close, 2),
+                "volume": int(np.random.uniform(1000000, 5000000)),
+            })
+            price = close
+
+        return pd.DataFrame(rows)
+
+    def test_system1_with_filter(self):
+        """System 1 필터 포함 백테스트"""
+        config = BacktestConfig(
+            initial_capital=100000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        data = {"SPY": self._make_breakout_data()}
+        result = bt.run(data)
+
+        assert isinstance(result, BacktestResult)
+        assert result.final_equity > 0
+
+    def test_system1_without_filter(self):
+        """System 1 필터 없이"""
+        config = BacktestConfig(
+            initial_capital=100000.0,
+            system=1,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        data = {"SPY": self._make_breakout_data()}
+        result = bt.run(data)
+
+        assert isinstance(result, BacktestResult)
+
+    def test_system2_full_run(self):
+        """System 2 (55일 돌파) 전체 실행"""
+        config = BacktestConfig(
+            initial_capital=100000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        data = {"SPY": self._make_breakout_data()}
+        result = bt.run(data)
+
+        assert isinstance(result, BacktestResult)
+
+    def test_multiple_symbols(self):
+        """여러 종목 동시 백테스트"""
+        config = BacktestConfig(
+            initial_capital=200000.0,
+            system=1,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        data = {
+            "SPY": self._make_breakout_data(),
+            "QQQ": self._make_breakout_data(),
+        }
+        result = bt.run(data)
+
+        assert isinstance(result, BacktestResult)
+        assert result.final_equity > 0
+
+
+class TestBacktestTradeDataclass:
+    def test_trade_defaults(self):
+        from src.backtester import Trade
+        trade = Trade(symbol="SPY", entry_date=pd.Timestamp("2025-01-01"), entry_price=100.0)
+        assert trade.exit_date is None
+        assert trade.exit_price is None
+        assert trade.direction == "LONG"
+        assert trade.quantity == 0
+        assert trade.pnl == 0.0
+        assert trade.exit_reason == ""
+
+
+class TestBacktestEntryExitColumns:
+    def test_system1_columns(self):
+        config = BacktestConfig(system=1)
+        bt = TurtleBacktester(config)
+        cols = bt._get_entry_exit_columns()
+        assert cols == ("dc_high_20", "dc_low_20", "dc_low_10", "dc_high_10")
+
+    def test_system2_columns(self):
+        config = BacktestConfig(system=2)
+        bt = TurtleBacktester(config)
+        cols = bt._get_entry_exit_columns()
+        assert cols == ("dc_high_55", "dc_low_55", "dc_low_20", "dc_high_20")

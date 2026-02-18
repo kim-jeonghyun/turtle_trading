@@ -1,0 +1,27 @@
+# 거래 유니버스 설정
+# 모든 거래 스크립트가 이 파일을 단일 심볼 소스로 사용
+
+symbols:
+  us_equity:
+    - {symbol: SPY, name: "S&P 500 ETF", group: us_equity}
+    - {symbol: QQQ, name: "Nasdaq 100 ETF", group: us_equity}
+    - {symbol: DIA, name: "Dow Jones ETF", group: us_equity}
+    - {symbol: IWM, name: "Russell 2000 ETF", group: us_equity}
+    - {symbol: AAPL, name: "Apple", group: us_equity}
+    - {symbol: NVDA, name: "NVIDIA", group: us_equity}
+    - {symbol: TSLA, name: "Tesla", group: us_equity}
+    - {symbol: MSFT, name: "Microsoft", group: us_equity}
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity}
+    - {symbol: "000660.KS", name: "SK하이닉스", group: kr_equity}
+    - {symbol: "035420.KS", name: "NAVER", group: kr_equity}
+  commodity:
+    - {symbol: GLD, name: "Gold ETF", group: commodity}
+  bond:
+    - {symbol: TLT, name: "Treasury 20+ ETF", group: bond}
+  inverse:
+    - {symbol: SH, name: "S&P 500 Inverse", group: inverse, underlying: SPY}
+    - {symbol: PSQ, name: "Nasdaq Inverse", group: inverse, underlying: QQQ}
+    - {symbol: SDS, name: "S&P 500 2x Inverse", group: inverse, underlying: SPY}
+    - {symbol: SQQQ, name: "Nasdaq 3x Inverse", group: inverse, underlying: QQQ}
+    - {symbol: SPXU, name: "S&P 500 3x Inverse", group: inverse, underlying: SPY}

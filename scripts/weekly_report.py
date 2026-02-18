@@ -8,7 +8,6 @@
 - 주간 손익
 """
 
-import sys
 import os
 import asyncio
 import argparse
@@ -28,11 +27,10 @@ try:
 except ImportError:
     def load_dotenv(): pass
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from src.position_tracker import PositionTracker, PositionStatus
 from src.data_store import ParquetDataStore
-from src.risk_manager import PortfolioRiskManager, AssetGroup, Direction, RiskLimits
+from src.risk_manager import PortfolioRiskManager, RiskLimits
+from src.types import AssetGroup, Direction
 from src.notifier import (
     NotificationManager,
     TelegramChannel,

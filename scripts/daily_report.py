@@ -3,13 +3,9 @@
 일일 리포트 생성 및 전송 스크립트
 """
 
-import sys
 import asyncio
 import logging
-from pathlib import Path
 from datetime import datetime, timedelta
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_store import ParquetDataStore
 from src.notifier import (

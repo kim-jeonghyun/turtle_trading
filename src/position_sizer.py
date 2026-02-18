@@ -5,18 +5,14 @@
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 from datetime import datetime
-from enum import Enum
 
-
-class PositionDirection(Enum):
-    LONG = "long"
-    SHORT = "short"
+from src.types import Direction
 
 
 @dataclass
 class Position:
     symbol: str
-    direction: PositionDirection
+    direction: Direction
     entry_date: datetime
     entry_price: float
     quantity: int
@@ -30,7 +26,7 @@ class Position:
 
     @property
     def unrealized_pnl(self) -> float:
-        if self.direction == PositionDirection.LONG:
+        if self.direction == Direction.LONG:
             return (self.current_price - self.entry_price) * self.quantity
         return (self.entry_price - self.current_price) * self.quantity
 
@@ -95,10 +91,10 @@ class PositionSizer:
         self,
         entry_price: float,
         n_value: float,
-        direction: PositionDirection,
+        direction: Direction,
         stop_distance_n: float = 2.0
     ) -> float:
         stop_distance = n_value * stop_distance_n
-        if direction == PositionDirection.LONG:
+        if direction == Direction.LONG:
             return entry_price - stop_distance
         return entry_price + stop_distance

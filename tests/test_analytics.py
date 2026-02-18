@@ -3,11 +3,6 @@ analytics.py 단위 테스트
 - R-배수, 기대값, 승/패 통계, 시스템 비교, 지수 계산
 """
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import pytest
 from src.analytics import (
     TradeAnalytics,

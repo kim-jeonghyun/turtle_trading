@@ -1,15 +1,8 @@
 [project]
 name = "turtle-trading"
 version = "2.0.0"
-description = "터틀 트레이딩 시스템 - 반자동 투자 시스템"
-readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "Taptorestart", email = "taptorestart@gmail.com"}
-]
-keywords = ["trading", "turtle-trading", "investment", "backtesting"]
-
+description = "터틀 트레이딩 전략 기반 반자동 투자 시스템"
+requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
@@ -27,53 +20,30 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest>=9.0.0",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
-
-[project.scripts]
-turtle-signal = "scripts.signal_check:main"
-turtle-report = "scripts.daily_report:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
+[tool.setuptools.packages.find]
+include = ["src*"]
 
-[dependency-groups]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
-target-version = "py310"
+target-version = "py311"
+line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
-ignore = ["E501"]
-
-[tool.black]
-line-length = 100
-target-version = ["py310"]
+select = ["E", "F", "W", "I"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]

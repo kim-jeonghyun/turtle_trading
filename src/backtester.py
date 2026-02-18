@@ -7,24 +7,14 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
-from enum import Enum
 import logging
 
 from .indicators import add_turtle_indicators, calculate_unit_size
-from .position_sizer import PositionDirection, AccountState
-from .pyramid_manager import PyramidManager, PyramidDirection
+from .position_sizer import AccountState
+from .pyramid_manager import PyramidManager
+from src.types import SignalType, Direction
 
 logger = logging.getLogger(__name__)
-
-
-class SignalType(Enum):
-    ENTRY_LONG = "entry_long"
-    ENTRY_SHORT = "entry_short"
-    EXIT_LONG = "exit_long"
-    EXIT_SHORT = "exit_short"
-    PYRAMID_LONG = "pyramid_long"
-    PYRAMID_SHORT = "pyramid_short"
-    STOP_LOSS = "stop_loss"
 
 
 @dataclass
@@ -34,7 +24,7 @@ class Trade:
     entry_price: float
     exit_date: Optional[datetime] = None
     exit_price: Optional[float] = None
-    direction: str = "long"
+    direction: str = "LONG"
     quantity: int = 0
     pnl: float = 0.0
     pnl_pct: float = 0.0
@@ -124,7 +114,7 @@ class TurtleBacktester:
     ) -> Optional[SignalType]:
         _, _, exit_low, exit_high = self._get_entry_exit_columns()
 
-        if position.direction == PyramidDirection.LONG:
+        if position.direction == Direction.LONG:
             # 스톱로스
             if row["low"] <= position.current_stop:
                 return SignalType.STOP_LOSS
@@ -149,7 +139,7 @@ class TurtleBacktester:
     ) -> Optional[SignalType]:
         can_pyramid, _ = position.can_pyramid(row["close"], n_value)
         if can_pyramid:
-            if position.direction == PyramidDirection.LONG:
+            if position.direction == Direction.LONG:
                 return SignalType.PYRAMID_LONG
             return SignalType.PYRAMID_SHORT
         return None
@@ -198,7 +188,7 @@ class TurtleBacktester:
                     # 진입 신호 확인
                     entry_signal = self._check_entry_signal(row, prev_row, symbol)
                     if entry_signal:
-                        direction = PyramidDirection.LONG if entry_signal == SignalType.ENTRY_LONG else PyramidDirection.SHORT
+                        direction = Direction.LONG if entry_signal == SignalType.ENTRY_LONG else Direction.SHORT
                         self._open_position(symbol, date, row["close"], n_value, direction)
 
             # 일일 자본 기록
@@ -213,7 +203,7 @@ class TurtleBacktester:
         date: datetime,
         price: float,
         n_value: float,
-        direction: PyramidDirection
+        direction: Direction
     ):
         unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
@@ -251,7 +241,7 @@ class TurtleBacktester:
         total_quantity = position.total_units
         avg_entry = position.average_entry_price
 
-        if position.direction == PyramidDirection.LONG:
+        if position.direction == Direction.LONG:
             pnl = (price - avg_entry) * total_quantity
         else:
             pnl = (avg_entry - price) * total_quantity
@@ -289,7 +279,7 @@ class TurtleBacktester:
                     current_price = df_slice.iloc[-1]["close"]
                     avg_entry = position.average_entry_price
                     qty = position.total_units
-                    if position.direction == PyramidDirection.LONG:
+                    if position.direction == Direction.LONG:
                         unrealized += (current_price - avg_entry) * qty
                     else:
                         unrealized += (avg_entry - current_price) * qty

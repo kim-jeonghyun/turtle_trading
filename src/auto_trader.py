@@ -14,19 +14,12 @@ from typing import Optional, List, Dict, Any
 
 from src.kis_api import KISAPIClient, OrderSide, OrderType
 from src.utils import atomic_write_json, safe_load_json
+from src.types import OrderStatus
 
 logger = logging.getLogger(__name__)
 
 # 주문 로그 파일 경로
 ORDER_LOG_PATH = Path(__file__).parent.parent / "data" / "trades" / "order_log.json"
-
-
-class OrderStatus:
-    PENDING = "pending"
-    FILLED = "filled"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    DRY_RUN = "dry_run"
 
 
 @dataclass
@@ -141,7 +134,7 @@ class AutoTrader:
                 quantity=quantity,
                 price=price,
                 order_type=order_type.name,
-                status=OrderStatus.FAILED,
+                status=OrderStatus.FAILED.value,
                 timestamp=timestamp,
                 dry_run=self.dry_run,
                 error_message=error_msg,
@@ -163,7 +156,7 @@ class AutoTrader:
                 quantity=quantity,
                 price=price,
                 order_type=order_type.name,
-                status=OrderStatus.DRY_RUN,
+                status=OrderStatus.DRY_RUN.value,
                 timestamp=timestamp,
                 dry_run=True,
                 fill_price=price,         # dry-run에서는 요청가로 체결 가정
@@ -195,7 +188,7 @@ class AutoTrader:
                     quantity=quantity,
                     price=price,
                     order_type=order_type.name,
-                    status=OrderStatus.FILLED,
+                    status=OrderStatus.FILLED.value,
                     timestamp=timestamp,
                     dry_run=False,
                     fill_price=price,
@@ -215,7 +208,7 @@ class AutoTrader:
                     quantity=quantity,
                     price=price,
                     order_type=order_type.name,
-                    status=OrderStatus.FAILED,
+                    status=OrderStatus.FAILED.value,
                     timestamp=timestamp,
                     dry_run=False,
                     error_message=error_msg,
@@ -233,7 +226,7 @@ class AutoTrader:
                 quantity=quantity,
                 price=price,
                 order_type=order_type.name,
-                status=OrderStatus.FAILED,
+                status=OrderStatus.FAILED.value,
                 timestamp=timestamp,
                 dry_run=False,
                 error_message=error_msg,
@@ -258,15 +251,8 @@ class AutoTrader:
             return {"order_no": order_no, "status": "dry_run", "message": "Dry-run mode"}
 
         try:
-            token = await self.kis_client._get_token()
             logger.info(f"주문 상태 조회: {order_no}")
-            # KIS API는 별도의 주문 조회 엔드포인트가 있으나,
-            # 현재 kis_api.py에 미구현 상태이므로 기본 응답 반환
-            return {
-                "order_no": order_no,
-                "status": "unknown",
-                "message": "주문 조회 API 미구현 (KIS API 별도 엔드포인트 필요)"
-            }
+            return await self.kis_client.get_order_status(order_no)
         except Exception as e:
             logger.error(f"주문 상태 조회 실패: {order_no} - {e}")
             return {"order_no": order_no, "status": "error", "message": str(e)}
@@ -335,13 +321,13 @@ class AutoTrader:
             if o.get("timestamp", "").startswith(today)
         ]
 
-        filled = sum(1 for o in today_orders if o.get("status") == OrderStatus.FILLED)
-        failed = sum(1 for o in today_orders if o.get("status") == OrderStatus.FAILED)
-        dry_run_count = sum(1 for o in today_orders if o.get("status") == OrderStatus.DRY_RUN)
+        filled = sum(1 for o in today_orders if o.get("status") == OrderStatus.FILLED.value)
+        failed = sum(1 for o in today_orders if o.get("status") == OrderStatus.FAILED.value)
+        dry_run_count = sum(1 for o in today_orders if o.get("status") == OrderStatus.DRY_RUN.value)
         total_amount = sum(
             o.get("quantity", 0) * o.get("price", 0)
             for o in today_orders
-            if o.get("status") in (OrderStatus.FILLED, OrderStatus.DRY_RUN)
+            if o.get("status") in (OrderStatus.FILLED.value, OrderStatus.DRY_RUN.value)
         )
 
         return {

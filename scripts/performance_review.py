@@ -6,7 +6,6 @@
 - 테이블 형식 또는 CSV 내보내기
 """
 
-import sys
 import argparse
 import logging
 import csv
@@ -25,8 +24,6 @@ except ImportError:
         for row in data:
             lines.append(" | ".join(str(c) for c in row))
         return "\n".join(lines)
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.position_tracker import PositionTracker, Position, PositionStatus
 

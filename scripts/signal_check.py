@@ -8,14 +8,10 @@
 - 시그널 발생 시 알림 전송
 """
 
-import sys
 import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime
-
-# 상위 디렉토리 추가
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
@@ -138,7 +134,7 @@ async def main():
 
     # 유니버스 로드
     universe_path = Path(__file__).parent.parent / "data" / "turtle_universe_full.csv"
-    universe = UniverseManager(str(universe_path) if universe_path.exists() else None)
+    universe = UniverseManager(csv_path=str(universe_path) if universe_path.exists() else None)
     symbols = universe.get_enabled_symbols()
 
     logger.info(f"대상 종목: {len(symbols)}개")

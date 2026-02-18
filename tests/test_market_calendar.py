@@ -1,10 +1,6 @@
 """tests/test_market_calendar.py - 마켓 캘린더 테스트"""
 
-import sys
-from pathlib import Path
 from datetime import datetime, date, time
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.market_calendar import (
     is_weekend,

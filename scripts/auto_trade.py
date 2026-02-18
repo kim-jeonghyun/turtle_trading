@@ -19,29 +19,67 @@ import sys
 import os
 import asyncio
 import argparse
+import fcntl
 import logging
 from pathlib import Path
 from datetime import datetime
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.auto_trader import AutoTrader, OrderStatus
+from src.auto_trader import AutoTrader
+from src.types import OrderStatus
 from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 from src.data_fetcher import DataFetcher
 from src.indicators import add_turtle_indicators
 from src.position_sizer import PositionSizer
+from src.universe_manager import UniverseManager
 
 logger = logging.getLogger(__name__)
+
+LOCK_FILE = Path(__file__).parent.parent / "data" / ".auto_trade.lock"
+
+
+def acquire_lock():
+    """중복 실행 방지를 위한 파일 잠금"""
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd = open(LOCK_FILE, 'w')
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd.write(str(os.getpid()))
+        fd.flush()
+        return fd
+    except IOError:
+        fd.close()
+        logger.warning("이미 다른 auto_trade 인스턴스가 실행 중입니다. 종료합니다.")
+        return None
+
+
+def release_lock(fd):
+    """파일 잠금 해제"""
+    if fd:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
+        except Exception:
+            pass
+
 
 # 기본 주문 한도 (KRW)
 DEFAULT_MAX_AMOUNT = 5_000_000
 
-# 테스트용 기본 유니버스
+# 테스트용 기본 유니버스 (fallback)
 DEFAULT_SYMBOLS = [
     "SPY", "QQQ", "AAPL", "NVDA", "TSLA",
     "005930.KS",  # 삼성전자
     "000660.KS",  # SK하이닉스
 ]
+
+
+def get_default_symbols() -> list:
+    """config/universe.yaml에서 기본 심볼 로드"""
+    yaml_path = Path(__file__).parent.parent / "config" / "universe.yaml"
+    if yaml_path.exists():
+        universe = UniverseManager(yaml_path=str(yaml_path))
+        return universe.get_enabled_symbols()
+    return DEFAULT_SYMBOLS  # fallback to hardcoded
 
 
 def parse_args() -> argparse.Namespace:
@@ -259,7 +297,7 @@ async def run_auto_trade(args: argparse.Namespace):
     data_fetcher = DataFetcher()
 
     # 대상 종목 결정
-    symbols = args.symbols if args.symbols else DEFAULT_SYMBOLS
+    symbols = args.symbols if args.symbols else get_default_symbols()
 
     # 대상 시스템 결정
     systems = [args.system] if args.system else [1, 2]
@@ -342,7 +380,7 @@ async def run_auto_trade(args: argparse.Namespace):
 
                 placed_orders.append(order_record)
                 logger.info(
-                    f"주문 {'완료' if order_record.status in (OrderStatus.FILLED, OrderStatus.DRY_RUN) else '실패'}: "
+                    f"주문 {'완료' if order_record.status in (OrderStatus.FILLED.value, OrderStatus.DRY_RUN.value) else '실패'}: "
                     f"{order_record.order_id} | {symbol} {quantity}주 @ {signal['entry_price']:,.2f}"
                 )
 
@@ -370,11 +408,11 @@ async def run_auto_trade(args: argparse.Namespace):
         print("\n주문 내역:")
         for order in placed_orders:
             status_label = {
-                OrderStatus.FILLED: "체결",
-                OrderStatus.DRY_RUN: "시뮬레이션",
-                OrderStatus.FAILED: "실패",
-                OrderStatus.PENDING: "대기",
-                OrderStatus.CANCELLED: "취소"
+                OrderStatus.FILLED.value: "체결",
+                OrderStatus.DRY_RUN.value: "시뮬레이션",
+                OrderStatus.FAILED.value: "실패",
+                OrderStatus.PENDING.value: "대기",
+                OrderStatus.CANCELLED.value: "취소"
             }.get(order.status, order.status)
 
             print(
@@ -390,6 +428,10 @@ def main():
     args = parse_args()
     setup_logging(args.verbose)
 
+    lock_fd = acquire_lock()
+    if lock_fd is None:
+        sys.exit(1)
+
     try:
         orders = asyncio.run(run_auto_trade(args))
         sys.exit(0)
@@ -402,6 +444,8 @@ def main():
             import traceback
             traceback.print_exc()
         sys.exit(1)
+    finally:
+        release_lock(lock_fd)
 
 
 if __name__ == "__main__":

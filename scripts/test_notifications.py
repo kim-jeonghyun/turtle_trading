@@ -6,11 +6,6 @@
 import asyncio
 import os
 from dotenv import load_dotenv
-from pathlib import Path
-import sys
-
-# 프로젝트 루트를 sys.path에 추가
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.notifier import (
     TelegramChannel,

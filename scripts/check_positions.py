@@ -7,7 +7,6 @@
 - 스톱로스 체크
 """
 
-import sys
 import os
 import asyncio
 import fcntl
@@ -17,20 +16,22 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
-from src.position_tracker import PositionTracker, SignalType
+from src.position_tracker import PositionTracker
+from src.types import SignalType
 from src.notifier import (
     NotificationManager,
     TelegramChannel,
     NotificationMessage,
     NotificationLevel
 )
-from src.risk_manager import PortfolioRiskManager, AssetGroup, Direction, RiskLimits
+from src.risk_manager import PortfolioRiskManager, RiskLimits
+from src.types import AssetGroup, Direction
 from src.market_calendar import should_check_signals, get_market_status, infer_market
+from src.universe_manager import UniverseManager
+from src.inverse_filter import InverseETFFilter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,9 +113,11 @@ def setup_risk_manager() -> PortfolioRiskManager:
             'kr_equity': AssetGroup.KR_EQUITY,
             'us_equity': AssetGroup.US_EQUITY,
             'us_etf': AssetGroup.US_EQUITY,
+            'us_tech': AssetGroup.US_EQUITY,
             'crypto': AssetGroup.CRYPTO,
             'commodity': AssetGroup.COMMODITY,
             'bond': AssetGroup.BOND,
+            'inverse': AssetGroup.INVERSE,
         }
 
         for group_name, symbols in config.get('groups', {}).items():
@@ -130,7 +133,12 @@ def setup_risk_manager() -> PortfolioRiskManager:
     return PortfolioRiskManager(symbol_groups=symbol_groups)
 
 
-def check_entry_signals(df, symbol: str, system: int = 1) -> list:
+def is_korean_market(symbol: str) -> bool:
+    """한국 시장 종목 여부 (공매도 제한)"""
+    return symbol.endswith('.KS') or symbol.endswith('.KQ')
+
+
+def check_entry_signals(df, symbol: str, system: int = 1, tracker: 'PositionTracker' = None) -> list:
     """진입 시그널 확인"""
     signals = []
     if len(df) < 2:
@@ -138,6 +146,19 @@ def check_entry_signals(df, symbol: str, system: int = 1) -> list:
 
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
+
+    # System 1 필터: 직전 거래가 수익이면 스킵 (Curtis Faith 원칙)
+    # System 2는 필터 없음
+    def _was_last_trade_profitable(sym: str, sys_num: int) -> bool:
+        if tracker is None or sys_num != 1:
+            return False
+        history = tracker.get_position_history(sym)
+        # System 1에서 청산된 거래만 필터링
+        closed_s1 = [p for p in history if p.system == 1 and p.status == "closed"]
+        if not closed_s1:
+            return False
+        last_trade = max(closed_s1, key=lambda p: p.exit_date or "")
+        return (last_trade.pnl or 0) > 0
 
     # System 1: 20일, System 2: 55일
     if system == 1:
@@ -147,18 +168,46 @@ def check_entry_signals(df, symbol: str, system: int = 1) -> list:
 
     # 롱 진입 시그널
     if today["high"] > yesterday[high_col]:
-        signals.append({
-            "symbol": symbol,
-            "type": SignalType.ENTRY_LONG.value,
-            "system": system,
-            "direction": "LONG",
-            "price": yesterday[high_col],
-            "current": today["close"],
-            "n": today["N"],
-            "stop_loss": yesterday[high_col] - (2 * today["N"]),
-            "date": today["date"].strftime('%Y-%m-%d'),
-            "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파"
-        })
+        # System 1 필터: 직전 System 1 거래가 수익이면 스킵
+        if not _was_last_trade_profitable(symbol, system):
+            signals.append({
+                "symbol": symbol,
+                "type": SignalType.ENTRY_LONG.value,
+                "system": system,
+                "direction": "LONG",
+                "price": yesterday[high_col],
+                "current": today["close"],
+                "n": today["N"],
+                "stop_loss": yesterday[high_col] - (2 * today["N"]),
+                "date": today["date"].strftime('%Y-%m-%d'),
+                "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파"
+            })
+        else:
+            logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 롱 진입 스킵")
+
+    # 숏 진입 시그널 (미국 시장만 — 한국은 공매도 제한)
+    if not is_korean_market(symbol):
+        if system == 1:
+            short_low_col = "dc_low_20"
+        else:
+            short_low_col = "dc_low_55"
+
+        if today["low"] < yesterday[short_low_col]:
+            if not _was_last_trade_profitable(symbol, system):
+                signals.append({
+                    "symbol": symbol,
+                    "type": SignalType.ENTRY_SHORT.value,
+                    "system": system,
+                    "direction": "SHORT",
+                    "price": yesterday[short_low_col],
+                    "current": today["close"],
+                    "n": today["N"],
+                    "stop_loss": yesterday[short_low_col] + (2 * today["N"]),  # 숏 스톱은 위로
+                    "date": today["date"].strftime('%Y-%m-%d'),
+                    "message": f"System {system} 숏 진입: {yesterday[short_low_col]:.2f} 이탈"
+                })
+            else:
+                logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 숏 진입 스킵")
 
     return signals
 
@@ -191,6 +240,26 @@ def check_exit_signals(df, position, system: int = 1) -> Optional[dict]:
             "message": f"System {system} 롱 청산: {yesterday[low_col]:.2f} 이탈"
         }
 
+    # 숏 포지션 청산 (고가 돌파)
+    if position.direction == "SHORT":
+        if system == 1:
+            short_high_col = "dc_high_10"
+        else:
+            short_high_col = "dc_high_20"
+
+        if today["high"] > yesterday[short_high_col]:
+            return {
+                "symbol": position.symbol,
+                "type": SignalType.EXIT_SHORT.value,
+                "system": system,
+                "position_id": position.position_id,
+                "price": yesterday[short_high_col],
+                "current": today["close"],
+                "n": today["N"],
+                "date": today["date"].strftime('%Y-%m-%d'),
+                "message": f"System {system} 숏 청산: {yesterday[short_high_col]:.2f} 돌파"
+            }
+
     return None
 
 
@@ -219,13 +288,20 @@ async def _run_checks():
     tracker = PositionTracker()
     risk_manager = setup_risk_manager()
 
-    # 테스트용 종목 리스트
-    test_symbols = [
-        'SPY', 'QQQ', 'AAPL', 'NVDA', 'TSLA',  # 미국
-        ('005930.KS', '삼성전자'),
-        ('000660.KS', 'SK하이닉스'),
-        ('035420.KS', 'NAVER')
-    ]
+    # 유니버스 매니저에서 심볼 로드
+    universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
+    if universe_yaml.exists():
+        universe = UniverseManager(yaml_path=str(universe_yaml))
+    else:
+        universe = UniverseManager()  # defaults
+
+    all_symbols_list = []
+    for symbol in universe.get_enabled_symbols():
+        asset = universe.assets.get(symbol)
+        if asset and asset.name != symbol:
+            all_symbols_list.append((symbol, asset.name))
+        else:
+            all_symbols_list.append(symbol)
 
     # 1. 오픈 포지션 체크 (청산 & 피라미딩)
     open_positions = tracker.get_open_positions()
@@ -235,6 +311,20 @@ async def _run_checks():
     for pos in open_positions:
         direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
         risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, direction)
+
+    # Inverse ETF 필터 초기화
+    inverse_filter = InverseETFFilter()
+
+    # 오픈 포지션 중 inverse ETF를 필터에 등록
+    for pos in open_positions:
+        if inverse_filter.is_inverse_etf(pos.symbol):
+            inverse_filter.on_entry(
+                pos.symbol,
+                entry_date=datetime.strptime(pos.entry_date, '%Y-%m-%d') if isinstance(pos.entry_date, str) else pos.entry_date,
+                inverse_price=pos.entry_price,
+                underlying_price=pos.entry_price  # 진입 시점 기초자산 가격은 근사값 사용
+            )
+            # 보유일은 inverse_filter가 entry_date 기반으로 자동 계산
 
     for pos in open_positions:
         try:
@@ -251,9 +341,16 @@ async def _run_checks():
 
             today = df.iloc[-1]
 
-            # 스톱로스 체크
-            if pos.direction == "LONG" and today["low"] <= pos.stop_loss:
-                logger.warning(f"스톱로스 발동: {pos.symbol} @ {today['low']}")
+            # 스톱로스 체크 — 현재 포지션 단위로 직접 비교
+            # LONG: today["low"]으로 체크 (장중 최악), SHORT: today["high"]으로 체크
+            check_price = today["low"] if pos.direction == "LONG" else today["high"]
+            stop_triggered = (
+                (pos.direction == "LONG" and check_price <= pos.stop_loss) or
+                (pos.direction == "SHORT" and check_price >= pos.stop_loss)
+            )
+
+            if stop_triggered:
+                logger.warning(f"스톱로스 발동: {pos.symbol} ({pos.direction}) @ {today['close']}")
                 tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
                 direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
                 risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
@@ -262,9 +359,36 @@ async def _run_checks():
                     action="🛑 STOP LOSS",
                     price=pos.stop_loss,
                     quantity=pos.total_shares,
-                    reason=f"스톱로스 발동 (진입가: {pos.entry_price:,.0f})"
+                    reason=f"스톱로스 발동 ({pos.direction}, 진입가: {pos.entry_price:,.0f})"
                 )
                 continue
+
+            # Inverse ETF 괴리율/보유일 체크
+            if inverse_filter.is_inverse_etf(pos.symbol):
+                inv_config = inverse_filter.get_config(pos.symbol)
+                if inv_config:
+                    underlying_symbol = inv_config.underlying
+                    underlying_df = data_fetcher.fetch(underlying_symbol, period="1mo")
+                    if not underlying_df.empty:
+                        underlying_price = underlying_df.iloc[-1]["close"]
+                        # 일별 업데이트 (괴리율 계산 반영)
+                        inverse_filter.on_daily_update(pos.symbol, today["close"], underlying_price)
+                        should_exit, reason, msg = inverse_filter.should_force_exit(
+                            pos.symbol, today["close"], underlying_price
+                        )
+                        if should_exit:
+                            logger.warning(f"Inverse ETF 강제 청산: {pos.symbol} - {reason}")
+                            tracker.close_position(pos.position_id, today["close"], f"Inverse Filter: {msg}")
+                            direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
+                            risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
+                            await notifier.send_signal(
+                                symbol=pos.symbol,
+                                action="INVERSE ETF EXIT",
+                                price=today["close"],
+                                quantity=pos.total_shares,
+                                reason=msg
+                            )
+                            continue
 
             # 청산 시그널 체크
             exit_signal = check_exit_signals(df, pos, pos.system)
@@ -290,12 +414,13 @@ async def _run_checks():
             # 피라미딩 기회 체크
             if tracker.should_pyramid(pos, today["close"]):
                 logger.info(f"피라미딩 기회: {pos.symbol}")
+                direction_text = "상승" if pos.direction == "LONG" else "하락"
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action=f"📈 PYRAMID System {pos.system}",
                     price=today["close"],
                     quantity=0,
-                    reason=f"0.5N 상승 (Level {pos.units} → {pos.units + 1})"
+                    reason=f"0.5N {direction_text} (Level {pos.units} → {pos.units + 1})"
                 )
 
         except Exception as e:
@@ -304,7 +429,7 @@ async def _run_checks():
     # 2. 신규 진입 시그널 체크
     all_signals = []
 
-    for item in test_symbols:
+    for item in all_symbols_list:
         if isinstance(item, tuple):
             symbol, name = item
         else:
@@ -333,12 +458,12 @@ async def _run_checks():
             signals_s2 = []
 
             if 1 not in existing_systems:
-                signals_s1 = check_entry_signals(df, symbol, system=1)
+                signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker)
             else:
                 logger.info(f"System 1 포지션 보유 중: {symbol}")
 
             if 2 not in existing_systems:
-                signals_s2 = check_entry_signals(df, symbol, system=2)
+                signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker)
             else:
                 logger.info(f"System 2 포지션 보유 중: {symbol}")
 

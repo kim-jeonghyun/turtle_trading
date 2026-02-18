@@ -2,38 +2,27 @@
 # Each symbol maps to a group - grouped assets share the correlated group limit (6 units)
 
 groups:
-  kr_equity:
-    - "005930.KS"  # 삼성전자
-    - "000660.KS"  # SK하이닉스
-    - "035420.KS"  # NAVER
-    - "035720.KS"  # 카카오
-    - "051910.KS"  # LG화학
-
   us_equity:
-    - "AAPL"
-    - "MSFT"
-    - "NVDA"
-    - "TSLA"
-    - "AMZN"
-    - "GOOGL"
-    - "META"
-
-  us_etf:
-    - "SPY"
-    - "QQQ"
-    - "IWM"
-    - "DIA"
-
-  crypto:
-    - "BTC-USD"
-    - "ETH-USD"
-
+    - SPY
+    - QQQ
+    - DIA
+    - IWM
+  us_tech:
+    - AAPL
+    - NVDA
+    - TSLA
+    - MSFT
+  kr_equity:
+    - "005930.KS"
+    - "000660.KS"
+    - "035420.KS"
   commodity:
-    - "GLD"
-    - "SLV"
-    - "USO"
-
+    - GLD
   bond:
-    - "TLT"
-    - "IEF"
-    - "SHY"
+    - TLT
+  inverse:
+    - SH
+    - PSQ
+    - SDS
+    - SQQQ
+    - SPXU

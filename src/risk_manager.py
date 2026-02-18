@@ -8,22 +8,8 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
-from enum import Enum
 
-
-class AssetGroup(Enum):
-    KR_EQUITY = "kr_equity"
-    US_EQUITY = "us_equity"
-    ASIA_EQUITY = "asia_equity"
-    CRYPTO = "crypto"
-    COMMODITY = "commodity"
-    BOND = "bond"
-    INVERSE = "inverse"
-
-
-class Direction(Enum):
-    LONG = "long"
-    SHORT = "short"
+from src.types import AssetGroup, Direction
 
 
 @dataclass

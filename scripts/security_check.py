@@ -14,9 +14,6 @@ import logging
 from pathlib import Path
 from typing import List
 
-# 프로젝트 루트 추가
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from src.security import (
     check_env_file_permissions,
     validate_credentials,

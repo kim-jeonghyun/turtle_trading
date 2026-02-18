@@ -6,12 +6,10 @@
 - 미실현 손실이 임계값을 초과하면 알림
 """
 
-import sys
 import os
 import asyncio
 import argparse
 import logging
-from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
@@ -19,8 +17,6 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     def load_dotenv(): pass
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.position_tracker import PositionTracker, Position
 from src.data_fetcher import DataFetcher

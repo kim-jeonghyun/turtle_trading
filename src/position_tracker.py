@@ -16,6 +16,7 @@ from enum import Enum
 import logging
 
 from .utils import atomic_write_json, backup_file, validate_position_schema, safe_load_json
+from src.types import SignalType
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,6 @@ class PositionStatus(Enum):
     OPEN = "open"
     CLOSED = "closed"
     PARTIAL = "partial"  # 부분 청산
-
-
-class SignalType(Enum):
-    ENTRY_LONG = "entry_long"
-    ENTRY_SHORT = "entry_short"
-    EXIT_LONG = "exit_long"
-    EXIT_SHORT = "exit_short"
-    PYRAMID = "pyramid"
-    STOP_LOSS = "stop_loss"
 
 
 @dataclass
@@ -278,8 +270,18 @@ class PositionTracker:
                 pos.exit_date = datetime.now().strftime('%Y-%m-%d')
                 pos.exit_price = exit_price
                 pos.exit_reason = exit_reason
-                pos.pnl = pos.calculate_pnl(exit_price)
-                pos.pnl_pct = (pos.pnl / (pos.entry_price * pos.total_shares)) * 100
+                # 가중평균 단가 기반 P&L 계산 (피라미딩 시 정확)
+                entries = self.get_entries(pos.position_id)
+                if entries:
+                    avg_cost = sum(e.entry_price * e.shares for e in entries) / pos.total_shares
+                    if pos.direction == "LONG":
+                        pos.pnl = (exit_price - avg_cost) * pos.total_shares
+                    else:
+                        pos.pnl = (avg_cost - exit_price) * pos.total_shares
+                else:
+                    avg_cost = pos.entry_price
+                    pos.pnl = pos.calculate_pnl(exit_price)
+                pos.pnl_pct = (pos.pnl / (avg_cost * pos.total_shares)) * 100
                 pos.r_multiple = pos.calculate_r_multiple(exit_price)
                 pos.status = PositionStatus.CLOSED.value
                 pos.last_update = datetime.now().isoformat()
@@ -324,15 +326,27 @@ class PositionTracker:
         entries = self._load_entries()
         return [e for e in entries if e.position_id == position_id]
 
-    def check_stop_loss(self, current_price: float) -> List[Position]:
-        """스톱로스 체크"""
+    def check_stop_loss(self, prices: Dict[str, float]) -> List[Position]:
+        """심볼별 현재가로 스톱로스 발동된 포지션 반환.
+
+        Args:
+            prices: {symbol: current_price} 딕셔너리
+
+        Returns:
+            스톱로스 발동된 포지션 리스트
+            LONG: prices[symbol] <= stop_loss
+            SHORT: prices[symbol] >= stop_loss
+        """
         positions = self.get_open_positions()
         to_close = []
 
         for pos in positions:
-            if pos.direction == "LONG" and current_price <= pos.stop_loss:
+            price = prices.get(pos.symbol)
+            if price is None:
+                continue
+            if pos.direction == "LONG" and price <= pos.stop_loss:
                 to_close.append(pos)
-            elif pos.direction == "SHORT" and current_price >= pos.stop_loss:
+            elif pos.direction == "SHORT" and price >= pos.stop_loss:
                 to_close.append(pos)
 
         return to_close

@@ -98,8 +98,10 @@ class InverseETFFilter:
         if not config:
             return False, None, ""
 
-        if holding.holding_days >= config.max_holding_days:
-            return True, ExitReason.MAX_HOLDING_DAYS, f"최대 보유일 초과: {holding.holding_days}일"
+        # 보유일은 entry_date 기반으로 계산 (on_daily_update 호출 횟수와 무관하게 정확)
+        actual_holding_days = max(holding.holding_days, (datetime.now() - holding.entry_date).days)
+        if actual_holding_days >= config.max_holding_days:
+            return True, ExitReason.MAX_HOLDING_DAYS, f"최대 보유일 초과: {actual_holding_days}일"
 
         decay = self._calculate_decay(config.leverage, holding.entry_inverse_price, curr_inv,
                                        holding.entry_underlying_price, curr_und)

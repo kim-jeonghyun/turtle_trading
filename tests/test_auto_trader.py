@@ -16,7 +16,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from src.auto_trader import AutoTrader, OrderRecord, OrderStatus
+from src.auto_trader import AutoTrader, OrderRecord
+from src.types import OrderStatus
 from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 
 
@@ -109,7 +110,7 @@ class TestAutoTrader:
         mock_kis_client.place_order.assert_not_called()
 
         # 상태는 DRY_RUN이어야 함
-        assert record.status == OrderStatus.DRY_RUN
+        assert record.status == OrderStatus.DRY_RUN.value
         assert record.dry_run is True
 
     def test_order_amount_limit(self, dry_run_trader):
@@ -127,7 +128,7 @@ class TestAutoTrader:
             )
         )
 
-        assert record.status == OrderStatus.FAILED
+        assert record.status == OrderStatus.FAILED.value
         assert record.error_message is not None
         assert "초과" in record.error_message
 
@@ -145,7 +146,7 @@ class TestAutoTrader:
             )
         )
 
-        assert record.status == OrderStatus.DRY_RUN
+        assert record.status == OrderStatus.DRY_RUN.value
         assert record.error_message is None
 
     def test_order_record_creation(self, dry_run_trader):
@@ -257,7 +258,7 @@ class TestAutoTrader:
         assert call_kwargs[1]["symbol"] == "005930" or call_kwargs[0][0] == "005930"
 
         # 상태는 FILLED이어야 함 (mock이 success=True 반환)
-        assert record.status == OrderStatus.FILLED
+        assert record.status == OrderStatus.FILLED.value
         assert record.dry_run is False
 
     def test_live_order_handles_failure(self, live_trader, mock_kis_client):
@@ -278,7 +279,7 @@ class TestAutoTrader:
             )
         )
 
-        assert record.status == OrderStatus.FAILED
+        assert record.status == OrderStatus.FAILED.value
         assert "잔고 부족" in (record.error_message or "")
 
     def test_live_order_handles_exception(self, live_trader, mock_kis_client):
@@ -294,7 +295,7 @@ class TestAutoTrader:
             )
         )
 
-        assert record.status == OrderStatus.FAILED
+        assert record.status == OrderStatus.FAILED.value
         assert "네트워크 오류" in (record.error_message or "")
 
     def test_daily_stats(self, dry_run_trader):

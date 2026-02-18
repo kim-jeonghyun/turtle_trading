@@ -116,7 +116,7 @@ src/
 ├── position_sizer.py    # 포지션 사이징 (순수 함수)
 ├── risk_manager.py      # 포트폴리오 제한 검증
 ├── pyramid_manager.py   # 피라미딩 로직
-├── inverse_filter.py    # Inverse ETF 필터 (VIX 상승 시 System 1 비활성화)
+├── inverse_filter.py    # Inverse ETF 괴리율(decay) 감지 — 레버리지/인버스 ETF 보유일 초과 또는 기초자산 대비 괴리율 초과 시 강제 청산
 ├── universe_manager.py  # 거래 유니버스 관리
 ├── data_fetcher.py      # 멀티마켓 데이터 수집 (캐싱)
 ├── data_store.py        # Parquet 저장
@@ -225,7 +225,7 @@ A: 네, 동일 종목에 대해 양쪽 시스템을 독립적으로 운영합니
 A: 진입가 대비 0.5N 상승 시마다 추가 진입합니다 (최대 4 Units).
 
 **Q: Inverse ETF 필터란?**
-A: VIX가 급등하면 System 1을 비활성화하여 위험 회피합니다.
+A: Inverse ETF(SH, PSQ, SDS, SQQQ, SPXU)의 보유일 초과 또는 기초자산 대비 괴리율(decay) 초과 시 강제 청산합니다. (VIX 기반 System 1 비활성화는 별도 미구현 기능)
 
 ## 라이선스 및 면책
 

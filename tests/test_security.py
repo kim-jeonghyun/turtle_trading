@@ -8,14 +8,11 @@ src/security.py 단위 테스트
 - 자격증명 마스킹
 """
 
-import sys
 import os
 import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.security import (
     enforce_dry_run,

@@ -6,7 +6,6 @@
 - 한도에 근접하면 (>80%) 경고
 """
 
-import sys
 import os
 import argparse
 import logging
@@ -37,10 +36,9 @@ try:
 except ImportError:
     def load_dotenv(): pass
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from src.position_tracker import PositionTracker, Position
-from src.risk_manager import PortfolioRiskManager, AssetGroup, Direction, RiskLimits
+from src.risk_manager import PortfolioRiskManager, RiskLimits
+from src.types import AssetGroup, Direction
 from src.data_fetcher import DataFetcher
 
 logging.basicConfig(
