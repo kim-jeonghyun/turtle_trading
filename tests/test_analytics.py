@@ -439,14 +439,12 @@ class TestRatios:
         assert calculate_sharpe_ratio([0.01]) == 0.0  # 단일 원소는 표준편차 계산 불가
 
     def test_sharpe_ratio_constant_returns(self):
-        """모든 수익률이 동일한 경우 샤프 지수는 매우 크거나 유한한 양수"""
-        # 부동소수점 연산으로 표준편차가 정확히 0이 되지 않을 수 있으므로
-        # 큰 양수가 반환되는 것이 올바른 동작
+        """모든 수익률이 동일한 경우 std=0 → 0.0 반환 (division by zero 방어)"""
         flat_returns = [0.001] * 100
         sharpe = calculate_sharpe_ratio(flat_returns)
-        # 수익률이 무위험 수익률보다 높고 변동성이 극소이면 샤프 지수는 양수
+        # std_return == 0이면 함수가 0.0을 반환 (infinity 방지)
         assert isinstance(sharpe, float)
-        assert sharpe > 0
+        assert sharpe == 0.0
 
     def test_sortino_ratio(self):
         """소르티노 지수 - 하방 변동성만 사용"""
