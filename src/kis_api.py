@@ -6,14 +6,13 @@
 """
 
 import asyncio
-import aiohttp
-import hashlib
-import json
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
-from enum import Enum
 import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Dict, Optional
+
+import aiohttp
 
 from src.utils import retry_async
 
@@ -24,28 +23,34 @@ logger = logging.getLogger(__name__)
 # Custom Exceptions
 # ---------------------------------------------------------------------------
 
+
 class KISAPIError(Exception):
     """Base KIS API error"""
+
     pass
 
 
 class RetryableError(KISAPIError):
     """Network timeout, 5xx -- should retry"""
+
     pass
 
 
 class FatalError(KISAPIError):
     """400, 403 -- should NOT retry"""
+
     pass
 
 
 class TokenExpiredError(KISAPIError):
     """401 -- token expired, should refresh and retry once"""
+
     pass
 
 
 class RateLimitError(KISAPIError):
     """429 -- wait and retry"""
+
     pass
 
 
@@ -116,9 +121,7 @@ class KISAPIClient:
     # --- Context manager for session reuse ---
 
     async def __aenter__(self):
-        self._session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        )
+        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
         return self
 
     async def __aexit__(self, *args):
@@ -132,7 +135,11 @@ class KISAPIClient:
             return self._session
         return None
 
-    @retry_async(max_retries=3, base_delay=1.0, exceptions=(RetryableError, RateLimitError, ConnectionError, TimeoutError, aiohttp.ClientError))
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(RetryableError, RateLimitError, ConnectionError, TimeoutError, aiohttp.ClientError),
+    )
     async def _get_token(self) -> str:
         async with self._token_lock:
             if self.token and datetime.now() < self.token.expires_at:
@@ -142,7 +149,7 @@ class KISAPIClient:
             payload = {
                 "grant_type": "client_credentials",
                 "appkey": self.config.app_key,
-                "appsecret": self.config.app_secret
+                "appsecret": self.config.app_secret,
             }
 
             managed = self._get_session()
@@ -158,13 +165,14 @@ class KISAPIClient:
                         _classify_response(resp.status, data)
                         if "access_token" in data:
                             self.token = KISToken(
-                                access_token=data["access_token"],
-                                expires_at=datetime.now() + timedelta(hours=23)
+                                access_token=data["access_token"], expires_at=datetime.now() + timedelta(hours=23)
                             )
                             logger.info("KIS 토큰 발급 성공")
                             return self.token.access_token
                         else:
-                            raise FatalError(f"토큰 발급 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
+                            raise FatalError(
+                                f"토큰 발급 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                            )
             finally:
                 if session_to_close:
                     await session_to_close.close()
@@ -190,10 +198,21 @@ class KISAPIClient:
             "appkey": self.config.app_key,
             "appsecret": self.config.app_secret,
             "tr_id": tr_id,
-            "custtype": "P"
+            "custtype": "P",
         }
 
-    @retry_async(max_retries=3, base_delay=1.0, exceptions=(RetryableError, RateLimitError, TokenExpiredError, ConnectionError, TimeoutError, aiohttp.ClientError))
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(
+            RetryableError,
+            RateLimitError,
+            TokenExpiredError,
+            ConnectionError,
+            TimeoutError,
+            aiohttp.ClientError,
+        ),
+    )
     async def get_korea_price(self, symbol: str) -> Dict[str, Any]:
         """국내 주식 현재가 조회"""
         token = await self._get_token()
@@ -201,10 +220,7 @@ class KISAPIClient:
 
         url = f"{self.config.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
         headers = self._get_headers(token, tr_id)
-        params = {
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": symbol
-        }
+        params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": symbol}
 
         managed = self._get_session()
         session_to_close = None
@@ -230,16 +246,29 @@ class KISAPIClient:
                             "volume": int(output.get("acml_vol", 0)),
                             "high": float(output.get("stck_hgpr", 0)),
                             "low": float(output.get("stck_lwpr", 0)),
-                            "open": float(output.get("stck_oprc", 0))
+                            "open": float(output.get("stck_oprc", 0)),
                         }
                     else:
-                        logger.error(f"가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
+                        logger.error(
+                            f"가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                        )
                         return {}
         finally:
             if session_to_close:
                 await session_to_close.close()
 
-    @retry_async(max_retries=3, base_delay=1.0, exceptions=(RetryableError, RateLimitError, TokenExpiredError, ConnectionError, TimeoutError, aiohttp.ClientError))
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(
+            RetryableError,
+            RateLimitError,
+            TokenExpiredError,
+            ConnectionError,
+            TimeoutError,
+            aiohttp.ClientError,
+        ),
+    )
     async def get_overseas_price(self, symbol: str, market: KISMarket = KISMarket.USA) -> Dict[str, Any]:
         """해외 주식 현재가 조회"""
         token = await self._get_token()
@@ -248,17 +277,9 @@ class KISAPIClient:
         url = f"{self.config.base_url}/uapi/overseas-price/v1/quotations/price"
         headers = self._get_headers(token, tr_id)
 
-        excd_map = {
-            KISMarket.USA: "NAS",
-            KISMarket.JAPAN: "TSE",
-            KISMarket.HONGKONG: "HKS"
-        }
+        excd_map = {KISMarket.USA: "NAS", KISMarket.JAPAN: "TSE", KISMarket.HONGKONG: "HKS"}
 
-        params = {
-            "AUTH": "",
-            "EXCD": excd_map.get(market, "NAS"),
-            "SYMB": symbol
-        }
+        params = {"AUTH": "", "EXCD": excd_map.get(market, "NAS"), "SYMB": symbol}
 
         managed = self._get_session()
         session_to_close = None
@@ -284,16 +305,29 @@ class KISAPIClient:
                             "volume": int(output.get("tvol", 0)),
                             "high": float(output.get("high", 0)),
                             "low": float(output.get("low", 0)),
-                            "open": float(output.get("open", 0))
+                            "open": float(output.get("open", 0)),
                         }
                     else:
-                        logger.error(f"해외 가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
+                        logger.error(
+                            f"해외 가격 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                        )
                         return {}
         finally:
             if session_to_close:
                 await session_to_close.close()
 
-    @retry_async(max_retries=3, base_delay=1.0, exceptions=(RetryableError, RateLimitError, TokenExpiredError, ConnectionError, TimeoutError, aiohttp.ClientError))
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(
+            RetryableError,
+            RateLimitError,
+            TokenExpiredError,
+            ConnectionError,
+            TimeoutError,
+            aiohttp.ClientError,
+        ),
+    )
     async def get_balance(self) -> Dict[str, Any]:
         """계좌 잔고 조회"""
         token = await self._get_token()
@@ -312,7 +346,7 @@ class KISAPIClient:
             "FNCG_AMT_AUTO_RDPT_YN": "N",
             "PRCS_DVSN": "00",
             "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": ""
+            "CTX_AREA_NK100": "",
         }
 
         managed = self._get_session()
@@ -336,23 +370,27 @@ class KISAPIClient:
                         positions = []
                         for item in output1:
                             if int(item.get("hldg_qty", 0)) > 0:
-                                positions.append({
-                                    "symbol": item.get("pdno"),
-                                    "name": item.get("prdt_name"),
-                                    "quantity": int(item.get("hldg_qty", 0)),
-                                    "avg_price": float(item.get("pchs_avg_pric", 0)),
-                                    "current_price": float(item.get("prpr", 0)),
-                                    "pnl": float(item.get("evlu_pfls_amt", 0)),
-                                    "pnl_pct": float(item.get("evlu_pfls_rt", 0))
-                                })
+                                positions.append(
+                                    {
+                                        "symbol": item.get("pdno"),
+                                        "name": item.get("prdt_name"),
+                                        "quantity": int(item.get("hldg_qty", 0)),
+                                        "avg_price": float(item.get("pchs_avg_pric", 0)),
+                                        "current_price": float(item.get("prpr", 0)),
+                                        "pnl": float(item.get("evlu_pfls_amt", 0)),
+                                        "pnl_pct": float(item.get("evlu_pfls_rt", 0)),
+                                    }
+                                )
 
                         return {
                             "total_equity": float(output2.get("tot_evlu_amt", 0)),
                             "cash": float(output2.get("dnca_tot_amt", 0)),
-                            "positions": positions
+                            "positions": positions,
                         }
                     else:
-                        logger.error(f"잔고 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
+                        logger.error(
+                            f"잔고 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                        )
                         return {}
         finally:
             if session_to_close:
@@ -361,12 +399,7 @@ class KISAPIClient:
     # 주문 메서드는 멱등성 미보장이므로 @retry_async 적용하지 않음
     # 5xx 후 재시도 시 중복 주문 위험
     async def place_order(
-        self,
-        symbol: str,
-        side: OrderSide,
-        quantity: int,
-        price: float = 0,
-        order_type: OrderType = OrderType.MARKET
+        self, symbol: str, side: OrderSide, quantity: int, price: float = 0, order_type: OrderType = OrderType.MARKET
     ) -> Dict[str, Any]:
         """국내 주식 주문"""
         token = await self._get_token()
@@ -385,7 +418,7 @@ class KISAPIClient:
             "PDNO": symbol,
             "ORD_DVSN": order_type.value,
             "ORD_QTY": str(quantity),
-            "ORD_UNPR": str(int(price)) if order_type == OrderType.LIMIT else "0"
+            "ORD_UNPR": str(int(price)) if order_type == OrderType.LIMIT else "0",
         }
 
         managed = self._get_session()
@@ -405,29 +438,17 @@ class KISAPIClient:
                     if data.get("rt_cd") == "0":
                         output = data.get("output", {})
                         logger.info(f"주문 성공: {symbol} {side.value} {quantity}")
-                        return {
-                            "success": True,
-                            "order_no": output.get("ODNO"),
-                            "order_time": output.get("ORD_TMD")
-                        }
+                        return {"success": True, "order_no": output.get("ODNO"), "order_time": output.get("ORD_TMD")}
                     else:
                         logger.error(f"주문 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
-                        return {
-                            "success": False,
-                            "message": data.get("msg1", "Unknown error")
-                        }
+                        return {"success": False, "message": data.get("msg1", "Unknown error")}
         finally:
             if session_to_close:
                 await session_to_close.close()
 
     # 주문 메서드는 멱등성 미보장이므로 @retry_async 적용하지 않음
     async def place_overseas_order(
-        self,
-        symbol: str,
-        side: OrderSide,
-        quantity: int,
-        price: float,
-        market: KISMarket = KISMarket.USA
+        self, symbol: str, side: OrderSide, quantity: int, price: float, market: KISMarket = KISMarket.USA
     ) -> Dict[str, Any]:
         """해외 주식 주문"""
         token = await self._get_token()
@@ -440,11 +461,7 @@ class KISAPIClient:
         url = f"{self.config.base_url}/uapi/overseas-stock/v1/trading/order"
         headers = self._get_headers(token, tr_id)
 
-        excd_map = {
-            KISMarket.USA: "NASD",
-            KISMarket.JAPAN: "TKSE",
-            KISMarket.HONGKONG: "SEHK"
-        }
+        excd_map = {KISMarket.USA: "NASD", KISMarket.JAPAN: "TKSE", KISMarket.HONGKONG: "SEHK"}
 
         payload = {
             "CANO": self.config.account_no,
@@ -454,7 +471,7 @@ class KISAPIClient:
             "ORD_QTY": str(quantity),
             "OVRS_ORD_UNPR": str(price),
             "ORD_SVR_DVSN_CD": "0",
-            "ORD_DVSN": "00"
+            "ORD_DVSN": "00",
         }
 
         managed = self._get_session()
@@ -474,22 +491,28 @@ class KISAPIClient:
                     if data.get("rt_cd") == "0":
                         output = data.get("output", {})
                         logger.info(f"해외 주문 성공: {symbol} {side.value} {quantity}")
-                        return {
-                            "success": True,
-                            "order_no": output.get("ODNO"),
-                            "order_time": output.get("ORD_TMD")
-                        }
+                        return {"success": True, "order_no": output.get("ODNO"), "order_time": output.get("ORD_TMD")}
                     else:
-                        logger.error(f"해외 주문 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
-                        return {
-                            "success": False,
-                            "message": data.get("msg1", "Unknown error")
-                        }
+                        logger.error(
+                            f"해외 주문 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                        )
+                        return {"success": False, "message": data.get("msg1", "Unknown error")}
         finally:
             if session_to_close:
                 await session_to_close.close()
 
-    @retry_async(max_retries=3, base_delay=1.0, exceptions=(RetryableError, RateLimitError, TokenExpiredError, ConnectionError, TimeoutError, aiohttp.ClientError))
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(
+            RetryableError,
+            RateLimitError,
+            TokenExpiredError,
+            ConnectionError,
+            TimeoutError,
+            aiohttp.ClientError,
+        ),
+    )
     async def get_order_status(self, order_no: str) -> dict:
         """KIS 주문체결조회 API
 
@@ -520,7 +543,7 @@ class KISAPIClient:
             "INQR_DVSN_3": "00",
             "INQR_DVSN_1": "",
             "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": ""
+            "CTX_AREA_NK100": "",
         }
 
         managed = self._get_session()
@@ -540,10 +563,7 @@ class KISAPIClient:
                     if data.get("rt_cd") == "0":
                         output_list = data.get("output1", [])
                         # 해당 주문번호에 대한 체결 내역 필터
-                        matched = [
-                            o for o in output_list
-                            if o.get("odno") == order_no
-                        ]
+                        matched = [o for o in output_list if o.get("odno") == order_no]
                         if matched:
                             item = matched[0]
                             return {
@@ -556,18 +576,12 @@ class KISAPIClient:
                                 "filled_price": float(item.get("avg_prvs", 0)),
                                 "order_time": item.get("ord_tmd", ""),
                             }
-                        return {
-                            "order_no": order_no,
-                            "status": "not_found",
-                            "message": "주문 내역을 찾을 수 없음"
-                        }
+                        return {"order_no": order_no, "status": "not_found", "message": "주문 내역을 찾을 수 없음"}
                     else:
-                        logger.error(f"주문 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}")
-                        return {
-                            "order_no": order_no,
-                            "status": "error",
-                            "message": data.get("msg1", "Unknown error")
-                        }
+                        logger.error(
+                            f"주문 조회 실패: rt_cd={data.get('rt_cd', 'UNKNOWN')}, msg={data.get('msg1', '')}"
+                        )
+                        return {"order_no": order_no, "status": "error", "message": data.get("msg1", "Unknown error")}
         finally:
             if session_to_close:
                 await session_to_close.close()

@@ -1,8 +1,8 @@
 [project]
 name = "turtle-trading"
-version = "2.0.0"
+version = "3.2.0"
 description = "터틀 트레이딩 전략 기반 반자동 투자 시스템"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
@@ -23,6 +23,8 @@ dev = [
     "pytest>=9.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.23.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
 ]
 
 [build-system]
@@ -34,16 +36,21 @@ include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

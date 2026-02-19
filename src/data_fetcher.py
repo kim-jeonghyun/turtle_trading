@@ -5,12 +5,13 @@
 - ccxt: 암호화폐
 """
 
+import logging
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Dict, List, Optional
+
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-from enum import Enum
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +53,15 @@ class DataFetcher:
         if self._ccxt_exchange is None:
             try:
                 import ccxt
-                self._ccxt_exchange = ccxt.binance({
-                    'enableRateLimit': True
-                })
+
+                self._ccxt_exchange = ccxt.binance({"enableRateLimit": True})
             except ImportError:
                 logger.warning("ccxt not installed")
                 return None
         return self._ccxt_exchange
 
     def fetch_yfinance(
-        self,
-        symbol: str,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        period: Optional[str] = None
+        self, symbol: str, start: Optional[str] = None, end: Optional[str] = None, period: Optional[str] = None
     ) -> pd.DataFrame:
         """yfinance로 데이터 수집"""
         try:
@@ -92,12 +88,7 @@ class DataFetcher:
             logger.error(f"yfinance 오류 ({symbol}): {e}")
             return pd.DataFrame()
 
-    def fetch_fdr(
-        self,
-        symbol: str,
-        start: Optional[str] = None,
-        end: Optional[str] = None
-    ) -> pd.DataFrame:
+    def fetch_fdr(self, symbol: str, start: Optional[str] = None, end: Optional[str] = None) -> pd.DataFrame:
         """FinanceDataReader로 한국 주식 데이터 수집"""
         try:
             import FinanceDataReader as fdr
@@ -128,12 +119,7 @@ class DataFetcher:
             logger.error(f"FDR 오류 ({symbol}): {e}")
             return pd.DataFrame()
 
-    def fetch_crypto(
-        self,
-        symbol: str,
-        timeframe: str = "1d",
-        limit: int = 500
-    ) -> pd.DataFrame:
+    def fetch_crypto(self, symbol: str, timeframe: str = "1d", limit: int = 500) -> pd.DataFrame:
         """CCXT로 암호화폐 데이터 수집"""
         exchange = self._get_ccxt_exchange()
         if exchange is None:
@@ -145,10 +131,7 @@ class DataFetcher:
         try:
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
 
-            df = pd.DataFrame(
-                ohlcv,
-                columns=["timestamp", "open", "high", "low", "close", "volume"]
-            )
+            df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
             df["date"] = pd.to_datetime(df["timestamp"], unit="ms")
             df = df.drop("timestamp", axis=1)
 
@@ -164,7 +147,7 @@ class DataFetcher:
         start: Optional[str] = None,
         end: Optional[str] = None,
         period: Optional[str] = None,
-        source: Optional[DataSource] = None
+        source: Optional[DataSource] = None,
     ) -> pd.DataFrame:
         """통합 데이터 수집 인터페이스"""
         market_type = get_market_type(symbol)
@@ -190,11 +173,7 @@ class DataFetcher:
         return df
 
     def fetch_multiple(
-        self,
-        symbols: List[str],
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        period: Optional[str] = None
+        self, symbols: List[str], start: Optional[str] = None, end: Optional[str] = None, period: Optional[str] = None
     ) -> Dict[str, pd.DataFrame]:
         """여러 종목 데이터 수집"""
         results = {}

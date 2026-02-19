@@ -6,8 +6,8 @@
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 from src.types import Direction
 
@@ -72,7 +72,7 @@ class PyramidPosition:
             if current_price <= pyramid_price:
                 return True, f"피라미딩 가격 도달: {current_price:.2f} <= {pyramid_price:.2f}"
 
-        return False, f"피라미딩 대기 중"
+        return False, "피라미딩 대기 중"
 
     def add_entry(self, date: datetime, price: float, units: int, n_value: float):
         stop_distance = n_value * self.stop_distance_n
@@ -87,7 +87,7 @@ class PyramidPosition:
             entry_price=price,
             units=units,
             n_at_entry=n_value,
-            stop_price=stop_price
+            stop_price=stop_price,
         )
         self.entries.append(entry)
         self._update_trailing_stops()
@@ -118,19 +118,10 @@ class PyramidManager:
         self.positions: Dict[str, PyramidPosition] = {}
 
     def create_position(
-        self,
-        symbol: str,
-        direction: Direction,
-        date: datetime,
-        price: float,
-        units: int,
-        n_value: float
+        self, symbol: str, direction: Direction, date: datetime, price: float, units: int, n_value: float
     ) -> PyramidPosition:
         position = PyramidPosition(
-            symbol=symbol,
-            direction=direction,
-            max_units=self.max_units,
-            pyramid_interval_n=self.pyramid_interval_n
+            symbol=symbol, direction=direction, max_units=self.max_units, pyramid_interval_n=self.pyramid_interval_n
         )
         position.add_entry(date, price, units, n_value)
         self.positions[symbol] = position

@@ -7,36 +7,28 @@
 - 스톱로스 체크
 """
 
-import os
 import asyncio
 import fcntl
 import logging
-import yaml
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
-from src.position_tracker import PositionTracker
-from src.types import SignalType
-from src.notifier import (
-    NotificationManager,
-    TelegramChannel,
-    NotificationMessage,
-    NotificationLevel
-)
-from src.risk_manager import PortfolioRiskManager, RiskLimits
-from src.types import AssetGroup, Direction
-from src.market_calendar import should_check_signals, get_market_status, infer_market
-from src.universe_manager import UniverseManager
 from src.inverse_filter import InverseETFFilter
+from src.market_calendar import get_market_status, infer_market, should_check_signals
+from src.notifier import NotificationManager, TelegramChannel
+from src.position_tracker import PositionTracker
+from src.risk_manager import PortfolioRiskManager
+from src.types import AssetGroup, Direction, SignalType
+from src.universe_manager import UniverseManager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 LOCK_FILE = Path(__file__).parent.parent / "data" / ".check_positions.lock"
@@ -45,7 +37,7 @@ LOCK_FILE = Path(__file__).parent.parent / "data" / ".check_positions.lock"
 def acquire_lock():
     """중복 실행 방지를 위한 파일 잠금"""
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd = open(LOCK_FILE, 'w')
+    fd = open(LOCK_FILE, "w")
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fd.write(str(os.getpid()))
@@ -70,6 +62,7 @@ def release_lock(fd):
 def load_config():
     """환경 변수에서 설정 로드"""
     from dotenv import load_dotenv
+
     load_dotenv()
 
     return {
@@ -83,10 +76,7 @@ def setup_notifier(config: dict) -> NotificationManager:
     notifier = NotificationManager()
 
     if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(
-            config["telegram_token"],
-            config["telegram_chat_id"]
-        ))
+        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
         logger.info("Telegram 채널 활성화")
 
     return notifier
@@ -102,25 +92,25 @@ def setup_risk_manager() -> PortfolioRiskManager:
         return PortfolioRiskManager(symbol_groups=symbol_groups)
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        if not config or 'groups' not in config:
+        if not config or "groups" not in config:
             logger.warning("상관그룹 설정이 비어있습니다.")
             return PortfolioRiskManager(symbol_groups=symbol_groups)
 
         group_mapping = {
-            'kr_equity': AssetGroup.KR_EQUITY,
-            'us_equity': AssetGroup.US_EQUITY,
-            'us_etf': AssetGroup.US_EQUITY,
-            'us_tech': AssetGroup.US_EQUITY,
-            'crypto': AssetGroup.CRYPTO,
-            'commodity': AssetGroup.COMMODITY,
-            'bond': AssetGroup.BOND,
-            'inverse': AssetGroup.INVERSE,
+            "kr_equity": AssetGroup.KR_EQUITY,
+            "us_equity": AssetGroup.US_EQUITY,
+            "us_etf": AssetGroup.US_EQUITY,
+            "us_tech": AssetGroup.US_EQUITY,
+            "crypto": AssetGroup.CRYPTO,
+            "commodity": AssetGroup.COMMODITY,
+            "bond": AssetGroup.BOND,
+            "inverse": AssetGroup.INVERSE,
         }
 
-        for group_name, symbols in config.get('groups', {}).items():
+        for group_name, symbols in config.get("groups", {}).items():
             asset_group = group_mapping.get(group_name, AssetGroup.US_EQUITY)
             for symbol in symbols:
                 symbol_groups[symbol] = asset_group
@@ -135,10 +125,10 @@ def setup_risk_manager() -> PortfolioRiskManager:
 
 def is_korean_market(symbol: str) -> bool:
     """한국 시장 종목 여부 (공매도 제한)"""
-    return symbol.endswith('.KS') or symbol.endswith('.KQ')
+    return symbol.endswith(".KS") or symbol.endswith(".KQ")
 
 
-def check_entry_signals(df, symbol: str, system: int = 1, tracker: 'PositionTracker' = None) -> list:
+def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker" = None) -> list:
     """진입 시그널 확인"""
     signals = []
     if len(df) < 2:
@@ -170,18 +160,20 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: 'PositionTrac
     if today["high"] > yesterday[high_col]:
         # System 1 필터: 직전 System 1 거래가 수익이면 스킵
         if not _was_last_trade_profitable(symbol, system):
-            signals.append({
-                "symbol": symbol,
-                "type": SignalType.ENTRY_LONG.value,
-                "system": system,
-                "direction": "LONG",
-                "price": yesterday[high_col],
-                "current": today["close"],
-                "n": today["N"],
-                "stop_loss": yesterday[high_col] - (2 * today["N"]),
-                "date": today["date"].strftime('%Y-%m-%d'),
-                "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파"
-            })
+            signals.append(
+                {
+                    "symbol": symbol,
+                    "type": SignalType.ENTRY_LONG.value,
+                    "system": system,
+                    "direction": "LONG",
+                    "price": yesterday[high_col],
+                    "current": today["close"],
+                    "n": today["N"],
+                    "stop_loss": yesterday[high_col] - (2 * today["N"]),
+                    "date": today["date"].strftime("%Y-%m-%d"),
+                    "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파",
+                }
+            )
         else:
             logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 롱 진입 스킵")
 
@@ -194,18 +186,20 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: 'PositionTrac
 
         if today["low"] < yesterday[short_low_col]:
             if not _was_last_trade_profitable(symbol, system):
-                signals.append({
-                    "symbol": symbol,
-                    "type": SignalType.ENTRY_SHORT.value,
-                    "system": system,
-                    "direction": "SHORT",
-                    "price": yesterday[short_low_col],
-                    "current": today["close"],
-                    "n": today["N"],
-                    "stop_loss": yesterday[short_low_col] + (2 * today["N"]),  # 숏 스톱은 위로
-                    "date": today["date"].strftime('%Y-%m-%d'),
-                    "message": f"System {system} 숏 진입: {yesterday[short_low_col]:.2f} 이탈"
-                })
+                signals.append(
+                    {
+                        "symbol": symbol,
+                        "type": SignalType.ENTRY_SHORT.value,
+                        "system": system,
+                        "direction": "SHORT",
+                        "price": yesterday[short_low_col],
+                        "current": today["close"],
+                        "n": today["N"],
+                        "stop_loss": yesterday[short_low_col] + (2 * today["N"]),  # 숏 스톱은 위로
+                        "date": today["date"].strftime("%Y-%m-%d"),
+                        "message": f"System {system} 숏 진입: {yesterday[short_low_col]:.2f} 이탈",
+                    }
+                )
             else:
                 logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 숏 진입 스킵")
 
@@ -236,8 +230,8 @@ def check_exit_signals(df, position, system: int = 1) -> Optional[dict]:
             "price": yesterday[low_col],
             "current": today["close"],
             "n": today["N"],
-            "date": today["date"].strftime('%Y-%m-%d'),
-            "message": f"System {system} 롱 청산: {yesterday[low_col]:.2f} 이탈"
+            "date": today["date"].strftime("%Y-%m-%d"),
+            "message": f"System {system} 롱 청산: {yesterday[low_col]:.2f} 이탈",
         }
 
     # 숏 포지션 청산 (고가 돌파)
@@ -256,8 +250,8 @@ def check_exit_signals(df, position, system: int = 1) -> Optional[dict]:
                 "price": yesterday[short_high_col],
                 "current": today["close"],
                 "n": today["N"],
-                "date": today["date"].strftime('%Y-%m-%d'),
-                "message": f"System {system} 숏 청산: {yesterday[short_high_col]:.2f} 돌파"
+                "date": today["date"].strftime("%Y-%m-%d"),
+                "message": f"System {system} 숏 청산: {yesterday[short_high_col]:.2f} 돌파",
             }
 
     return None
@@ -278,7 +272,7 @@ async def _run_checks():
     logger.info("=== 통합 포지션 & 시그널 체크 시작 ===")
 
     # Log market status
-    for market in ['KR', 'US']:
+    for market in ["KR", "US"]:
         logger.info(get_market_status(market))
 
     config = load_config()
@@ -320,9 +314,11 @@ async def _run_checks():
         if inverse_filter.is_inverse_etf(pos.symbol):
             inverse_filter.on_entry(
                 pos.symbol,
-                entry_date=datetime.strptime(pos.entry_date, '%Y-%m-%d') if isinstance(pos.entry_date, str) else pos.entry_date,
+                entry_date=datetime.strptime(pos.entry_date, "%Y-%m-%d")
+                if isinstance(pos.entry_date, str)
+                else pos.entry_date,
                 inverse_price=pos.entry_price,
-                underlying_price=pos.entry_price  # 진입 시점 기초자산 가격은 근사값 사용
+                underlying_price=pos.entry_price,  # 진입 시점 기초자산 가격은 근사값 사용
             )
             # 보유일은 inverse_filter가 entry_date 기반으로 자동 계산
 
@@ -344,9 +340,8 @@ async def _run_checks():
             # 스톱로스 체크 — 현재 포지션 단위로 직접 비교
             # LONG: today["low"]으로 체크 (장중 최악), SHORT: today["high"]으로 체크
             check_price = today["low"] if pos.direction == "LONG" else today["high"]
-            stop_triggered = (
-                (pos.direction == "LONG" and check_price <= pos.stop_loss) or
-                (pos.direction == "SHORT" and check_price >= pos.stop_loss)
+            stop_triggered = (pos.direction == "LONG" and check_price <= pos.stop_loss) or (
+                pos.direction == "SHORT" and check_price >= pos.stop_loss
             )
 
             if stop_triggered:
@@ -359,7 +354,7 @@ async def _run_checks():
                     action="🛑 STOP LOSS",
                     price=pos.stop_loss,
                     quantity=pos.total_shares,
-                    reason=f"스톱로스 발동 ({pos.direction}, 진입가: {pos.entry_price:,.0f})"
+                    reason=f"스톱로스 발동 ({pos.direction}, 진입가: {pos.entry_price:,.0f})",
                 )
                 continue
 
@@ -386,7 +381,7 @@ async def _run_checks():
                                 action="INVERSE ETF EXIT",
                                 price=today["close"],
                                 quantity=pos.total_shares,
-                                reason=msg
+                                reason=msg,
                             )
                             continue
 
@@ -394,19 +389,15 @@ async def _run_checks():
             exit_signal = check_exit_signals(df, pos, pos.system)
             if exit_signal:
                 logger.info(f"청산 시그널: {pos.symbol}")
-                tracker.close_position(
-                    pos.position_id,
-                    exit_signal['price'],
-                    exit_signal['message']
-                )
+                tracker.close_position(pos.position_id, exit_signal["price"], exit_signal["message"])
                 direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
                 risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action=f"EXIT System {pos.system}",
-                    price=exit_signal['price'],
+                    price=exit_signal["price"],
                     quantity=pos.total_shares,
-                    reason=exit_signal['message']
+                    reason=exit_signal["message"],
                 )
                 data_store.save_signal(exit_signal)
                 continue
@@ -420,7 +411,7 @@ async def _run_checks():
                     action=f"📈 PYRAMID System {pos.system}",
                     price=today["close"],
                     quantity=0,
-                    reason=f"0.5N {direction_text} (Level {pos.units} → {pos.units + 1})"
+                    reason=f"0.5N {direction_text} (Level {pos.units} → {pos.units + 1})",
                 )
 
         except Exception as e:
@@ -471,10 +462,7 @@ async def _run_checks():
             for signal in signals_s1 + signals_s2:
                 direction = Direction.LONG if signal["direction"] == "LONG" else Direction.SHORT
                 can_add, reason = risk_manager.can_add_position(
-                    symbol=signal["symbol"],
-                    units=1,
-                    n_value=signal["n"],
-                    direction=direction
+                    symbol=signal["symbol"], units=1, n_value=signal["n"], direction=direction
                 )
                 if can_add:
                     all_signals.append(signal)
@@ -492,10 +480,7 @@ async def _run_checks():
 
         for signal in all_signals:
             # 시그널 저장
-            data_store.save_signal({
-                **signal,
-                "timestamp": datetime.now().isoformat()
-            })
+            data_store.save_signal({**signal, "timestamp": datetime.now().isoformat()})
 
             # 알림 전송
             await notifier.send_signal(
@@ -503,7 +488,7 @@ async def _run_checks():
                 action=f"System {signal['system']} {signal['direction']}",
                 price=signal["price"],
                 quantity=0,
-                reason=signal["message"] + f" (N={signal['n']:.2f}, SL={signal['stop_loss']:.2f})"
+                reason=signal["message"] + f" (N={signal['n']:.2f}, SL={signal['stop_loss']:.2f})",
             )
 
     else:

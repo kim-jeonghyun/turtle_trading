@@ -7,33 +7,32 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from src.analytics import TradeAnalytics
 from src.data_store import ParquetDataStore
+from src.market_calendar import get_market_status
 from src.notifier import (
-    NotificationManager,
-    TelegramChannel,
     DiscordChannel,
     EmailChannel,
-    NotificationMessage,
-    NotificationLevel
+    NotificationManager,
+    TelegramChannel,
 )
 from src.position_tracker import PositionTracker
 from src.risk_manager import PortfolioRiskManager
-from src.analytics import TradeAnalytics
-from src.market_calendar import get_market_status
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def load_config():
     import os
+
     try:
         from dotenv import load_dotenv
     except ImportError:
-        def load_dotenv(): pass
+
+        def load_dotenv():
+            pass
+
     load_dotenv()
 
     return {
@@ -44,7 +43,7 @@ def load_config():
         "smtp_port": int(os.getenv("SMTP_PORT", "587")),
         "email_user": os.getenv("EMAIL_USER"),
         "email_pass": os.getenv("EMAIL_PASSWORD"),
-        "email_to": os.getenv("EMAIL_TO", "").split(",")
+        "email_to": os.getenv("EMAIL_TO", "").split(","),
     }
 
 
@@ -52,35 +51,32 @@ def setup_notifier(config: dict) -> NotificationManager:
     notifier = NotificationManager()
 
     if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(
-            config["telegram_token"],
-            config["telegram_chat_id"]
-        ))
+        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
 
     if config.get("discord_webhook"):
         notifier.add_channel(DiscordChannel(config["discord_webhook"]))
 
     if config.get("email_user") and config.get("email_to"):
-        notifier.add_channel(EmailChannel(
-            config["smtp_host"],
-            config["smtp_port"],
-            config["email_user"],
-            config["email_pass"],
-            config["email_user"],
-            config["email_to"]
-        ))
+        notifier.add_channel(
+            EmailChannel(
+                config["smtp_host"],
+                config["smtp_port"],
+                config["email_user"],
+                config["email_pass"],
+                config["email_user"],
+                config["email_to"],
+            )
+        )
 
     return notifier
 
 
 def generate_report(
-    data_store: ParquetDataStore,
-    tracker: PositionTracker = None,
-    risk_manager: PortfolioRiskManager = None
+    data_store: ParquetDataStore, tracker: PositionTracker = None, risk_manager: PortfolioRiskManager = None
 ) -> dict:
     """Enhanced 일일 리포트 데이터 생성"""
     today = datetime.now().strftime("%Y-%m-%d")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    _ = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     # 오늘 시그널
     today_signals = data_store.load_signals(today.replace("-", ""))
@@ -88,8 +84,7 @@ def generate_report(
 
     # 최근 30일 거래
     trades = data_store.load_trades(
-        start_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-        end_date=today
+        start_date=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"), end_date=today
     )
 
     if not trades.empty:
@@ -122,13 +117,15 @@ def generate_report(
         try:
             open_positions = tracker.get_open_positions()
             for pos in open_positions:
-                position_data.append({
-                    "symbol": pos.symbol,
-                    "system": pos.system,
-                    "entry_price": pos.entry_price,
-                    "units": pos.units,
-                    "direction": pos.direction,
-                })
+                position_data.append(
+                    {
+                        "symbol": pos.symbol,
+                        "system": pos.system,
+                        "entry_price": pos.entry_price,
+                        "units": pos.units,
+                        "direction": pos.direction,
+                    }
+                )
         except Exception as e:
             logger.warning(f"오픈 포지션 조회 실패: {e}")
 
@@ -166,7 +163,7 @@ def generate_report(
         "R배수 분포": r_distribution,
         "시스템 비교": system_comparison,
         "캐시 파일": cache_stats["cache_files"],
-        "데이터 크기": f"{cache_stats['total_size_mb']:.1f}MB"
+        "데이터 크기": f"{cache_stats['total_size_mb']:.1f}MB",
     }
 
 

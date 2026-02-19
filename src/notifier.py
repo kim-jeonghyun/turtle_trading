@@ -7,16 +7,17 @@
 """
 
 import asyncio
-import aiohttp
 import html as html_lib
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
-from enum import Enum
 import logging
+import smtplib
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import aiohttp
 
 from src.utils import retry_async
 
@@ -55,7 +56,7 @@ class TelegramChannel(NotificationChannel):
             NotificationLevel.INFO: "ℹ️",
             NotificationLevel.WARNING: "⚠️",
             NotificationLevel.SIGNAL: "🚨",
-            NotificationLevel.ERROR: "❌"
+            NotificationLevel.ERROR: "❌",
         }
         emoji = emoji_map.get(message.level, "📢")
         text = f"{emoji} *{message.title}*\n\n{message.body}"
@@ -71,11 +72,7 @@ class TelegramChannel(NotificationChannel):
         """재시도 로직을 포함한 실제 전송 (예외를 그대로 전파하여 retry가 동작)"""
         text = self._format_message(message)
         url = f"{self.base_url}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": "Markdown"
-        }
+        payload = {"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"}
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload) as resp:
                 if resp.status == 200:
@@ -98,21 +95,14 @@ class DiscordChannel(NotificationChannel):
 
     def _format_embed(self, message: NotificationMessage) -> Dict:
         color_map = {
-            NotificationLevel.INFO: 0x3498db,
-            NotificationLevel.WARNING: 0xf39c12,
-            NotificationLevel.SIGNAL: 0xe74c3c,
-            NotificationLevel.ERROR: 0x992d22
+            NotificationLevel.INFO: 0x3498DB,
+            NotificationLevel.WARNING: 0xF39C12,
+            NotificationLevel.SIGNAL: 0xE74C3C,
+            NotificationLevel.ERROR: 0x992D22,
         }
-        embed = {
-            "title": message.title,
-            "description": message.body,
-            "color": color_map.get(message.level, 0x95a5a6)
-        }
+        embed = {"title": message.title, "description": message.body, "color": color_map.get(message.level, 0x95A5A6)}
         if message.data:
-            embed["fields"] = [
-                {"name": k, "value": str(v), "inline": True}
-                for k, v in message.data.items()
-            ]
+            embed["fields"] = [{"name": k, "value": str(v), "inline": True} for k, v in message.data.items()]
         return embed
 
     @retry_async(max_retries=2, base_delay=1.0)
@@ -137,13 +127,7 @@ class DiscordChannel(NotificationChannel):
 
 class EmailChannel(NotificationChannel):
     def __init__(
-        self,
-        smtp_host: str,
-        smtp_port: int,
-        username: str,
-        password: str,
-        from_addr: str,
-        to_addrs: List[str]
+        self, smtp_host: str, smtp_port: int, username: str, password: str, from_addr: str, to_addrs: List[str]
     ):
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
@@ -233,10 +217,7 @@ class NotificationManager:
 
         # ERROR 레벨이고 모든 채널이 실패하면 CRITICAL 로그
         if message.level == NotificationLevel.ERROR and not any(results.values()):
-            logger.critical(
-                f"[ESCALATION] 모든 알림 채널 전송 실패: {message.title} - "
-                f"채널: {list(results.keys())}"
-            )
+            logger.critical(f"[ESCALATION] 모든 알림 채널 전송 실패: {message.title} - 채널: {list(results.keys())}")
 
         return results
 
@@ -279,36 +260,21 @@ class NotificationManager:
         # 기타 레벨은 send_all
         return await self.send_all(message)
 
-    async def send_message(self, message: 'NotificationMessage') -> Dict[str, bool]:
+    async def send_message(self, message: "NotificationMessage") -> Dict[str, bool]:
         """send_with_escalation alias for backward compatibility"""
         return await self.send_with_escalation(message)
 
-    async def send_signal(
-        self,
-        symbol: str,
-        action: str,
-        price: float,
-        quantity: int,
-        reason: str
-    ):
+    async def send_signal(self, symbol: str, action: str, price: float, quantity: int, reason: str):
         message = NotificationMessage(
             title=f"매매 시그널: {symbol}",
             body=f"{action} 신호 발생\n사유: {reason}",
             level=NotificationLevel.SIGNAL,
-            data={
-                "종목": symbol,
-                "액션": action,
-                "가격": f"{price:,.2f}",
-                "수량": quantity
-            }
+            data={"종목": symbol, "액션": action, "가격": f"{price:,.2f}", "수량": quantity},
         )
         return await self.send_all(message)
 
     async def send_daily_report(self, report_data: Dict):
         message = NotificationMessage(
-            title="일일 리포트",
-            body="오늘의 포트폴리오 현황입니다.",
-            level=NotificationLevel.INFO,
-            data=report_data
+            title="일일 리포트", body="오늘의 포트폴리오 현황입니다.", level=NotificationLevel.INFO, data=report_data
         )
         return await self.send_all(message)

@@ -1,5 +1,8 @@
+# DEPRECATED: Dockerfile은 pyproject.toml을 사용합니다.
+# 이 파일은 참조용으로만 유지됩니다. 의존성 추가/변경은 pyproject.toml에서 수행하세요.
+#
 # Turtle Trading System Requirements
-# Python 3.11+
+# Python 3.12+
 
 # Core
 pandas>=2.0.0
@@ -23,3 +26,6 @@ pyyaml>=6.0.0
 
 # Data Storage
 pyarrow>=12.0.0
+
+# Environment
+python-dotenv>=1.0.0

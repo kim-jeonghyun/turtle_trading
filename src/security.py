@@ -5,10 +5,10 @@
 - 자격증명 파일 권한 검사
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Tuple, List, Dict, Any
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,7 @@ def enforce_dry_run(is_live: bool, env_var: str = "TURTLE_ALLOW_LIVE") -> bool:
 
     if env_value != "true":
         logger.warning(
-            f"실거래 시도가 차단됨. 환경변수 {env_var}=true를 설정하세요. "
-            f"(현재값: {repr(os.environ.get(env_var))})"
+            f"실거래 시도가 차단됨. 환경변수 {env_var}=true를 설정하세요. (현재값: {repr(os.environ.get(env_var))})"
         )
         return False
 
@@ -75,8 +74,7 @@ def check_env_file_permissions(env_path: str = ".env") -> Tuple[bool, str]:
             return True, f".env 권한 안전: {oct(file_mode)}"
         else:
             return False, (
-                f".env 권한 위험: {oct(file_mode)} (안전한 권한: 0600, 0400). "
-                f"chmod 600 {env_path} 실행 필요"
+                f".env 권한 위험: {oct(file_mode)} (안전한 권한: 0600, 0400). chmod 600 {env_path} 실행 필요"
             )
     except Exception as e:
         return False, f".env 권한 검사 실패: {e}"

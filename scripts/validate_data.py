@@ -4,15 +4,15 @@ Turtle Trading Data Validation
 데이터 무결성 검증 및 자동 수정 스크립트
 """
 
-import sys
-from pathlib import Path
 import argparse
-import json
+import sys
 from datetime import datetime
-from typing import Tuple, List
+from pathlib import Path
+from typing import Tuple
+
 import pandas as pd
 
-from src.utils import validate_position_schema, safe_load_json, atomic_write_json
+from src.utils import atomic_write_json, safe_load_json, validate_position_schema
 
 
 class DataValidator:
@@ -79,7 +79,7 @@ class DataValidator:
             return False, "Entries: invalid format (not a list)"
 
         # 필수 필드 검증
-        required_fields = ['entry_id', 'position_id', 'entry_date', 'entry_price', 'shares']
+        required_fields = ["entry_id", "position_id", "entry_date", "entry_price", "shares"]
         valid_count = 0
         invalid_entries = []
 
@@ -117,7 +117,7 @@ class DataValidator:
 
         for pf in parquet_files:
             try:
-                df = pd.read_parquet(pf)
+                pd.read_parquet(pf)
                 readable_count += 1
 
                 # 30일 이상 오래된 파일 체크
@@ -149,7 +149,7 @@ class DataValidator:
         data = safe_load_json(positions_file, default=[])
 
         # 중복 position_id 확인
-        position_ids = [p.get('position_id') for p in data if 'position_id' in p]
+        position_ids = [p.get("position_id") for p in data if "position_id" in p]
         duplicates = [pid for pid in set(position_ids) if position_ids.count(pid) > 1]
 
         if duplicates:
@@ -160,7 +160,7 @@ class DataValidator:
                 seen = {}
                 unique_data = []
                 for p in reversed(data):  # 역순으로 처리하여 최신 것 우선
-                    pid = p.get('position_id')
+                    pid = p.get("position_id")
                     if pid and pid not in seen:
                         seen[pid] = True
                         unique_data.insert(0, p)
@@ -184,11 +184,11 @@ class DataValidator:
         future_dates = []
 
         for p in data:
-            for date_field in ['entry_date', 'exit_date']:
+            for date_field in ["entry_date", "exit_date"]:
                 date_str = p.get(date_field)
                 if date_str:
                     try:
-                        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
                         if date_obj > today:
                             future_dates.append(f"{p.get('position_id', 'unknown')} {date_field}: {date_str}")
                     except ValueError:
@@ -212,17 +212,17 @@ class DataValidator:
         issues = []
 
         for p in data:
-            position_id = p.get('position_id', 'unknown')
+            position_id = p.get("position_id", "unknown")
 
             # 음수 가격 체크
-            for price_field in ['entry_price', 'exit_price', 'stop_loss']:
+            for price_field in ["entry_price", "exit_price", "stop_loss"]:
                 price = p.get(price_field)
                 if price is not None and price < 0:
                     issues.append(f"{position_id} {price_field}: negative ({price})")
 
             # 극단값 체크 (진입가 대비 10배 이상)
-            entry_price = p.get('entry_price')
-            exit_price = p.get('exit_price')
+            entry_price = p.get("entry_price")
+            exit_price = p.get("exit_price")
 
             if entry_price and exit_price and entry_price > 0:
                 ratio = exit_price / entry_price
@@ -239,7 +239,7 @@ class DataValidator:
 
 def main():
     parser = argparse.ArgumentParser(description="Validate Turtle Trading data integrity")
-    parser.add_argument('--fix', action='store_true', help='Auto-fix issues where possible')
+    parser.add_argument("--fix", action="store_true", help="Auto-fix issues where possible")
 
     args = parser.parse_args()
 

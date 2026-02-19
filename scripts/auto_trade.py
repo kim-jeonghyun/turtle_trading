@@ -15,21 +15,20 @@
     python scripts/auto_trade.py --max-amount 1000000 --verbose
 """
 
-import sys
-import os
-import asyncio
 import argparse
+import asyncio
 import fcntl
 import logging
-from pathlib import Path
+import os
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from src.auto_trader import AutoTrader
-from src.types import OrderStatus
-from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 from src.data_fetcher import DataFetcher
 from src.indicators import add_turtle_indicators
-from src.position_sizer import PositionSizer
+from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
+from src.types import OrderStatus
 from src.universe_manager import UniverseManager
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,7 @@ LOCK_FILE = Path(__file__).parent.parent / "data" / ".auto_trade.lock"
 def acquire_lock():
     """중복 실행 방지를 위한 파일 잠금"""
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd = open(LOCK_FILE, 'w')
+    fd = open(LOCK_FILE, "w")
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fd.write(str(os.getpid()))
@@ -67,7 +66,11 @@ DEFAULT_MAX_AMOUNT = 5_000_000
 
 # 테스트용 기본 유니버스 (fallback)
 DEFAULT_SYMBOLS = [
-    "SPY", "QQQ", "AAPL", "NVDA", "TSLA",
+    "SPY",
+    "QQQ",
+    "AAPL",
+    "NVDA",
+    "TSLA",
     "005930.KS",  # 삼성전자
     "000660.KS",  # SK하이닉스
 ]
@@ -97,14 +100,14 @@ def parse_args() -> argparse.Namespace:
 
   # 실거래 모드 (주의: 실제 주문이 체결됩니다!)
   python scripts/auto_trade.py --live --symbols SPY
-        """
+        """,
     )
 
     parser.add_argument(
         "--live",
         action="store_true",
         default=False,
-        help="실거래 모드 활성화 (기본: dry-run). 주의: 실제 주문이 체결됩니다!"
+        help="실거래 모드 활성화 (기본: dry-run). 주의: 실제 주문이 체결됩니다!",
     )
 
     parser.add_argument(
@@ -112,15 +115,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=DEFAULT_MAX_AMOUNT,
         metavar="FLOAT",
-        help=f"단일 주문 최대 금액 KRW (기본: {DEFAULT_MAX_AMOUNT:,.0f})"
+        help=f"단일 주문 최대 금액 KRW (기본: {DEFAULT_MAX_AMOUNT:,.0f})",
     )
 
     parser.add_argument(
-        "--symbols",
-        nargs="+",
-        default=None,
-        metavar="SYMBOL",
-        help="대상 종목 코드 리스트 (기본: 내장 유니버스)"
+        "--symbols", nargs="+", default=None, metavar="SYMBOL", help="대상 종목 코드 리스트 (기본: 내장 유니버스)"
     )
 
     parser.add_argument(
@@ -129,15 +128,10 @@ def parse_args() -> argparse.Namespace:
         choices=[1, 2],
         default=None,
         metavar="{1,2}",
-        help="트레이딩 시스템 선택 (1=20일, 2=55일, 기본: 둘 다)"
+        help="트레이딩 시스템 선택 (1=20일, 2=55일, 기본: 둘 다)",
     )
 
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        default=False,
-        help="상세 로그 출력"
-    )
+    parser.add_argument("--verbose", action="store_true", default=False, help="상세 로그 출력")
 
     return parser.parse_args()
 
@@ -145,16 +139,14 @@ def parse_args() -> argparse.Namespace:
 def setup_logging(verbose: bool):
     """로깅 설정"""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 
 def load_kis_config() -> KISConfig:
     """환경 변수에서 KIS API 설정 로드"""
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         logger.warning("python-dotenv 미설치. 환경 변수를 직접 사용합니다.")
@@ -172,11 +164,7 @@ def load_kis_config() -> KISConfig:
         )
 
     return KISConfig(
-        app_key=app_key,
-        app_secret=app_secret,
-        account_no=account_no,
-        account_suffix=account_suffix,
-        is_real=is_real
+        app_key=app_key, app_secret=app_secret, account_no=account_no, account_suffix=account_suffix, is_real=is_real
     )
 
 
@@ -219,18 +207,14 @@ def check_entry_signal(df, symbol: str, system: int) -> dict | None:
             "current_price": today["close"],
             "n_value": n_value,
             "stop_loss": stop_loss,
-            "date": today["date"].strftime('%Y-%m-%d') if hasattr(today["date"], 'strftime') else str(today["date"]),
-            "message": f"System {system} 롱 진입: {entry_price:.2f} 돌파"
+            "date": today["date"].strftime("%Y-%m-%d") if hasattr(today["date"], "strftime") else str(today["date"]),
+            "message": f"System {system} 롱 진입: {entry_price:.2f} 돌파",
         }
 
     return None
 
 
-def calculate_order_quantity(
-    signal: dict,
-    account_balance: float,
-    risk_percent: float = 0.02
-) -> int:
+def calculate_order_quantity(signal: dict, account_balance: float, risk_percent: float = 0.02) -> int:
     """
     2% 리스크 기반 주문 수량 계산
 
@@ -268,6 +252,7 @@ async def run_auto_trade(args: argparse.Namespace):
     """
     # Live 모드 보안 검사
     from src.security import enforce_dry_run
+
     if args.live:
         if not enforce_dry_run(is_live=True):
             logger.error("실거래가 차단됨. TURTLE_ALLOW_LIVE=true 환경변수를 설정하세요.")
@@ -287,11 +272,7 @@ async def run_auto_trade(args: argparse.Namespace):
     kis_client = KISAPIClient(kis_config)
 
     # AutoTrader 초기화 (--live 미사용 시 dry_run=True)
-    trader = AutoTrader(
-        kis_client=kis_client,
-        dry_run=not args.live,
-        max_order_amount=args.max_amount
-    )
+    trader = AutoTrader(kis_client=kis_client, dry_run=not args.live, max_order_amount=args.max_amount)
 
     # 데이터 페처
     data_fetcher = DataFetcher()
@@ -375,13 +356,15 @@ async def run_auto_trade(args: argparse.Namespace):
                     quantity=quantity,
                     price=signal["entry_price"],
                     order_type=OrderType.LIMIT,
-                    reason=signal["message"]
+                    reason=signal["message"],
                 )
 
                 placed_orders.append(order_record)
+                status_str = (
+                    "완료" if order_record.status in (OrderStatus.FILLED.value, OrderStatus.DRY_RUN.value) else "실패"
+                )
                 logger.info(
-                    f"주문 {'완료' if order_record.status in (OrderStatus.FILLED.value, OrderStatus.DRY_RUN.value) else '실패'}: "
-                    f"{order_record.order_id} | {symbol} {quantity}주 @ {signal['entry_price']:,.2f}"
+                    f"주문 {status_str}: {order_record.order_id} | {symbol} {quantity}주 @ {signal['entry_price']:,.2f}"
                 )
 
         except Exception as e:
@@ -412,7 +395,7 @@ async def run_auto_trade(args: argparse.Namespace):
                 OrderStatus.DRY_RUN.value: "시뮬레이션",
                 OrderStatus.FAILED.value: "실패",
                 OrderStatus.PENDING.value: "대기",
-                OrderStatus.CANCELLED.value: "취소"
+                OrderStatus.CANCELLED.value: "취소",
             }.get(order.status, order.status)
 
             print(
@@ -433,7 +416,7 @@ def main():
         sys.exit(1)
 
     try:
-        orders = asyncio.run(run_auto_trade(args))
+        asyncio.run(run_auto_trade(args))
         sys.exit(0)
     except KeyboardInterrupt:
         logger.info("사용자에 의해 중단됨")
@@ -442,6 +425,7 @@ def main():
         logger.error(f"자동매매 실행 실패: {e}")
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         sys.exit(1)
     finally:

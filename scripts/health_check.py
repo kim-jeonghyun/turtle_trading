@@ -4,13 +4,12 @@ Turtle Trading System Health Check
 시스템 상태를 검증하고 문제점을 보고합니다.
 """
 
-import sys
-from pathlib import Path
 import json
-import os
 import shutil
+import sys
 from datetime import datetime, timedelta
-from typing import Tuple, List
+from pathlib import Path
+from typing import Tuple
 
 
 def check_data_directory() -> Tuple[bool, str]:
@@ -70,20 +69,20 @@ def check_position_files() -> Tuple[bool, str]:
         # 파일이 없으면 생성
         try:
             positions_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(positions_file, 'w') as f:
+            with open(positions_file, "w") as f:
                 json.dump([], f)
             return True, "Position file: valid (initialized empty)"
         except Exception as e:
             return False, f"Position file: Cannot create - {e}"
 
     try:
-        with open(positions_file, 'r') as f:
+        with open(positions_file, "r") as f:
             data = json.load(f)
 
         if not isinstance(data, list):
             return False, "Position file: Invalid format (not a list)"
 
-        open_positions = [p for p in data if p.get('status') == 'open']
+        open_positions = [p for p in data if p.get("status") == "open"]
         return True, f"Position file: valid ({len(open_positions)} open positions)"
     except json.JSONDecodeError as e:
         return False, f"Position file: Invalid JSON - {e}"
@@ -102,21 +101,18 @@ def check_environment_variables() -> Tuple[bool, str]:
     # .env 파일 파싱
     env_vars = {}
     try:
-        with open(env_file, 'r') as f:
+        with open(env_file, "r") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#'):
-                    if '=' in line:
-                        key, value = line.split('=', 1)
+                if line and not line.startswith("#"):
+                    if "=" in line:
+                        key, value = line.split("=", 1)
                         env_vars[key.strip()] = value.strip()
     except Exception as e:
         return False, f"Environment: Cannot read .env - {e}"
 
     # 필수 변수 확인
-    required = {
-        "TELEGRAM_BOT_TOKEN": "Telegram bot token",
-        "TELEGRAM_CHAT_ID": "Telegram chat ID"
-    }
+    required = {"TELEGRAM_BOT_TOKEN": "Telegram bot token", "TELEGRAM_CHAT_ID": "Telegram chat ID"}
 
     for var, desc in required.items():
         if var not in env_vars or not env_vars[var]:
@@ -163,7 +159,7 @@ def check_disk_space() -> Tuple[bool, str]:
     """디스크 공간 확인"""
     try:
         stat = shutil.disk_usage(".")
-        free_gb = stat.free / (1024 ** 3)
+        free_gb = stat.free / (1024**3)
 
         if free_gb < 1:
             return False, f"Disk space: {free_gb:.2f}GB free (low!)"

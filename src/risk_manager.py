@@ -30,11 +30,7 @@ class PortfolioRiskState:
 
 
 class PortfolioRiskManager:
-    def __init__(
-        self,
-        limits: RiskLimits = None,
-        symbol_groups: Dict[str, AssetGroup] = None
-    ):
+    def __init__(self, limits: RiskLimits = None, symbol_groups: Dict[str, AssetGroup] = None):
         self.limits = limits or RiskLimits()
         self.symbol_groups = symbol_groups or {}
         self.state = PortfolioRiskState()
@@ -42,13 +38,7 @@ class PortfolioRiskManager:
     def get_group(self, symbol: str) -> AssetGroup:
         return self.symbol_groups.get(symbol, AssetGroup.US_EQUITY)
 
-    def can_add_position(
-        self,
-        symbol: str,
-        units: int,
-        n_value: float,
-        direction: Direction
-    ) -> Tuple[bool, str]:
+    def can_add_position(self, symbol: str, units: int, n_value: float, direction: Direction) -> Tuple[bool, str]:
         if n_value < 0:
             return False, f"N값이 음수입니다: {n_value}"
         if units <= 0:
@@ -117,5 +107,5 @@ class PortfolioRiskManager:
             "total_n_exposure": self.state.total_n_exposure,
             "long_units": self.state.long_units,
             "short_units": self.state.short_units,
-            "positions_count": len([u for u in self.state.units_by_symbol.values() if u > 0])
+            "positions_count": len([u for u in self.state.units_by_symbol.values() if u > 0]),
         }

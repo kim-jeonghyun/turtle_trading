@@ -7,16 +7,16 @@
 """
 
 import argparse
-import logging
 import csv
-from pathlib import Path
+import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
-from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 try:
     from tabulate import tabulate
 except ImportError:
+
     def tabulate(data, headers=None, tablefmt=None):
         lines = []
         if headers:
@@ -25,12 +25,10 @@ except ImportError:
             lines.append(" | ".join(str(c) for c in row))
         return "\n".join(lines)
 
-from src.position_tracker import PositionTracker, Position, PositionStatus
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from src.position_tracker import Position, PositionStatus, PositionTracker
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -63,10 +61,7 @@ def parse_period(period_str: str) -> Tuple[datetime, datetime]:
 
 
 def filter_closed_positions(
-    positions: List[Position],
-    start_date: datetime,
-    end_date: datetime,
-    system: Optional[int] = None
+    positions: List[Position], start_date: datetime, end_date: datetime, system: Optional[int] = None
 ) -> List[Position]:
     """
     청산된 포지션 필터링
@@ -203,9 +198,9 @@ def print_statistics_report(stats: Dict, period: str):
     print(f"  Win Rate:         {stats['win_rate_pct']:.2f}%")
 
     print("\n💰 PROFIT & LOSS")
-    total_pnl_symbol = "+" if stats['total_pnl'] >= 0 else "-"
+    total_pnl_symbol = "+" if stats["total_pnl"] >= 0 else "-"
     print(f"  Total P&L:        {total_pnl_symbol}${abs(stats['total_pnl']):,.2f}")
-    avg_pnl_symbol = "+" if stats['avg_pnl'] >= 0 else "-"
+    avg_pnl_symbol = "+" if stats["avg_pnl"] >= 0 else "-"
     print(f"  Average P&L:      {avg_pnl_symbol}${abs(stats['avg_pnl']):,.2f}")
     print(f"  Best Trade:       +${stats['best_trade']:,.2f}")
     print(f"  Worst Trade:      -${abs(stats['worst_trade']):,.2f}")
@@ -224,22 +219,32 @@ def print_position_details(positions: List[Position]):
     table_data = []
 
     for pos in sorted(positions, key=lambda p: p.exit_date or "", reverse=True):
-        table_data.append([
-            pos.symbol,
-            pos.system,
-            pos.direction,
-            f"{pos.entry_date}",
-            f"{pos.exit_date}",
-            f"${pos.entry_price:,.2f}",
-            f"${pos.exit_price:,.2f}" if pos.exit_price else "N/A",
-            f"${pos.pnl:,.2f}" if pos.pnl else "N/A",
-            f"{pos.r_multiple:.2f}R" if pos.r_multiple else "N/A",
-            pos.exit_reason or "N/A",
-        ])
+        table_data.append(
+            [
+                pos.symbol,
+                pos.system,
+                pos.direction,
+                f"{pos.entry_date}",
+                f"{pos.exit_date}",
+                f"${pos.entry_price:,.2f}",
+                f"${pos.exit_price:,.2f}" if pos.exit_price else "N/A",
+                f"${pos.pnl:,.2f}" if pos.pnl else "N/A",
+                f"{pos.r_multiple:.2f}R" if pos.r_multiple else "N/A",
+                pos.exit_reason or "N/A",
+            ]
+        )
 
     headers = [
-        "Symbol", "System", "Dir", "Entry Date", "Exit Date",
-        "Entry Price", "Exit Price", "P&L", "R-Multiple", "Reason"
+        "Symbol",
+        "System",
+        "Dir",
+        "Entry Date",
+        "Exit Date",
+        "Entry Price",
+        "Exit Price",
+        "P&L",
+        "R-Multiple",
+        "Reason",
     ]
 
     print("\n" + "=" * 150)
@@ -253,35 +258,49 @@ def export_to_csv(positions: List[Position], filepath: Path):
     """포지션을 CSV로 내보내기"""
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(filepath, 'w', newline='', encoding='utf-8') as f:
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
 
         # 헤더
-        writer.writerow([
-            "Symbol", "System", "Direction", "Entry Date", "Entry Price",
-            "Exit Date", "Exit Price", "Units", "Total Shares",
-            "P&L", "P&L %", "R-Multiple", "Exit Reason"
-        ])
+        writer.writerow(
+            [
+                "Symbol",
+                "System",
+                "Direction",
+                "Entry Date",
+                "Entry Price",
+                "Exit Date",
+                "Exit Price",
+                "Units",
+                "Total Shares",
+                "P&L",
+                "P&L %",
+                "R-Multiple",
+                "Exit Reason",
+            ]
+        )
 
         # 데이터
         for pos in sorted(positions, key=lambda p: p.exit_date or "", reverse=True):
             pnl_pct = pos.pnl_pct if pos.pnl_pct else None
 
-            writer.writerow([
-                pos.symbol,
-                pos.system,
-                pos.direction,
-                pos.entry_date,
-                f"{pos.entry_price:.2f}",
-                pos.exit_date or "",
-                f"{pos.exit_price:.2f}" if pos.exit_price else "",
-                pos.units,
-                pos.total_shares,
-                f"{pos.pnl:.2f}" if pos.pnl else "",
-                f"{pnl_pct:.2f}%" if pnl_pct else "",
-                f"{pos.r_multiple:.2f}" if pos.r_multiple else "",
-                pos.exit_reason or "",
-            ])
+            writer.writerow(
+                [
+                    pos.symbol,
+                    pos.system,
+                    pos.direction,
+                    pos.entry_date,
+                    f"{pos.entry_price:.2f}",
+                    pos.exit_date or "",
+                    f"{pos.exit_price:.2f}" if pos.exit_price else "",
+                    pos.units,
+                    pos.total_shares,
+                    f"{pos.pnl:.2f}" if pos.pnl else "",
+                    f"{pnl_pct:.2f}%" if pnl_pct else "",
+                    f"{pos.r_multiple:.2f}" if pos.r_multiple else "",
+                    pos.exit_reason or "",
+                ]
+            )
 
     logger.info(f"CSV 내보내기: {filepath}")
 
@@ -369,27 +388,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="성과 리뷰 - 트레이딩 성과 분석")
     parser.add_argument(
-        "--period",
-        choices=["1m", "3m", "6m", "1y", "all"],
-        default="3m",
-        help="분석 기간 (기본값: 3m)"
+        "--period", choices=["1m", "3m", "6m", "1y", "all"], default="3m", help="분석 기간 (기본값: 3m)"
     )
-    parser.add_argument(
-        "--system",
-        choices=["1", "2", "all"],
-        default="all",
-        help="분석할 시스템 (기본값: all)"
-    )
-    parser.add_argument(
-        "--csv",
-        type=str,
-        help="CSV 내보내기 경로"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="상세 포지션 정보 출력"
-    )
+    parser.add_argument("--system", choices=["1", "2", "all"], default="all", help="분석할 시스템 (기본값: all)")
+    parser.add_argument("--csv", type=str, help="CSV 내보내기 경로")
+    parser.add_argument("--verbose", action="store_true", help="상세 포지션 정보 출력")
 
     args = parser.parse_args()
     main(args)

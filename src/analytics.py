@@ -6,10 +6,10 @@
 - 시스템별 성과 비교
 """
 
-import math
 import logging
-from typing import List, Dict, Optional
+import math
 from collections import defaultdict
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +333,7 @@ class TradeAnalytics:
             "터틀 트레이딩 성과 분석 리포트",
             "=" * 50,
             "",
-            f"[전체 성과]",
+            "[전체 성과]",
             f"  총 거래 수     : {stats['total_trades']}건",
             f"  승리 거래      : {stats['winners']}건",
             f"  손실 거래      : {stats['losers']}건",
@@ -345,7 +345,7 @@ class TradeAnalytics:
             f"  최대 수익      : ${stats['largest_win']:,.2f}",
             f"  최대 손실      : ${stats['largest_loss']:,.2f}",
             "",
-            f"[R-배수 분석]",
+            "[R-배수 분석]",
             f"  평균 R         : {r_dist['mean_r']:.2f}R",
             f"  중앙값 R       : {r_dist['median_r']:.2f}R",
             f"  표준편차       : {r_dist['std_r']:.2f}",
@@ -353,7 +353,7 @@ class TradeAnalytics:
             f"  최소 R         : {r_dist['min_r']:.2f}R",
             f"  기대값 (E)     : {expectancy:.3f}R",
             "",
-            f"[시스템 비교]",
+            "[시스템 비교]",
             f"  System 1 거래  : {sys_cmp['system_1']['total_trades']}건 | "
             f"승률 {sys_cmp['system_1']['win_rate'] * 100:.1f}% | "
             f"기대값 {sys_cmp['system_1']['expectancy']:.3f}R | "
@@ -377,10 +377,7 @@ class TradeAnalytics:
 # ── 독립 함수 ──────────────────────────────────────────────────────────────
 
 
-def calculate_sharpe_ratio(
-    returns: list,
-    risk_free_rate: float = 0.03
-) -> float:
+def calculate_sharpe_ratio(returns: list, risk_free_rate: float = 0.03) -> float:
     """
     샤프 지수 계산 (연율화).
 
@@ -411,10 +408,7 @@ def calculate_sharpe_ratio(
     return round(sharpe, 4)
 
 
-def calculate_sortino_ratio(
-    returns: list,
-    risk_free_rate: float = 0.03
-) -> float:
+def calculate_sortino_ratio(returns: list, risk_free_rate: float = 0.03) -> float:
     """
     소르티노 지수 계산 (연율화) - 하방 변동성만 사용.
 

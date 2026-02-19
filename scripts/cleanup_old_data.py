@@ -7,17 +7,14 @@
 - --dry-run이 기본값이며, --execute를 통해 실제 삭제 가능
 """
 
-import sys
 import argparse
 import logging
-from pathlib import Path
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Tuple
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -26,12 +23,7 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent
 
 
-def find_old_files(
-    directory: Path,
-    pattern: str,
-    days_old: int,
-    exclude_patterns: List[str] = None
-) -> List[Path]:
+def find_old_files(directory: Path, pattern: str, days_old: int, exclude_patterns: List[str] = None) -> List[Path]:
     """
     지정된 패턴과 나이 조건에 맞는 파일 찾기
 
@@ -70,10 +62,7 @@ def find_old_files(
     return sorted(old_files)
 
 
-def cleanup_cache_files(
-    dry_run: bool = True,
-    cache_days: int = 30
-) -> Tuple[int, int]:
+def cleanup_cache_files(dry_run: bool = True, cache_days: int = 30) -> Tuple[int, int]:
     """
     Parquet 캐시 파일 정리
 
@@ -122,10 +111,7 @@ def cleanup_cache_files(
     return len(old_files), total_size_mb
 
 
-def cleanup_log_files(
-    dry_run: bool = True,
-    log_days: int = 90
-) -> Tuple[int, int]:
+def cleanup_log_files(dry_run: bool = True, log_days: int = 90) -> Tuple[int, int]:
     """
     로그 파일 정리
 
@@ -148,7 +134,7 @@ def cleanup_log_files(
         log_dir,
         "*.log*",
         log_days,
-        exclude_patterns=["*.log"]  # 현재 활성 로그는 제외
+        exclude_patterns=["*.log"],  # 현재 활성 로그는 제외
     )
 
     if not old_files:
@@ -179,10 +165,7 @@ def cleanup_log_files(
     return len(old_files), total_size_mb
 
 
-def cleanup_backup_archives(
-    dry_run: bool = True,
-    keep_count: int = 30
-) -> Tuple[int, int]:
+def cleanup_backup_archives(dry_run: bool = True, keep_count: int = 30) -> Tuple[int, int]:
     """
     백업 아카이브 정리 (최신 N개만 유지)
 
@@ -202,11 +185,7 @@ def cleanup_backup_archives(
     logger.info(f"백업 디렉토리 검색: {backup_dir}")
 
     # 모든 백업 파일 찾기 (날짜 순서대로 정렬)
-    all_backups = sorted(
-        backup_dir.glob("*"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )
+    all_backups = sorted(backup_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
 
     if len(all_backups) <= keep_count:
         logger.info(f"유지할 백업: {len(all_backups)}개 (최소 유지: {keep_count}개)")
@@ -229,6 +208,7 @@ def cleanup_backup_archives(
             try:
                 if filepath.is_dir():
                     import shutil
+
                     shutil.rmtree(filepath)
                 else:
                     filepath.unlink()
@@ -248,7 +228,7 @@ def print_summary(
     log_size_mb: float,
     backup_files: int,
     backup_size_mb: float,
-    dry_run: bool
+    dry_run: bool,
 ):
     """정리 결과 요약"""
     logger.info("=" * 80)
@@ -296,54 +276,25 @@ def main(args):
     backup_files, backup_size = cleanup_backup_archives(dry_run, args.keep_backups)
 
     # 요약 출력
-    print_summary(
-        cache_files, cache_size,
-        log_files, log_size,
-        backup_files, backup_size,
-        dry_run
-    )
+    print_summary(cache_files, cache_size, log_files, log_size, backup_files, backup_size, dry_run)
 
     logger.info("=== 정리 완료 ===")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="오래된 데이터 정리 (캐시, 로그, 백업)"
-    )
+    parser = argparse.ArgumentParser(description="오래된 데이터 정리 (캐시, 로그, 백업)")
 
     # 실행 모드
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=True,
-        help="미리보기 모드 (기본값, 삭제하지 않음)"
+        "--dry-run", action="store_true", default=True, help="미리보기 모드 (기본값, 삭제하지 않음)"
     )
-    mode_group.add_argument(
-        "--execute",
-        action="store_true",
-        help="실제 삭제 실행 (주의: 되돌릴 수 없음)"
-    )
+    mode_group.add_argument("--execute", action="store_true", help="실제 삭제 실행 (주의: 되돌릴 수 없음)")
 
     # 정리 옵션
-    parser.add_argument(
-        "--cache-days",
-        type=int,
-        default=30,
-        help="이 날짜 이상 오래된 캐시 파일 정리 (기본값: 30일)"
-    )
-    parser.add_argument(
-        "--log-days",
-        type=int,
-        default=90,
-        help="이 날짜 이상 오래된 로그 파일 정리 (기본값: 90일)"
-    )
-    parser.add_argument(
-        "--keep-backups",
-        type=int,
-        default=30,
-        help="유지할 최신 백업 개수 (기본값: 30개)"
-    )
+    parser.add_argument("--cache-days", type=int, default=30, help="이 날짜 이상 오래된 캐시 파일 정리 (기본값: 30일)")
+    parser.add_argument("--log-days", type=int, default=90, help="이 날짜 이상 오래된 로그 파일 정리 (기본값: 90일)")
+    parser.add_argument("--keep-backups", type=int, default=30, help="유지할 최신 백업 개수 (기본값: 30개)")
 
     args = parser.parse_args()
 

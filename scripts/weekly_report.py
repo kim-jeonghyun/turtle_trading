@@ -8,12 +8,12 @@
 - 주간 손익
 """
 
-import os
-import asyncio
 import argparse
+import asyncio
 import logging
-from pathlib import Path
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List
 
 try:
@@ -25,23 +25,18 @@ except ImportError:
 try:
     from dotenv import load_dotenv
 except ImportError:
-    def load_dotenv(): pass
 
-from src.position_tracker import PositionTracker, PositionStatus
+    def load_dotenv():
+        pass
+
+
 from src.data_store import ParquetDataStore
-from src.risk_manager import PortfolioRiskManager, RiskLimits
+from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
+from src.position_tracker import PositionStatus, PositionTracker
+from src.risk_manager import PortfolioRiskManager
 from src.types import AssetGroup, Direction
-from src.notifier import (
-    NotificationManager,
-    TelegramChannel,
-    NotificationMessage,
-    NotificationLevel
-)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -59,10 +54,7 @@ def setup_notifier(config: dict) -> NotificationManager:
     notifier = NotificationManager()
 
     if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(
-            config["telegram_token"],
-            config["telegram_chat_id"]
-        ))
+        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
         logger.info("Telegram 채널 활성화")
 
     return notifier
@@ -78,22 +70,22 @@ def setup_risk_manager() -> PortfolioRiskManager:
         return PortfolioRiskManager(symbol_groups=symbol_groups)
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        if not config or 'groups' not in config:
+        if not config or "groups" not in config:
             return PortfolioRiskManager(symbol_groups=symbol_groups)
 
         group_mapping = {
-            'kr_equity': AssetGroup.KR_EQUITY,
-            'us_equity': AssetGroup.US_EQUITY,
-            'us_etf': AssetGroup.US_EQUITY,
-            'crypto': AssetGroup.CRYPTO,
-            'commodity': AssetGroup.COMMODITY,
-            'bond': AssetGroup.BOND,
+            "kr_equity": AssetGroup.KR_EQUITY,
+            "us_equity": AssetGroup.US_EQUITY,
+            "us_etf": AssetGroup.US_EQUITY,
+            "crypto": AssetGroup.CRYPTO,
+            "commodity": AssetGroup.COMMODITY,
+            "bond": AssetGroup.BOND,
         }
 
-        for group_name, symbols in config.get('groups', {}).items():
+        for group_name, symbols in config.get("groups", {}).items():
             asset_group = group_mapping.get(group_name, AssetGroup.US_EQUITY)
             for symbol in symbols:
                 symbol_groups[symbol] = asset_group
@@ -276,12 +268,12 @@ async def main(args):
 
     # 주간 리포트 본문 구성
     week_start = get_week_start()
-    week_end = week_start + timedelta(days=7)
+    _week_end = week_start + timedelta(days=7)
 
     report_body = f"""
 📊 **WEEKLY TRADING REPORT**
 
-기간: {week_start.strftime('%Y-%m-%d')} ~ {datetime.now().strftime('%Y-%m-%d')}
+기간: {week_start.strftime("%Y-%m-%d")} ~ {datetime.now().strftime("%Y-%m-%d")}
 
 🆕 **NEW SIGNALS**
 {format_signals_summary(signals)}
@@ -296,7 +288,7 @@ async def main(args):
 {format_risk_summary(risk_manager, open_positions)}
 
 ---
-생성 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+생성 시간: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
     # 출력
@@ -306,11 +298,9 @@ async def main(args):
     # 알림 전송
     if args.send:
         logger.info("Telegram 채널로 주간 리포트 전송 중...")
-        await notifier.send_message(NotificationMessage(
-            title="Weekly Trading Report",
-            body=report_body,
-            level=NotificationLevel.INFO
-        ))
+        await notifier.send_message(
+            NotificationMessage(title="Weekly Trading Report", body=report_body, level=NotificationLevel.INFO)
+        )
         logger.info("주간 리포트 전송 완료")
     else:
         logger.info("--send 플래그가 없어서 알림 전송을 건너뜁니다")
@@ -320,16 +310,8 @@ async def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="주간 리포트 생성 및 전송")
-    parser.add_argument(
-        "--send",
-        action="store_true",
-        help="실제로 알림 전송 (기본값: 전송 안함, 미리보기만)"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="상세 로깅 및 리포트 출력"
-    )
+    parser.add_argument("--send", action="store_true", help="실제로 알림 전송 (기본값: 전송 안함, 미리보기만)")
+    parser.add_argument("--verbose", action="store_true", help="상세 로깅 및 리포트 출력")
 
     args = parser.parse_args()
     asyncio.run(main(args))

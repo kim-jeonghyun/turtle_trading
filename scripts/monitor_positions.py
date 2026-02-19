@@ -6,31 +6,25 @@
 - 미실현 손실이 임계값을 초과하면 알림
 """
 
-import os
-import asyncio
 import argparse
+import asyncio
 import logging
+import os
 from datetime import datetime
-from typing import Optional
 
 try:
     from dotenv import load_dotenv
 except ImportError:
-    def load_dotenv(): pass
 
-from src.position_tracker import PositionTracker, Position
+    def load_dotenv():
+        pass
+
+
 from src.data_fetcher import DataFetcher
-from src.notifier import (
-    NotificationManager,
-    TelegramChannel,
-    NotificationMessage,
-    NotificationLevel
-)
+from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
+from src.position_tracker import Position, PositionTracker
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -48,10 +42,7 @@ def setup_notifier(config: dict) -> NotificationManager:
     notifier = NotificationManager()
 
     if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(
-            config["telegram_token"],
-            config["telegram_chat_id"]
-        ))
+        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
         logger.info("Telegram 채널 활성화")
 
     return notifier
@@ -86,7 +77,7 @@ def format_position_status(position: Position, current_price: float) -> str:
         f"현재가: {current_price:,.2f}",
         f"유닛: {position.units}/{position.max_units}",
         f"수량: {position.total_shares}",
-        f"미실현손익: ${pnl_dollar:,.2f} ({pnl_percent*100:+.2f}%)",
+        f"미실현손익: ${pnl_dollar:,.2f} ({pnl_percent * 100:+.2f}%)",
         f"스톱로스: {position.stop_loss:,.2f}",
         f"진입일: {position.entry_date}",
     ]
@@ -99,7 +90,7 @@ async def monitor_single_position(
     data_fetcher: DataFetcher,
     notifier: NotificationManager,
     threshold: float,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> bool:
     """
     개별 포지션 모니터링
@@ -125,57 +116,60 @@ async def monitor_single_position(
         pnl_dollar, pnl_percent = calculate_unrealized_pnl(position, current_price)
 
         if verbose:
-            logger.info(f"{position.symbol}: {current_price:,.2f} (PnL: {pnl_percent*100:+.2f}%)")
+            logger.info(f"{position.symbol}: {current_price:,.2f} (PnL: {pnl_percent * 100:+.2f}%)")
 
         # 1. 스톱로스 체크
         if position.direction == "LONG" and current_price <= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
             position_info = format_position_status(position, current_price)
-            await notifier.send_message(NotificationMessage(
-                title="🛑 STOP LOSS TRIGGERED",
-                body=f"스톱로스가 발동되었습니다!\n\n{position_info}",
-                level=NotificationLevel.ERROR,
-                data={
-                    "action": "CLOSE_POSITION_IMMEDIATELY",
-                    "symbol": position.symbol,
-                    "exit_price": current_price,
-                    "loss": f"${pnl_dollar:,.2f}"
-                }
-            ))
+            await notifier.send_message(
+                NotificationMessage(
+                    title="🛑 STOP LOSS TRIGGERED",
+                    body=f"스톱로스가 발동되었습니다!\n\n{position_info}",
+                    level=NotificationLevel.ERROR,
+                    data={
+                        "action": "CLOSE_POSITION_IMMEDIATELY",
+                        "symbol": position.symbol,
+                        "exit_price": current_price,
+                        "loss": f"${pnl_dollar:,.2f}",
+                    },
+                )
+            )
             return True
 
         elif position.direction == "SHORT" and current_price >= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
             position_info = format_position_status(position, current_price)
-            await notifier.send_message(NotificationMessage(
-                title="🛑 STOP LOSS TRIGGERED",
-                body=f"스톱로스가 발동되었습니다!\n\n{position_info}",
-                level=NotificationLevel.ERROR,
-                data={
-                    "action": "CLOSE_POSITION_IMMEDIATELY",
-                    "symbol": position.symbol,
-                    "exit_price": current_price,
-                    "loss": f"${pnl_dollar:,.2f}"
-                }
-            ))
+            await notifier.send_message(
+                NotificationMessage(
+                    title="🛑 STOP LOSS TRIGGERED",
+                    body=f"스톱로스가 발동되었습니다!\n\n{position_info}",
+                    level=NotificationLevel.ERROR,
+                    data={
+                        "action": "CLOSE_POSITION_IMMEDIATELY",
+                        "symbol": position.symbol,
+                        "exit_price": current_price,
+                        "loss": f"${pnl_dollar:,.2f}",
+                    },
+                )
+            )
             return True
 
         # 2. 미실현 손실 임계값 체크
         if pnl_percent < -threshold:
-            logger.warning(f"미실현 손실 임계값 초과: {position.symbol} ({pnl_percent*100:.2f}%)")
+            logger.warning(f"미실현 손실 임계값 초과: {position.symbol} ({pnl_percent * 100:.2f}%)")
 
             position_info = format_position_status(position, current_price)
-            await notifier.send_message(NotificationMessage(
-                title="⚠️ UNREALIZED LOSS THRESHOLD",
-                body=f"미실현 손실이 {threshold*100:.1f}%를 초과했습니다.\n\n{position_info}",
-                level=NotificationLevel.WARNING,
-                data={
-                    "unrealized_loss_pct": f"{pnl_percent*100:.2f}%",
-                    "threshold": f"{-threshold*100:.1f}%"
-                }
-            ))
+            await notifier.send_message(
+                NotificationMessage(
+                    title="⚠️ UNREALIZED LOSS THRESHOLD",
+                    body=f"미실현 손실이 {threshold * 100:.1f}%를 초과했습니다.\n\n{position_info}",
+                    level=NotificationLevel.WARNING,
+                    data={"unrealized_loss_pct": f"{pnl_percent * 100:.2f}%", "threshold": f"{-threshold * 100:.1f}%"},
+                )
+            )
             return True
 
         return False
@@ -205,24 +199,20 @@ async def main(args):
 
     except Exception as e:
         logger.error(f"포지션 로드 오류: {e}")
-        await notifier.send_message(NotificationMessage(
-            title="❌ Position Monitor Error",
-            body=f"포지션을 로드할 수 없습니다.\n\n{str(e)}",
-            level=NotificationLevel.ERROR
-        ))
+        await notifier.send_message(
+            NotificationMessage(
+                title="❌ Position Monitor Error",
+                body=f"포지션을 로드할 수 없습니다.\n\n{str(e)}",
+                level=NotificationLevel.ERROR,
+            )
+        )
         return
 
     # 각 포지션 모니터링
     problems_found = False
     for position in open_positions:
         try:
-            has_problem = await monitor_single_position(
-                position,
-                data_fetcher,
-                notifier,
-                args.threshold,
-                args.verbose
-            )
+            has_problem = await monitor_single_position(position, data_fetcher, notifier, args.threshold, args.verbose)
             if has_problem:
                 problems_found = True
 
@@ -234,7 +224,7 @@ async def main(args):
         "timestamp": datetime.now().isoformat(),
         "total_positions": len(open_positions),
         "problems_found": problems_found,
-        "threshold": f"{args.threshold*100:.1f}%"
+        "threshold": f"{args.threshold * 100:.1f}%",
     }
 
     if problems_found:
@@ -250,17 +240,8 @@ async def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="포지션 실시간 모니터링")
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.05,
-        help="미실현 손실 임계값 (기본값: 0.05 = 5%%)"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="상세 로깅 활성화"
-    )
+    parser.add_argument("--threshold", type=float, default=0.05, help="미실현 손실 임계값 (기본값: 0.05 = 5%%)")
+    parser.add_argument("--verbose", action="store_true", help="상세 로깅 활성화")
 
     args = parser.parse_args()
 

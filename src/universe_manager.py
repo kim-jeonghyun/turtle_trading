@@ -2,11 +2,12 @@
 거래 유니버스 관리 모듈
 """
 
-import yaml
-import pandas as pd
-from pathlib import Path
-from typing import List, Dict, Optional
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import pandas as pd
+import yaml
 
 from src.types import AssetGroup
 
@@ -44,32 +45,32 @@ class UniverseManager:
 
     def _load_from_yaml(self):
         """YAML 파일에서 유니버스 로드"""
-        with open(self.yaml_path, 'r') as f:
+        with open(self.yaml_path, "r") as f:
             config = yaml.safe_load(f)
 
-        if not config or 'symbols' not in config:
+        if not config or "symbols" not in config:
             self._load_defaults()
             return
 
         group_mapping = {
-            'us_equity': AssetGroup.US_EQUITY,
-            'kr_equity': AssetGroup.KR_EQUITY,
-            'crypto': AssetGroup.CRYPTO,
-            'commodity': AssetGroup.COMMODITY,
-            'bond': AssetGroup.BOND,
-            'inverse': AssetGroup.INVERSE,
-            'asia_equity': AssetGroup.ASIA_EQUITY,
-            'currency': AssetGroup.CURRENCY,
+            "us_equity": AssetGroup.US_EQUITY,
+            "kr_equity": AssetGroup.KR_EQUITY,
+            "crypto": AssetGroup.CRYPTO,
+            "commodity": AssetGroup.COMMODITY,
+            "bond": AssetGroup.BOND,
+            "inverse": AssetGroup.INVERSE,
+            "asia_equity": AssetGroup.ASIA_EQUITY,
+            "currency": AssetGroup.CURRENCY,
         }
 
-        for category, items in config['symbols'].items():
+        for category, items in config["symbols"].items():
             for item in items:
-                symbol = str(item['symbol'])
-                group_str = item.get('group', category)
+                symbol = str(item["symbol"])
+                group_str = item.get("group", category)
                 asset_group = group_mapping.get(group_str, AssetGroup.US_EQUITY)
 
                 # Determine country from symbol
-                if symbol.endswith('.KS') or symbol.endswith('.KQ'):
+                if symbol.endswith(".KS") or symbol.endswith(".KQ"):
                     country = "KR"
                 else:
                     country = "US"
@@ -81,27 +82,27 @@ class UniverseManager:
 
                 asset = Asset(
                     symbol=symbol,
-                    name=item.get('name', symbol),
+                    name=item.get("name", symbol),
                     country=country,
                     asset_type=category,
                     group=asset_group,
                     leverage=leverage,
-                    underlying=item.get('underlying'),
-                    enabled=True
+                    underlying=item.get("underlying"),
+                    enabled=True,
                 )
                 self.assets[symbol] = asset
 
     def _load_from_csv(self):
         df = pd.read_csv(self.csv_path)
         for _, row in df.iterrows():
-            symbol = str(row.get('Ticker', row.get('symbol', ''))).strip()
+            symbol = str(row.get("Ticker", row.get("symbol", ""))).strip()
             asset = Asset(
                 symbol=symbol,
-                name=str(row.get('Name', row.get('name', ''))).strip(),
-                country=str(row.get('Country', row.get('country', 'US'))).strip(),
-                asset_type=str(row.get('Type', row.get('type', ''))).strip(),
+                name=str(row.get("Name", row.get("name", ""))).strip(),
+                country=str(row.get("Country", row.get("country", "US"))).strip(),
+                asset_type=str(row.get("Type", row.get("type", ""))).strip(),
                 group=AssetGroup.US_EQUITY,
-                enabled=True
+                enabled=True,
             )
             self.assets[symbol] = asset
 

@@ -3,8 +3,8 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
 
 from src.types import Direction
 
@@ -68,31 +68,18 @@ class AccountState:
 
 
 class PositionSizer:
-    def __init__(
-        self,
-        risk_percent: float = 0.01,
-        max_position_pct: float = 0.20
-    ):
+    def __init__(self, risk_percent: float = 0.01, max_position_pct: float = 0.20):
         self.risk_percent = risk_percent
         self.max_position_pct = max_position_pct
 
-    def calculate_unit(
-        self,
-        account_equity: float,
-        n_value: float,
-        point_value: float = 1.0
-    ) -> int:
+    def calculate_unit(self, account_equity: float, n_value: float, point_value: float = 1.0) -> int:
         if n_value <= 0 or account_equity <= 0:
             return 0
         dollar_volatility = n_value * point_value
         return max(1, int((account_equity * self.risk_percent) / dollar_volatility))
 
     def calculate_stop_price(
-        self,
-        entry_price: float,
-        n_value: float,
-        direction: Direction,
-        stop_distance_n: float = 2.0
+        self, entry_price: float, n_value: float, direction: Direction, stop_distance_n: float = 2.0
     ) -> float:
         stop_distance = n_value * stop_distance_n
         if direction == Direction.LONG:

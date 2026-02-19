@@ -2,17 +2,19 @@
 터틀 트레이딩 백테스터 모듈
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+from src.types import Direction, SignalType
 
 from .indicators import add_turtle_indicators, calculate_unit_size
 from .position_sizer import AccountState
 from .pyramid_manager import PyramidManager
-from src.types import SignalType, Direction
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +68,7 @@ class TurtleBacktester:
     def __init__(self, config: BacktestConfig):
         self.config = config
         self.account = AccountState(initial_capital=config.initial_capital)
-        self.pyramid_manager = PyramidManager(
-            max_units=config.max_units,
-            pyramid_interval_n=config.pyramid_interval_n
-        )
+        self.pyramid_manager = PyramidManager(max_units=config.max_units, pyramid_interval_n=config.pyramid_interval_n)
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
@@ -79,12 +78,7 @@ class TurtleBacktester:
             return "dc_high_20", "dc_low_20", "dc_low_10", "dc_high_10"
         return "dc_high_55", "dc_low_55", "dc_low_20", "dc_high_20"
 
-    def _check_entry_signal(
-        self,
-        row: pd.Series,
-        prev_row: pd.Series,
-        symbol: str
-    ) -> Optional[SignalType]:
+    def _check_entry_signal(self, row: pd.Series, prev_row: pd.Series, symbol: str) -> Optional[SignalType]:
         entry_high, entry_low, _, _ = self._get_entry_exit_columns()
 
         # 롱 진입 신호
@@ -106,12 +100,7 @@ class TurtleBacktester:
 
         return None
 
-    def _check_exit_signal(
-        self,
-        row: pd.Series,
-        prev_row: pd.Series,
-        position: Any
-    ) -> Optional[SignalType]:
+    def _check_exit_signal(self, row: pd.Series, prev_row: pd.Series, position: Any) -> Optional[SignalType]:
         _, _, exit_low, exit_high = self._get_entry_exit_columns()
 
         if position.direction == Direction.LONG:
@@ -131,12 +120,7 @@ class TurtleBacktester:
 
         return None
 
-    def _check_pyramid_signal(
-        self,
-        row: pd.Series,
-        position: Any,
-        n_value: float
-    ) -> Optional[SignalType]:
+    def _check_pyramid_signal(self, row: pd.Series, position: Any, n_value: float) -> Optional[SignalType]:
         can_pyramid, _ = position.can_pyramid(row["close"], n_value)
         if can_pyramid:
             if position.direction == Direction.LONG:
@@ -159,7 +143,7 @@ class TurtleBacktester:
         logger.info(f"백테스트 시작: {len(data)}개 종목, {len(all_dates)}일")
 
         for i, date in enumerate(all_dates[1:], 1):
-            daily_pnl = 0.0
+            _daily_pnl = 0.0
 
             for symbol, df in data.items():
                 df_slice = df[df["date"] <= date]
@@ -197,14 +181,7 @@ class TurtleBacktester:
         # 결과 계산
         return self._calculate_results()
 
-    def _open_position(
-        self,
-        symbol: str,
-        date: datetime,
-        price: float,
-        n_value: float,
-        direction: Direction
-    ):
+    def _open_position(self, symbol: str, date: datetime, price: float, n_value: float, direction: Direction):
         unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
@@ -214,9 +191,7 @@ class TurtleBacktester:
             return
 
         self.account.cash -= cost
-        position = self.pyramid_manager.create_position(
-            symbol, direction, date, price, unit_size, n_value
-        )
+        self.pyramid_manager.create_position(symbol, direction, date, price, unit_size, n_value)
         logger.debug(f"진입: {symbol} {direction.value} @ {price:.2f} x {unit_size}")
 
     def _add_pyramid(self, symbol: str, date: datetime, price: float, n_value: float):
@@ -259,7 +234,7 @@ class TurtleBacktester:
             quantity=total_quantity,
             pnl=pnl,
             pnl_pct=pnl_pct,
-            exit_reason=reason
+            exit_reason=reason,
         )
         self.trades.append(trade)
 
@@ -285,11 +260,7 @@ class TurtleBacktester:
                         unrealized += (avg_entry - current_price) * qty
 
         equity = self.account.cash + unrealized
-        self.equity_history.append({
-            "date": date,
-            "equity": equity,
-            "cash": self.account.cash
-        })
+        self.equity_history.append({"date": date, "equity": equity, "cash": self.account.cash})
 
     def _calculate_results(self) -> BacktestResult:
         equity_df = pd.DataFrame(self.equity_history)
@@ -323,7 +294,11 @@ class TurtleBacktester:
 
         # 샤프 비율
         equity_df["returns"] = equity_df["equity"].pct_change()
-        sharpe = equity_df["returns"].mean() / equity_df["returns"].std() * np.sqrt(252) if equity_df["returns"].std() > 0 else 0
+        sharpe = (
+            equity_df["returns"].mean() / equity_df["returns"].std() * np.sqrt(252)
+            if equity_df["returns"].std() > 0
+            else 0
+        )
 
         return BacktestResult(
             config=self.config,
@@ -340,5 +315,5 @@ class TurtleBacktester:
             winning_trades=winning_trades,
             losing_trades=losing_trades,
             avg_win=avg_win,
-            avg_loss=avg_loss
+            avg_loss=avg_loss,
         )
