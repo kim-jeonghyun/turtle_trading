@@ -57,5 +57,8 @@ Thumbs.db
 # Project specific
 *.bak
 *.tmp
-.claude/
+# Claude Code - 공유 설정은 추적, 개인 설정만 무시
+# (.claude/ 전체 무시 제거 — Git 부정 패턴 한계로 인해 개별 무시 방식 채택)
+.claude/settings.local.json
+
 .sisyphus/
