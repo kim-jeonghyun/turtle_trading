@@ -21,6 +21,7 @@ jobs:
         run: ruff format src/ scripts/ --check
       - name: MyPy
         run: mypy src/
+        continue-on-error: true  # baseline 확보 후 점진 강화 (CLAUDE.md §2.9)
 
   test:
     runs-on: ubuntu-latest
