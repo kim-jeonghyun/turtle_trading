@@ -4,15 +4,15 @@ Parquet 기반 데이터 저장소 모듈
 - 거래 기록 저장
 """
 
-import pandas as pd
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass
 import logging
-import json
-import tempfile
 import os
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,7 @@ class ParquetDataStore:
         self._atomic_write_parquet(path, df)
         logger.info(f"OHLCV 저장: {symbol} -> {path}")
 
-    def load_ohlcv(
-        self,
-        symbol: str,
-        max_age_hours: int = 24
-    ) -> Optional[pd.DataFrame]:
+    def load_ohlcv(self, symbol: str, max_age_hours: int = 24) -> Optional[pd.DataFrame]:
         path = self._get_cache_path(symbol, "ohlcv")
         if not self._is_cache_valid(path, max_age_hours):
             return None
@@ -72,7 +68,7 @@ class ParquetDataStore:
 
     def _atomic_write_parquet(self, path: Path, df: pd.DataFrame):
         """Atomic Parquet write: temp file → rename"""
-        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix='.tmp')
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
         os.close(fd)
         try:
             df.to_parquet(tmp_path, compression="snappy")
@@ -103,11 +99,7 @@ class ParquetDataStore:
         self._atomic_write_parquet(path, df)
         logger.info(f"거래 기록 저장: {trade.get('symbol')}")
 
-    def load_trades(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
-    ) -> pd.DataFrame:
+    def load_trades(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
         all_trades = []
         for f in sorted(self.trades_dir.glob("trades_*.parquet")):
             date_str = f.stem.split("_")[1]
@@ -168,5 +160,5 @@ class ParquetDataStore:
             "cache_files": len(cache_files),
             "trade_files": len(trade_files),
             "signal_files": len(signal_files),
-            "total_size_mb": round(total_size / 1024 / 1024, 2)
+            "total_size_mb": round(total_size / 1024 / 1024, 2),
         }

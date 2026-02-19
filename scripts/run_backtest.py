@@ -8,17 +8,18 @@ Usage:
     python scripts/run_backtest.py --symbols AAPL NVDA TSLA --system 1 --csv results.csv
 """
 
-import sys
-from pathlib import Path
 import argparse
 import logging
-from typing import Dict
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Dict
 
-from src.backtester import TurtleBacktester, BacktestConfig, BacktestResult
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.data_fetcher import DataFetcher
 
 logger = logging.getLogger(__name__)
@@ -27,73 +28,28 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     """CLI 인자 파싱"""
     parser = argparse.ArgumentParser(
-        description="터틀 트레이딩 백테스터",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="터틀 트레이딩 백테스터", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
     # 필수 인자
-    parser.add_argument(
-        "--symbols",
-        nargs="+",
-        required=True,
-        help="백테스트할 티커 심볼 (공백으로 구분)"
-    )
+    parser.add_argument("--symbols", nargs="+", required=True, help="백테스트할 티커 심볼 (공백으로 구분)")
 
     # 데이터 인자
-    parser.add_argument(
-        "--period",
-        default="2y",
-        help="데이터 기간 (1y, 2y, 5y, max 등)"
-    )
+    parser.add_argument("--period", default="2y", help="데이터 기간 (1y, 2y, 5y, max 등)")
 
     # 백테스트 설정
     parser.add_argument(
-        "--system",
-        type=int,
-        choices=[1, 2],
-        default=1,
-        help="터틀 시스템 (1: 20일/10일, 2: 55일/20일)"
+        "--system", type=int, choices=[1, 2], default=1, help="터틀 시스템 (1: 20일/10일, 2: 55일/20일)"
     )
-    parser.add_argument(
-        "--capital",
-        type=float,
-        default=100000.0,
-        help="초기 자본금"
-    )
-    parser.add_argument(
-        "--risk",
-        type=float,
-        default=0.01,
-        help="유닛당 리스크 비율 (0.01 = 1%%)"
-    )
-    parser.add_argument(
-        "--commission",
-        type=float,
-        default=0.001,
-        help="수수료 비율 (0.001 = 0.1%%)"
-    )
-    parser.add_argument(
-        "--no-filter",
-        action="store_true",
-        help="System 1 필터 비활성화"
-    )
+    parser.add_argument("--capital", type=float, default=100000.0, help="초기 자본금")
+    parser.add_argument("--risk", type=float, default=0.01, help="유닛당 리스크 비율 (0.01 = 1%%)")
+    parser.add_argument("--commission", type=float, default=0.001, help="수수료 비율 (0.001 = 0.1%%)")
+    parser.add_argument("--no-filter", action="store_true", help="System 1 필터 비활성화")
 
     # 출력 옵션
-    parser.add_argument(
-        "--plot",
-        action="store_true",
-        help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)"
-    )
-    parser.add_argument(
-        "--csv",
-        type=str,
-        help="거래 내역 CSV 파일 경로"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="상세 로깅 출력"
-    )
+    parser.add_argument("--plot", action="store_true", help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)")
+    parser.add_argument("--csv", type=str, help="거래 내역 CSV 파일 경로")
+    parser.add_argument("--verbose", action="store_true", help="상세 로깅 출력")
 
     return parser.parse_args()
 
@@ -102,9 +58,7 @@ def setup_logging(verbose: bool):
     """로깅 설정"""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
 
@@ -141,7 +95,7 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
         pyramid_interval_n=0.5,
         stop_distance_n=2.0,
         use_filter=not args.no_filter,
-        commission_pct=args.commission
+        commission_pct=args.commission,
     )
 
     logger.info(f"백테스트 시작 - System {config.system}, 초기 자본: ${config.initial_capital:,.0f}")
@@ -195,17 +149,11 @@ def plot_equity_curve(result: BacktestResult, symbols: list):
     equity_df = result.equity_curve
     ax1.plot(equity_df["date"], equity_df["equity"], label="Equity", linewidth=2, color="#2E86AB")
     ax1.axhline(
-        y=result.config.initial_capital,
-        color="#A23B72",
-        linestyle="--",
-        linewidth=1.5,
-        label="Initial Capital"
+        y=result.config.initial_capital, color="#A23B72", linestyle="--", linewidth=1.5, label="Initial Capital"
     )
     ax1.set_ylabel("Equity ($)", fontsize=12)
     ax1.set_title(
-        f"Turtle Trading System {result.config.system} - {', '.join(symbols)}",
-        fontsize=14,
-        fontweight="bold"
+        f"Turtle Trading System {result.config.system} - {', '.join(symbols)}", fontsize=14, fontweight="bold"
     )
     ax1.legend(loc="upper left")
     ax1.grid(True, alpha=0.3)
@@ -214,14 +162,7 @@ def plot_equity_curve(result: BacktestResult, symbols: list):
     # 낙폭
     equity_df["peak"] = equity_df["equity"].cummax()
     equity_df["drawdown"] = (equity_df["peak"] - equity_df["equity"]) / equity_df["peak"] * 100
-    ax2.fill_between(
-        equity_df["date"],
-        equity_df["drawdown"],
-        0,
-        color="#F18F01",
-        alpha=0.5,
-        label="Drawdown"
-    )
+    ax2.fill_between(equity_df["date"], equity_df["drawdown"], 0, color="#F18F01", alpha=0.5, label="Drawdown")
     ax2.set_xlabel("Date", fontsize=12)
     ax2.set_ylabel("Drawdown (%)", fontsize=12)
     ax2.legend(loc="lower left")
@@ -243,18 +184,20 @@ def export_trades_csv(result: BacktestResult, csv_path: str):
     """거래 내역 CSV 저장"""
     trades_data = []
     for trade in result.trades:
-        trades_data.append({
-            "symbol": trade.symbol,
-            "direction": trade.direction,
-            "entry_date": trade.entry_date.strftime("%Y-%m-%d") if trade.entry_date else None,
-            "entry_price": trade.entry_price,
-            "exit_date": trade.exit_date.strftime("%Y-%m-%d") if trade.exit_date else None,
-            "exit_price": trade.exit_price,
-            "quantity": trade.quantity,
-            "pnl": trade.pnl,
-            "pnl_pct": trade.pnl_pct * 100,  # 백분율로 변환
-            "exit_reason": trade.exit_reason
-        })
+        trades_data.append(
+            {
+                "symbol": trade.symbol,
+                "direction": trade.direction,
+                "entry_date": trade.entry_date.strftime("%Y-%m-%d") if trade.entry_date else None,
+                "entry_price": trade.entry_price,
+                "exit_date": trade.exit_date.strftime("%Y-%m-%d") if trade.exit_date else None,
+                "exit_price": trade.exit_price,
+                "quantity": trade.quantity,
+                "pnl": trade.pnl,
+                "pnl_pct": trade.pnl_pct * 100,  # 백분율로 변환
+                "exit_reason": trade.exit_reason,
+            }
+        )
 
     df = pd.DataFrame(trades_data)
     df.to_csv(csv_path, index=False)

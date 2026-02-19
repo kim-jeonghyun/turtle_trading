@@ -5,9 +5,9 @@ Inverse ETF 필터링 모듈
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 from datetime import datetime
 from enum import Enum
+from typing import Dict, Optional, Tuple
 
 
 @dataclass
@@ -59,7 +59,7 @@ class InverseETFFilter:
             symbol=symbol,
             entry_date=entry_date,
             entry_inverse_price=inverse_price,
-            entry_underlying_price=underlying_price
+            entry_underlying_price=underlying_price,
         )
 
     def on_daily_update(self, symbol: str, current_inverse: float, current_underlying: float):
@@ -77,11 +77,12 @@ class InverseETFFilter:
             holding.entry_inverse_price,
             current_inverse,
             holding.entry_underlying_price,
-            current_underlying
+            current_underlying,
         )
 
-    def _calculate_decay(self, leverage: float, entry_inv: float, curr_inv: float,
-                         entry_und: float, curr_und: float) -> float:
+    def _calculate_decay(
+        self, leverage: float, entry_inv: float, curr_inv: float, entry_und: float, curr_und: float
+    ) -> float:
         if entry_inv == 0 or entry_und == 0:
             return 0.0
         underlying_return = (curr_und - entry_und) / entry_und
@@ -89,7 +90,9 @@ class InverseETFFilter:
         actual_return = (curr_inv - entry_inv) / entry_inv
         return (actual_return - theoretical_return) * 100
 
-    def should_force_exit(self, symbol: str, curr_inv: float, curr_und: float) -> Tuple[bool, Optional[ExitReason], str]:
+    def should_force_exit(
+        self, symbol: str, curr_inv: float, curr_und: float
+    ) -> Tuple[bool, Optional[ExitReason], str]:
         if symbol not in self.holdings:
             return False, None, ""
 
@@ -103,8 +106,9 @@ class InverseETFFilter:
         if actual_holding_days >= config.max_holding_days:
             return True, ExitReason.MAX_HOLDING_DAYS, f"최대 보유일 초과: {actual_holding_days}일"
 
-        decay = self._calculate_decay(config.leverage, holding.entry_inverse_price, curr_inv,
-                                       holding.entry_underlying_price, curr_und)
+        decay = self._calculate_decay(
+            config.leverage, holding.entry_inverse_price, curr_inv, holding.entry_underlying_price, curr_und
+        )
         if abs(decay) >= config.decay_threshold_pct:
             return True, ExitReason.DECAY_THRESHOLD, f"괴리율 초과: {decay:.2f}%"
 

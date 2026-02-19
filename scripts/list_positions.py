@@ -4,16 +4,17 @@ Turtle Trading Position Viewer
 오픈 및 청산된 포지션 조회 스크립트
 """
 
-import sys
 import argparse
 import json
+import sys
 from typing import List
-from src.position_tracker import PositionTracker, Position
+
+from src.position_tracker import Position, PositionTracker
 
 
 def format_currency(value: float, symbol: str) -> str:
     """통화 형식 변환"""
-    if symbol.endswith('.KS') or symbol.endswith('.KQ'):
+    if symbol.endswith(".KS") or symbol.endswith(".KQ"):
         # 한국 원화
         return f"₩{value:,.0f}"
     else:
@@ -39,14 +40,18 @@ def print_positions_table(positions: List[Position], show_closed: bool = False):
         return
 
     # 오픈 포지션만 필터링
-    open_positions = [p for p in positions if p.status == 'open']
-    closed_positions = [p for p in positions if p.status == 'closed']
+    open_positions = [p for p in positions if p.status == "open"]
+    closed_positions = [p for p in positions if p.status == "closed"]
 
     # 오픈 포지션 출력
     if open_positions:
         print("=== Open Positions ===")
         print()
-        print(f"{'Symbol':<12} | {'System':<6} | {'Direction':<9} | {'Entry':<10} | {'Units':<5} | {'Stop Loss':<10} | {'Last Update':<10}")
+        print(
+            f"{'Symbol':<12} | {'System':<6} | {'Direction':<9} | "
+            f"{'Entry':<10} | {'Units':<5} | {'Stop Loss':<10} | "
+            f"{'Last Update':<10}"
+        )
         print("-" * 90)
 
         for p in open_positions:
@@ -55,7 +60,11 @@ def print_positions_table(positions: List[Position], show_closed: bool = False):
             units = f"{p.units}/{p.max_units}"
             system = f"S{p.system}"
 
-            print(f"{p.symbol:<12} | {system:<6} | {p.direction:<9} | {entry_price:<10} | {units:<5} | {stop_loss:<10} | {p.entry_date:<10}")
+            print(
+                f"{p.symbol:<12} | {system:<6} | {p.direction:<9} | "
+                f"{entry_price:<10} | {units:<5} | {stop_loss:<10} | "
+                f"{p.entry_date:<10}"
+            )
 
         print()
         print(f"Total Open: {len(open_positions)} positions")
@@ -65,7 +74,11 @@ def print_positions_table(positions: List[Position], show_closed: bool = False):
     if show_closed and closed_positions:
         print("=== Closed Positions (Recent) ===")
         print()
-        print(f"{'Symbol':<12} | {'System':<6} | {'Entry':<10} | {'Exit':<10} | {'P&L':<15} | {'R-Multiple':<10} | {'Exit Date':<10}")
+        print(
+            f"{'Symbol':<12} | {'System':<6} | {'Entry':<10} | "
+            f"{'Exit':<10} | {'P&L':<15} | {'R-Multiple':<10} | "
+            f"{'Exit Date':<10}"
+        )
         print("-" * 100)
 
         # 최근 10개만 표시
@@ -76,7 +89,11 @@ def print_positions_table(positions: List[Position], show_closed: bool = False):
             r_mult = f"{p.r_multiple:.2f}R" if p.r_multiple is not None else "N/A"
             system = f"S{p.system}"
 
-            print(f"{p.symbol:<12} | {system:<6} | {entry_price:<10} | {exit_price:<10} | {pnl_str:<15} | {r_mult:<10} | {p.exit_date or 'N/A':<10}")
+            print(
+                f"{p.symbol:<12} | {system:<6} | {entry_price:<10} | "
+                f"{exit_price:<10} | {pnl_str:<15} | {r_mult:<10} | "
+                f"{p.exit_date or 'N/A':<10}"
+            )
 
         print()
         print(f"Total Closed: {len(closed_positions)} positions (showing recent 10)")
@@ -91,9 +108,9 @@ def print_positions_json(positions: List[Position]):
 
 def main():
     parser = argparse.ArgumentParser(description="List Turtle Trading positions")
-    parser.add_argument('--all', action='store_true', help='Include closed positions')
-    parser.add_argument('--json', action='store_true', help='Output as JSON')
-    parser.add_argument('--symbol', type=str, help='Filter by symbol (e.g., SPY, 005930.KS)')
+    parser.add_argument("--all", action="store_true", help="Include closed positions")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--symbol", type=str, help="Filter by symbol (e.g., SPY, 005930.KS)")
 
     args = parser.parse_args()
 
@@ -108,7 +125,7 @@ def main():
 
         # 필터링
         if not args.all:
-            positions = [p for p in positions if p.status == 'open']
+            positions = [p for p in positions if p.status == "open"]
 
         # 출력
         if args.json:
@@ -123,7 +140,10 @@ def main():
                 print(f"Total Positions: {summary['total_positions']}")
                 print(f"Open: {summary['open_positions']}, Closed: {summary['closed_positions']}")
                 print(f"Total P&L: ${summary['total_pnl']:,.2f}")
-                print(f"Win Rate: {summary['win_rate']*100:.1f}% ({summary['winning_trades']}/{summary['closed_positions']} wins)")
+                win_rate_pct = summary["win_rate"] * 100
+                wins = summary["winning_trades"]
+                total_closed = summary["closed_positions"]
+                print(f"Win Rate: {win_rate_pct:.1f}% ({wins}/{total_closed} wins)")
                 print(f"Average R-Multiple: {summary['avg_r_multiple']:.2f}R")
 
     except Exception as e:

@@ -7,14 +7,14 @@
 """
 
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import List, Optional
 
 from src.kis_api import KISAPIClient, OrderSide, OrderType
-from src.utils import atomic_write_json, safe_load_json
 from src.types import OrderStatus
+from src.utils import atomic_write_json, safe_load_json
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +25,20 @@ ORDER_LOG_PATH = Path(__file__).parent.parent / "data" / "trades" / "order_log.j
 @dataclass
 class OrderRecord:
     """주문 기록 데이터클래스"""
+
     order_id: str
     symbol: str
-    side: str                         # "buy" / "sell"
+    side: str  # "buy" / "sell"
     quantity: int
     price: float
-    order_type: str                   # "MARKET" / "LIMIT"
-    status: str                       # OrderStatus 상수
+    order_type: str  # "MARKET" / "LIMIT"
+    status: str  # OrderStatus 상수
     timestamp: str
     dry_run: bool
     fill_price: Optional[float] = None
     fill_time: Optional[str] = None
     error_message: Optional[str] = None
-    reason: Optional[str] = None      # 주문 이유 (시그널 설명)
+    reason: Optional[str] = None  # 주문 이유 (시그널 설명)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -50,12 +51,7 @@ class AutoTrader:
     - dry_run=False (live): KIS API를 통한 실거래
     """
 
-    def __init__(
-        self,
-        kis_client: KISAPIClient,
-        dry_run: bool = True,
-        max_order_amount: float = 5_000_000
-    ):
+    def __init__(self, kis_client: KISAPIClient, dry_run: bool = True, max_order_amount: float = 5_000_000):
         self.kis_client = kis_client
         self.dry_run = dry_run
         self.max_order_amount = max_order_amount
@@ -63,10 +59,7 @@ class AutoTrader:
 
         if not dry_run:
             logger.warning(
-                "=" * 60 + "\n"
-                "[LIVE MODE] 실거래 모드 활성화!\n"
-                "실제 주문이 체결됩니다. 신중하게 진행하세요.\n"
-                "=" * 60
+                "=" * 60 + "\n[LIVE MODE] 실거래 모드 활성화!\n실제 주문이 체결됩니다. 신중하게 진행하세요.\n=" * 60
             )
         else:
             logger.info("[DRY-RUN MODE] 시뮬레이션 모드 - 실제 주문 없음")
@@ -100,7 +93,7 @@ class AutoTrader:
         quantity: int,
         price: float,
         order_type: OrderType = OrderType.MARKET,
-        reason: str = ""
+        reason: str = "",
     ) -> OrderRecord:
         """
         주문 실행 (dry-run 또는 live)
@@ -138,7 +131,7 @@ class AutoTrader:
                 timestamp=timestamp,
                 dry_run=self.dry_run,
                 error_message=error_msg,
-                reason=reason
+                reason=reason,
             )
             self._append_order_to_log(record)
             return record
@@ -159,9 +152,9 @@ class AutoTrader:
                 status=OrderStatus.DRY_RUN.value,
                 timestamp=timestamp,
                 dry_run=True,
-                fill_price=price,         # dry-run에서는 요청가로 체결 가정
+                fill_price=price,  # dry-run에서는 요청가로 체결 가정
                 fill_time=timestamp,
-                reason=reason
+                reason=reason,
             )
             self._append_order_to_log(record)
             return record
@@ -173,11 +166,7 @@ class AutoTrader:
         )
         try:
             result = await self.kis_client.place_order(
-                symbol=symbol,
-                side=side,
-                quantity=quantity,
-                price=price,
-                order_type=order_type
+                symbol=symbol, side=side, quantity=quantity, price=price, order_type=order_type
             )
 
             if result.get("success"):
@@ -193,7 +182,7 @@ class AutoTrader:
                     dry_run=False,
                     fill_price=price,
                     fill_time=result.get("order_time", timestamp),
-                    reason=reason
+                    reason=reason,
                 )
                 # KIS API가 반환한 주문 번호로 order_id 업데이트
                 if result.get("order_no"):
@@ -212,7 +201,7 @@ class AutoTrader:
                     timestamp=timestamp,
                     dry_run=False,
                     error_message=error_msg,
-                    reason=reason
+                    reason=reason,
                 )
                 logger.error(f"주문 실패: {symbol} - {error_msg}")
 
@@ -230,7 +219,7 @@ class AutoTrader:
                 timestamp=timestamp,
                 dry_run=False,
                 error_message=error_msg,
-                reason=reason
+                reason=reason,
             )
 
         self._append_order_to_log(record)
@@ -271,24 +260,15 @@ class AutoTrader:
                 "total_equity": 0.0,
                 "cash": 0.0,
                 "positions": [],
-                "message": "Dry-run mode - 실제 계좌 데이터 없음"
+                "message": "Dry-run mode - 실제 계좌 데이터 없음",
             }
 
         try:
             balance = await self.kis_client.get_balance()
-            return {
-                "dry_run": False,
-                **balance
-            }
+            return {"dry_run": False, **balance}
         except Exception as e:
             logger.error(f"계좌 조회 실패: {e}")
-            return {
-                "dry_run": False,
-                "error": str(e),
-                "total_equity": 0.0,
-                "cash": 0.0,
-                "positions": []
-            }
+            return {"dry_run": False, "error": str(e), "total_equity": 0.0, "cash": 0.0, "positions": []}
 
     def get_order_history(self) -> List[dict]:
         """
@@ -316,10 +296,7 @@ class AutoTrader:
         today = datetime.now().strftime("%Y-%m-%d")
         orders = self._load_order_log()
 
-        today_orders = [
-            o for o in orders
-            if o.get("timestamp", "").startswith(today)
-        ]
+        today_orders = [o for o in orders if o.get("timestamp", "").startswith(today)]
 
         filled = sum(1 for o in today_orders if o.get("status") == OrderStatus.FILLED.value)
         failed = sum(1 for o in today_orders if o.get("status") == OrderStatus.FAILED.value)
@@ -336,5 +313,5 @@ class AutoTrader:
             "filled": filled,
             "failed": failed,
             "dry_run": dry_run_count,
-            "total_amount": total_amount
+            "total_amount": total_amount,
         }

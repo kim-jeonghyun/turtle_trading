@@ -6,33 +6,28 @@
 보안 문제가 없는지 검증합니다.
 """
 
-import sys
 import argparse
-import os
-import stat
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import List
 
 from src.security import (
     check_env_file_permissions,
-    validate_credentials,
     mask_credential,
-    run_security_check,
+    validate_credentials,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s: %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # 색상 코드 (터미널 출력)
-COLOR_GREEN = '\033[92m'
-COLOR_RED = '\033[91m'
-COLOR_YELLOW = '\033[93m'
-COLOR_BLUE = '\033[94m'
-COLOR_RESET = '\033[0m'
+COLOR_GREEN = "\033[92m"
+COLOR_RED = "\033[91m"
+COLOR_YELLOW = "\033[93m"
+COLOR_BLUE = "\033[94m"
+COLOR_RESET = "\033[0m"
 
 
 def colored(text: str, color: str) -> str:

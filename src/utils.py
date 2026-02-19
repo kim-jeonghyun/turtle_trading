@@ -7,16 +7,16 @@
 - 구조화된 로깅
 """
 
-import json
-import shutil
-import tempfile
-import os
-import time
 import asyncio
 import functools
+import json
 import logging
-from pathlib import Path
+import os
+import shutil
+import tempfile
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,9 @@ def atomic_write_json(filepath: Path, data: Any):
     dir_path = filepath.parent
     dir_path.mkdir(parents=True, exist_ok=True)
 
-    fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix='.tmp')
+    fd, tmp_path = tempfile.mkstemp(dir=str(dir_path), suffix=".tmp")
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         os.rename(tmp_path, str(filepath))
     except Exception:
@@ -50,7 +50,7 @@ def backup_file(filepath: Path, max_backups: int = 7):
     backup_dir = filepath.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    date_str = datetime.now().strftime('%Y%m%d')
+    date_str = datetime.now().strftime("%Y%m%d")
     backup_path = backup_dir / f"{filepath.stem}_{date_str}{filepath.suffix}"
 
     if not backup_path.exists():
@@ -69,9 +69,17 @@ def validate_position_schema(data: dict, required_fields: Optional[List[str]] = 
     """포지션 데이터 스키마 검증"""
     if required_fields is None:
         required_fields = [
-            'position_id', 'symbol', 'entry_price', 'status',
-            'direction', 'system', 'entry_date', 'entry_n',
-            'units', 'total_shares', 'stop_loss'
+            "position_id",
+            "symbol",
+            "entry_price",
+            "status",
+            "direction",
+            "system",
+            "entry_date",
+            "entry_n",
+            "units",
+            "total_shares",
+            "stop_loss",
         ]
     return all(f in data for f in required_fields)
 
@@ -83,7 +91,7 @@ def safe_load_json(filepath: Path, default: Any = None) -> Any:
         return default if default is not None else []
 
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         logger.critical(f"JSON 파일 손상: {filepath} - {e}")
@@ -93,7 +101,7 @@ def safe_load_json(filepath: Path, default: Any = None) -> Any:
             backups = sorted(backup_dir.glob(f"{filepath.stem}_*{filepath.suffix}"), reverse=True)
             for backup in backups:
                 try:
-                    with open(backup, 'r', encoding='utf-8') as f:
+                    with open(backup, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     logger.info(f"백업에서 복원: {backup}")
                     # 복원된 데이터로 원본 덮어쓰기
@@ -112,6 +120,7 @@ def safe_load_json(filepath: Path, default: Any = None) -> Any:
 # 재시도 데코레이터
 # ---------------------------------------------------------------------------
 
+
 def retry_async(
     max_retries: int = 3,
     base_delay: float = 1.0,
@@ -119,6 +128,7 @@ def retry_async(
     exceptions: tuple = (Exception,),
 ):
     """비동기 함수용 지수 백오프 재시도 데코레이터"""
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -129,13 +139,13 @@ def retry_async(
                 except exceptions as e:
                     last_exception = e
                     if attempt < max_retries:
-                        delay = min(base_delay * (2 ** attempt), max_delay)
-                        logger.warning(
-                            f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}"
-                        )
+                        delay = min(base_delay * (2**attempt), max_delay)
+                        logger.warning(f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}")
                         await asyncio.sleep(delay)
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
@@ -146,6 +156,7 @@ def retry_sync(
     exceptions: tuple = (Exception,),
 ):
     """동기 함수용 지수 백오프 재시도 데코레이터"""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -156,19 +167,20 @@ def retry_sync(
                 except exceptions as e:
                     last_exception = e
                     if attempt < max_retries:
-                        delay = min(base_delay * (2 ** attempt), max_delay)
-                        logger.warning(
-                            f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}"
-                        )
+                        delay = min(base_delay * (2**attempt), max_delay)
+                        logger.warning(f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}")
                         time.sleep(delay)
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # 구조화된 로깅 설정
 # ---------------------------------------------------------------------------
+
 
 def setup_structured_logging(
     name: str,
@@ -184,22 +196,17 @@ def setup_structured_logging(
 
     # 콘솔 핸들러
     console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    ))
+    console.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    )
 
     # 파일 핸들러 (일별 로테이션)
     from logging.handlers import TimedRotatingFileHandler
-    file_handler = TimedRotatingFileHandler(
-        log_path / f"{name}.log",
-        when="midnight",
-        backupCount=30,
-        encoding="utf-8"
+
+    file_handler = TimedRotatingFileHandler(log_path / f"{name}.log", when="midnight", backupCount=30, encoding="utf-8")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s")
     )
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s"
-    ))
 
     if not structured_logger.handlers:
         structured_logger.addHandler(console)

@@ -10,33 +10,30 @@
 
 import asyncio
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
-from src.universe_manager import UniverseManager
 from src.notifier import (
-    NotificationManager,
-    TelegramChannel,
     DiscordChannel,
     EmailChannel,
-    NotificationMessage,
-    NotificationLevel
+    NotificationManager,
+    TelegramChannel,
 )
+from src.universe_manager import UniverseManager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def load_config():
     """환경 변수에서 설정 로드"""
     import os
+
     from dotenv import load_dotenv
+
     load_dotenv()
 
     return {
@@ -47,7 +44,7 @@ def load_config():
         "smtp_port": int(os.getenv("SMTP_PORT", "587")),
         "email_user": os.getenv("EMAIL_USER"),
         "email_pass": os.getenv("EMAIL_PASSWORD"),
-        "email_to": os.getenv("EMAIL_TO", "").split(",")
+        "email_to": os.getenv("EMAIL_TO", "").split(","),
     }
 
 
@@ -56,10 +53,7 @@ def setup_notifier(config: dict) -> NotificationManager:
     notifier = NotificationManager()
 
     if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(
-            config["telegram_token"],
-            config["telegram_chat_id"]
-        ))
+        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
         logger.info("Telegram 채널 추가")
 
     if config.get("discord_webhook"):
@@ -67,14 +61,16 @@ def setup_notifier(config: dict) -> NotificationManager:
         logger.info("Discord 채널 추가")
 
     if config.get("email_user") and config.get("email_to"):
-        notifier.add_channel(EmailChannel(
-            config["smtp_host"],
-            config["smtp_port"],
-            config["email_user"],
-            config["email_pass"],
-            config["email_user"],
-            config["email_to"]
-        ))
+        notifier.add_channel(
+            EmailChannel(
+                config["smtp_host"],
+                config["smtp_port"],
+                config["email_user"],
+                config["email_pass"],
+                config["email_user"],
+                config["email_to"],
+            )
+        )
         logger.info("Email 채널 추가")
 
     return notifier
@@ -93,32 +89,36 @@ def check_signals(df, symbol: str, system: int = 1) -> list:
     # System 2: 55일 돌파
     if system == 1:
         high_col, low_col = "dc_high_20", "dc_low_20"
-        exit_low, exit_high = "dc_low_10", "dc_high_10"
+        _exit_low, _exit_high = "dc_low_10", "dc_high_10"
     else:
         high_col, low_col = "dc_high_55", "dc_low_55"
-        exit_low, exit_high = "dc_low_20", "dc_high_20"
+        _exit_low, _exit_high = "dc_low_20", "dc_high_20"
 
     # 롱 진입 시그널
     if today["high"] > yesterday[high_col]:
-        signals.append({
-            "symbol": symbol,
-            "type": "ENTRY_LONG",
-            "price": yesterday[high_col],
-            "current": today["close"],
-            "n": today["N"],
-            "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파"
-        })
+        signals.append(
+            {
+                "symbol": symbol,
+                "type": "ENTRY_LONG",
+                "price": yesterday[high_col],
+                "current": today["close"],
+                "n": today["N"],
+                "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파",
+            }
+        )
 
     # 숏 진입 시그널
     if today["low"] < yesterday[low_col]:
-        signals.append({
-            "symbol": symbol,
-            "type": "ENTRY_SHORT",
-            "price": yesterday[low_col],
-            "current": today["close"],
-            "n": today["N"],
-            "message": f"System {system} 숏 진입: {yesterday[low_col]:.2f} 이탈"
-        })
+        signals.append(
+            {
+                "symbol": symbol,
+                "type": "ENTRY_SHORT",
+                "price": yesterday[low_col],
+                "current": today["close"],
+                "n": today["N"],
+                "message": f"System {system} 숏 진입: {yesterday[low_col]:.2f} 이탈",
+            }
+        )
 
     return signals
 
@@ -172,10 +172,7 @@ async def main():
 
         for signal in all_signals:
             # 시그널 저장
-            data_store.save_signal({
-                **signal,
-                "timestamp": datetime.now().isoformat()
-            })
+            data_store.save_signal({**signal, "timestamp": datetime.now().isoformat()})
 
             # 알림 전송
             await notifier.send_signal(
@@ -183,7 +180,7 @@ async def main():
                 action=signal["type"],
                 price=signal["price"],
                 quantity=0,  # 실제 수량은 사용자가 결정
-                reason=signal["message"]
+                reason=signal["message"],
             )
 
     else:

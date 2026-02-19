@@ -6,17 +6,14 @@
 - 피라미딩 관리
 """
 
-import pandas as pd
-import json
-from pathlib import Path
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, asdict
-from enum import Enum
 import logging
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .utils import atomic_write_json, backup_file, validate_position_schema, safe_load_json
-from src.types import SignalType
+from .utils import atomic_write_json, backup_file, safe_load_json, validate_position_schema
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +27,7 @@ class PositionStatus(Enum):
 @dataclass
 class Position:
     """포지션 데이터 클래스"""
+
     position_id: str
     symbol: str
     system: int  # 1 or 2
@@ -69,7 +67,7 @@ class Position:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Position':
+    def from_dict(cls, data: Dict[str, Any]) -> "Position":
         return cls(**data)
 
     def calculate_pnl(self, exit_price: float) -> float:
@@ -89,6 +87,7 @@ class Position:
 @dataclass
 class PositionEntry:
     """개별 진입 기록 (피라미딩 추적용)"""
+
     entry_id: str
     position_id: str
     entry_date: str
@@ -157,7 +156,7 @@ class PositionTracker:
         entry_price: float,
         n_value: float,
         shares: int,
-        account_equity: float = 100000
+        account_equity: float = 100000,
     ) -> Position:
         """새 포지션 생성"""
         position_id = f"{symbol}_{system}_{direction}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -176,7 +175,7 @@ class PositionTracker:
             symbol=symbol,
             system=system,
             direction=direction,
-            entry_date=datetime.now().strftime('%Y-%m-%d'),
+            entry_date=datetime.now().strftime("%Y-%m-%d"),
             entry_price=entry_price,
             entry_n=n_value,
             units=1,
@@ -187,7 +186,7 @@ class PositionTracker:
             pyramid_level=0,
             exit_period=exit_period,
             status=PositionStatus.OPEN.value,
-            last_update=datetime.now().isoformat()
+            last_update=datetime.now().isoformat(),
         )
 
         # 포지션 저장
@@ -203,7 +202,7 @@ class PositionTracker:
             entry_price=entry_price,
             shares=shares,
             pyramid_level=0,
-            n_value=n_value
+            n_value=n_value,
         )
         entries = self._load_entries()
         entries.append(entry)
@@ -212,13 +211,7 @@ class PositionTracker:
         logger.info(f"포지션 오픈: {symbol} {direction} @ {entry_price}")
         return position
 
-    def add_pyramid(
-        self,
-        position_id: str,
-        entry_price: float,
-        n_value: float,
-        shares: int
-    ) -> Optional[Position]:
+    def add_pyramid(self, position_id: str, entry_price: float, n_value: float, shares: int) -> Optional[Position]:
         """피라미딩 추가"""
         positions = self._load_positions()
 
@@ -238,11 +231,11 @@ class PositionTracker:
                 entry = PositionEntry(
                     entry_id=f"{position_id}_{pos.pyramid_level}",
                     position_id=position_id,
-                    entry_date=datetime.now().strftime('%Y-%m-%d'),
+                    entry_date=datetime.now().strftime("%Y-%m-%d"),
                     entry_price=entry_price,
                     shares=shares,
                     pyramid_level=pos.pyramid_level,
-                    n_value=n_value
+                    n_value=n_value,
                 )
                 entries = self._load_entries()
                 entries.append(entry)
@@ -257,17 +250,14 @@ class PositionTracker:
         return None
 
     def close_position(
-        self,
-        position_id: str,
-        exit_price: float,
-        exit_reason: str = "Exit Signal"
+        self, position_id: str, exit_price: float, exit_reason: str = "Exit Signal"
     ) -> Optional[Position]:
         """포지션 청산"""
         positions = self._load_positions()
 
         for i, pos in enumerate(positions):
             if pos.position_id == position_id and pos.status == PositionStatus.OPEN.value:
-                pos.exit_date = datetime.now().strftime('%Y-%m-%d')
+                pos.exit_date = datetime.now().strftime("%Y-%m-%d")
                 pos.exit_price = exit_price
                 pos.exit_reason = exit_reason
                 # 가중평균 단가 기반 P&L 계산 (피라미딩 시 정확)
@@ -385,5 +375,7 @@ class PositionTracker:
             "total_pnl": total_pnl,
             "winning_trades": len(winning_trades),
             "win_rate": len(winning_trades) / len(closed_pos) if closed_pos else 0,
-            "avg_r_multiple": (lambda rs: sum(rs) / len(rs) if rs else 0)([p.r_multiple for p in closed_pos if p.r_multiple is not None])
+            "avg_r_multiple": (lambda rs: sum(rs) / len(rs) if rs else 0)(
+                [p.r_multiple for p in closed_pos if p.r_multiple is not None]
+            ),
         }
