@@ -136,7 +136,7 @@ def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: boo
     - 직전 거래가 손실이면 진입 허용
     - 직전 거래가 수익이면 20일 돌파 스킵, 단 55일 돌파는 failsafe 진입 허용
     """
-    if system != 1:
+    if system == 2:
         return True  # System 2는 필터 없음
     if not is_profitable:
         return True
