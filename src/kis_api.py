@@ -54,19 +54,30 @@ class RateLimitError(KISAPIError):
     pass
 
 
+def _sanitize_error(data: dict) -> str:
+    """예외 메시지용 안전한 요약 생성 (민감 데이터 제외)"""
+    rt_cd = data.get("rt_cd", "N/A")
+    msg1 = data.get("msg1", "N/A")
+    return f"rt_cd={rt_cd}, msg={msg1}"
+
+
 def _classify_response(status: int, data: dict) -> None:
     """HTTP 응답 코드 기반 예외 분류 (성공 시 None 반환)"""
     if 200 <= status < 300:
         return  # 성공
+
+    safe_msg = _sanitize_error(data)
+    logger.debug("API error response (status=%d): %s", status, data)
+
     if status == 429:
-        raise RateLimitError(f"Rate limit exceeded: {data}")
+        raise RateLimitError(f"Rate limit exceeded: {safe_msg}")
     if status == 401:
-        raise TokenExpiredError(f"Token expired (401): {data}")
+        raise TokenExpiredError(f"Token expired (401): {safe_msg}")
     if status in (400, 403):
-        raise FatalError(f"Client error {status}: {data}")
+        raise FatalError(f"Client error {status}: {safe_msg}")
     if status >= 500:
-        raise RetryableError(f"Server error {status}: {data}")
-    raise KISAPIError(f"Unexpected status {status}: {data}")
+        raise RetryableError(f"Server error {status}: {safe_msg}")
+    raise KISAPIError(f"Unexpected status {status}: {safe_msg}")
 
 
 class KISMarket(Enum):
