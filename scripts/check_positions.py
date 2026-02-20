@@ -128,6 +128,21 @@ def is_korean_market(symbol: str) -> bool:
     return symbol.endswith(".KS") or symbol.endswith(".KQ")
 
 
+def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: bool) -> bool:
+    """System 1 필터 판단 (LONG/SHORT 공용)
+
+    Curtis Faith 원칙:
+    - 직전 거래가 손실이면 진입 허용
+    - 직전 거래가 수익이면 20일 돌파 스킵, 단 55일 돌파는 failsafe 진입 허용
+    - System 2는 필터 없음 (_was_last_trade_profitable이 항상 False 반환)
+    """
+    if not is_profitable:
+        return True
+    if system == 1 and is_55day_breakout:
+        return True  # 55일 failsafe override
+    return False
+
+
 def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker" = None) -> list:
     """진입 시그널 확인"""
     signals = []
@@ -158,17 +173,15 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
 
     # 롱 진입 시그널
     if today["high"] > yesterday[high_col]:
-        # System 1 필터: 직전 System 1 거래가 수익이면 스킵
-        # 단, 55일 failsafe breakout이면 필터를 무시하고 진입 허용
-        if _was_last_trade_profitable(symbol, system):
-            if system == 1 and today["high"] > yesterday.get("dc_high_55", float("inf")):
+        is_profitable = _was_last_trade_profitable(symbol, system)
+        is_55day_long = today["high"] > yesterday.get("dc_high_55", float("inf"))
+        allow_entry = _should_allow_entry(system, is_profitable, is_55day_long)
+
+        if is_profitable:
+            if allow_entry:
                 logger.info(f"System 1 필터: {symbol} 55일 failsafe override → 롱 진입 허용")
-                allow_entry = True
             else:
                 logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 롱 진입 스킵")
-                allow_entry = False
-        else:
-            allow_entry = True
 
         if allow_entry:
             signals.append(
@@ -194,17 +207,15 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
             short_low_col = "dc_low_55"
 
         if today["low"] < yesterday[short_low_col]:
-            # System 1 필터: 직전 System 1 거래가 수익이면 스킵
-            # 단, 55일 failsafe breakout이면 필터를 무시하고 진입 허용
-            if _was_last_trade_profitable(symbol, system):
-                if system == 1 and today["low"] < yesterday.get("dc_low_55", 0):
+            is_profitable = _was_last_trade_profitable(symbol, system)
+            is_55day_short = today["low"] < yesterday.get("dc_low_55", 0)
+            allow_short_entry = _should_allow_entry(system, is_profitable, is_55day_short)
+
+            if is_profitable:
+                if allow_short_entry:
                     logger.info(f"System 1 필터: {symbol} 55일 failsafe override → 숏 진입 허용")
-                    allow_short_entry = True
                 else:
                     logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 숏 진입 스킵")
-                    allow_short_entry = False
-            else:
-                allow_short_entry = True
 
             if allow_short_entry:
                 signals.append(
