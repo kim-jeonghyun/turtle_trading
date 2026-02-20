@@ -132,13 +132,15 @@ def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: boo
     """System 1 필터 판단 (LONG/SHORT 공용)
 
     Curtis Faith 원칙:
+    - System 2는 필터 없음 → 항상 진입 허용
     - 직전 거래가 손실이면 진입 허용
     - 직전 거래가 수익이면 20일 돌파 스킵, 단 55일 돌파는 failsafe 진입 허용
-    - System 2는 필터 없음 (_was_last_trade_profitable이 항상 False 반환)
     """
+    if system != 1:
+        return True  # System 2는 필터 없음
     if not is_profitable:
         return True
-    if system == 1 and is_55day_breakout:
+    if is_55day_breakout:
         return True  # 55일 failsafe override
     return False
 

@@ -73,7 +73,7 @@ turtle_trading/
 ├── src/
 │   ├── __init__.py
 │   ├── indicators.py        # Wilder's ATR, 도치안 채널
-│   ├── position_sizer.py    # 2% 리스크 기반 사이징
+│   ├── position_sizer.py    # 1% 리스크 기반 사이징
 │   ├── risk_manager.py      # 포트폴리오 리스크 관리
 │   ├── pyramid_manager.py   # 피라미딩 로직
 │   ├── inverse_filter.py    # Inverse ETF 필터

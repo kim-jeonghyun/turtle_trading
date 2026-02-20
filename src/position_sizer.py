@@ -1,5 +1,5 @@
 """
-2% 리스크 기반 포지션 사이징 모듈
+1% 리스크 기반 포지션 사이징 모듈 (Curtis Faith 원서 기준)
 """
 
 from dataclasses import dataclass, field
