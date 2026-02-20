@@ -214,14 +214,14 @@ def check_entry_signal(df, symbol: str, system: int) -> dict | None:
     return None
 
 
-def calculate_order_quantity(signal: dict, account_balance: float, risk_percent: float = 0.02) -> int:
+def calculate_order_quantity(signal: dict, account_balance: float, risk_percent: float = 0.01) -> int:
     """
-    2% 리스크 기반 주문 수량 계산
+    1% 리스크 기반 주문 수량 계산 (Curtis Faith 원서 기준)
 
     Args:
         signal: 시그널 딕셔너리 (entry_price, n_value 포함)
         account_balance: 계좌 잔고
-        risk_percent: 리스크 비율 (기본 2%)
+        risk_percent: 리스크 비율 (기본 1%)
 
     Returns:
         주문 수량 (정수)

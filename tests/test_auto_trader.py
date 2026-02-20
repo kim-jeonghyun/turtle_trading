@@ -504,3 +504,40 @@ class TestAutoTradeCLI:
         assert args.system == 1
         assert args.max_amount == 2_000_000.0
         assert args.verbose is True
+
+
+# ---------------------------------------------------------------------------
+# TestCalculateOrderQuantity
+# ---------------------------------------------------------------------------
+
+class TestCalculateOrderQuantity:
+    """scripts/auto_trade.py calculate_order_quantity 기본값 및 계산 검증"""
+
+    def test_default_risk_percent_is_one_percent(self):
+        """기본 risk_percent가 0.01 (1%) 이어야 한다"""
+        import inspect  # noqa: E402
+
+        from scripts.auto_trade import calculate_order_quantity  # noqa: E402
+
+        sig = inspect.signature(calculate_order_quantity)
+        default = sig.parameters["risk_percent"].default
+        assert default == 0.01, (
+            f"calculate_order_quantity 기본 risk_percent가 {default}이지만 0.01이어야 한다"
+        )
+
+    def test_quantity_calculation(self):
+        """주문 수량이 올바르게 계산되어야 한다"""
+        from scripts.auto_trade import calculate_order_quantity
+
+        signal = {"entry_price": 100.0, "n_value": 2.0}
+        # 1% of 100,000 = 1,000 / (2 * 2.0) / 100 = 2.5 → int = 2
+        qty = calculate_order_quantity(signal, account_balance=100_000)
+        assert qty == 2
+
+    def test_zero_n_value_returns_zero(self):
+        """n_value가 0이면 수량 0 반환"""
+        from scripts.auto_trade import calculate_order_quantity
+
+        signal = {"entry_price": 100.0, "n_value": 0}
+        qty = calculate_order_quantity(signal, account_balance=100_000)
+        assert qty == 0
