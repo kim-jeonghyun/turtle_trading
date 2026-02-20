@@ -478,6 +478,92 @@ class TestSignalStructure:
         assert signals == [], "데이터가 1행뿐이면 빈 리스트를 반환해야 한다"
 
 
+class TestBoundaryValues:
+    """Donchian 채널 경계값(정확히 같은 값) 테스트.
+
+    프로덕션 코드는 strict 비교(>, <)를 사용하므로
+    정확히 채널 값과 같은 경우의 동작을 명시적으로 검증한다.
+    """
+
+    def test_high_equals_dc_high_20_no_breakout(self):
+        """today high == dc_high_20 → 돌파 아님 (strict >), 시그널 없음"""
+        df = _make_df(
+            today_high=DC_HIGH_20,  # 정확히 같음
+            today_low=99.0,
+            today_close=DC_HIGH_20,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
+
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) == 0, (
+            "today high == dc_high_20 일 때 strict > 비교이므로 돌파가 아니어야 한다"
+        )
+
+    def test_low_equals_dc_low_20_no_breakout(self):
+        """today low == dc_low_20 → 이탈 아님 (strict <), 숏 시그널 없음"""
+        df = _make_df(
+            today_high=99.0,
+            today_low=DC_LOW_20,  # 정확히 같음
+            today_close=DC_LOW_20,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, (
+            "today low == dc_low_20 일 때 strict < 비교이므로 이탈이 아니어야 한다"
+        )
+
+    def test_high_equals_dc_high_55_no_failsafe(self):
+        """수익 거래 후 today high == dc_high_55 → failsafe 비발동, 스킵"""
+        df = _make_df(
+            today_high=DC_HIGH_55,  # 55일 채널과 정확히 같음 (> 아님)
+            today_low=99.0,
+            today_close=DC_HIGH_55,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        profitable_pos = _make_closed_position(SYMBOL_US, system=1, pnl=200.0)
+        tracker = _make_tracker_mock(SYMBOL_US, [profitable_pos])
+
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
+
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) == 0, (
+            "today high == dc_high_55 일 때 strict > 비교이므로 failsafe가 발동하지 않아야 한다"
+        )
+
+    def test_low_equals_dc_low_55_no_failsafe(self):
+        """수익 거래 후 today low == dc_low_55 → failsafe 비발동, 숏 스킵"""
+        df = _make_df(
+            today_high=99.0,
+            today_low=DC_LOW_55,  # 55일 채널과 정확히 같음 (< 아님)
+            today_close=DC_LOW_55,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        profitable_pos = _make_closed_position(SYMBOL_US, system=1, pnl=200.0)
+        tracker = _make_tracker_mock(SYMBOL_US, [profitable_pos])
+
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, (
+            "today low == dc_low_55 일 때 strict < 비교이므로 failsafe가 발동하지 않아야 한다"
+        )
+
+
 class TestSystem1FilterLastTradeSelection:
     """여러 청산 이력 중 가장 최근 System 1 거래를 기준으로 필터가 적용되는지 검증."""
 
