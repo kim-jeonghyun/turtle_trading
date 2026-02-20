@@ -16,7 +16,7 @@ import pandas as pd
 # scripts/ 디렉토리를 import 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.check_positions import check_entry_signals
+from scripts.check_positions import _should_allow_entry, check_entry_signals
 from src.position_tracker import Position
 from src.types import SignalType
 
@@ -642,3 +642,23 @@ class TestSystem1FilterLastTradeSelection:
         assert len(long_signals) == 1, (
             "System 2 수익 이력은 System 1 필터에 영향을 주지 않아야 한다"
         )
+
+
+class TestShouldAllowEntry:
+    """_should_allow_entry() 헬퍼 함수 직접 단위 테스트."""
+
+    def test_not_profitable_always_allows(self):
+        assert _should_allow_entry(system=1, is_profitable=False, is_55day_breakout=False) is True
+        assert _should_allow_entry(system=1, is_profitable=False, is_55day_breakout=True) is True
+
+    def test_profitable_system1_with_55day_breakout_allows(self):
+        assert _should_allow_entry(system=1, is_profitable=True, is_55day_breakout=True) is True
+
+    def test_profitable_system1_without_55day_breakout_blocks(self):
+        assert _should_allow_entry(system=1, is_profitable=True, is_55day_breakout=False) is False
+
+    def test_profitable_system2_always_allows(self):
+        """System 2는 _was_last_trade_profitable이 False를 반환하므로 is_profitable=False로 호출됨.
+        하지만 만약 True로 호출되더라도, system != 1이므로 failsafe 조건 미충족 → block."""
+        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=True) is False
+        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=False) is False
