@@ -159,7 +159,18 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
     # 롱 진입 시그널
     if today["high"] > yesterday[high_col]:
         # System 1 필터: 직전 System 1 거래가 수익이면 스킵
-        if not _was_last_trade_profitable(symbol, system):
+        # 단, 55일 failsafe breakout이면 필터를 무시하고 진입 허용
+        if _was_last_trade_profitable(symbol, system):
+            if system == 1 and today["high"] > yesterday.get("dc_high_55", float("inf")):
+                logger.info(f"System 1 필터: {symbol} 55일 failsafe override → 롱 진입 허용")
+                allow_entry = True
+            else:
+                logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 롱 진입 스킵")
+                allow_entry = False
+        else:
+            allow_entry = True
+
+        if allow_entry:
             signals.append(
                 {
                     "symbol": symbol,
@@ -174,8 +185,6 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
                     "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파",
                 }
             )
-        else:
-            logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 롱 진입 스킵")
 
     # 숏 진입 시그널 (미국 시장만 — 한국은 공매도 제한)
     if not is_korean_market(symbol):
@@ -185,7 +194,19 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
             short_low_col = "dc_low_55"
 
         if today["low"] < yesterday[short_low_col]:
-            if not _was_last_trade_profitable(symbol, system):
+            # System 1 필터: 직전 System 1 거래가 수익이면 스킵
+            # 단, 55일 failsafe breakout이면 필터를 무시하고 진입 허용
+            if _was_last_trade_profitable(symbol, system):
+                if system == 1 and today["low"] < yesterday.get("dc_low_55", 0):
+                    logger.info(f"System 1 필터: {symbol} 55일 failsafe override → 숏 진입 허용")
+                    allow_short_entry = True
+                else:
+                    logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 숏 진입 스킵")
+                    allow_short_entry = False
+            else:
+                allow_short_entry = True
+
+            if allow_short_entry:
                 signals.append(
                     {
                         "symbol": symbol,
@@ -200,8 +221,6 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
                         "message": f"System {system} 숏 진입: {yesterday[short_low_col]:.2f} 이탈",
                     }
                 )
-            else:
-                logger.info(f"System 1 필터: {symbol} 직전 거래 수익 → 숏 진입 스킵")
 
     return signals
 
