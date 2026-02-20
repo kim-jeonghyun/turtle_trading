@@ -21,7 +21,7 @@ Last updated: 2026-02-19
 ### 2.1 System 1 (Short-term breakout)
 
 - 진입: 20일 돌파 브레이크아웃
-- 필터: 최근 55일 수익성/유효성 확인
+- 필터: 직전 거래 수익 시 20일 돌파 스킵 (단, 55일 돌파는 failsafe 진입 허용)
 - 청산: 10일 하향 이탈
 
 ### 2.2 System 2 (Long-term breakout)
