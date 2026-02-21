@@ -58,8 +58,8 @@ def mock_kis_client(mock_kis_config):
     # get_order_status도 AsyncMock으로 설정 (재확인 메커니즘에서 사용)
     client.get_order_status = AsyncMock(return_value={
         "order_no": "",
-        "status": "not_found",
-        "message": "주문 내역을 찾을 수 없음",
+        "status": "found",
+        "orders": [],
     })
     return client
 
@@ -424,13 +424,18 @@ class TestOrderReconfirmation:
         mock_kis_client.place_order = AsyncMock(
             side_effect=ConnectionError("네트워크 타임아웃")
         )
-        # 재확인 시 get_order_status는 체결됨을 반환
+        # 재확인 시 get_order_status는 체결됨을 반환 (당일 체결 내역에서 매칭)
         mock_kis_client.get_order_status = AsyncMock(return_value={
-            "order_no": "LIVE_ORDER_001",
-            "status": "filled",
-            "filled_qty": 10,
-            "filled_price": 70500.0,
-            "order_time": "120030",
+            "order_no": "",
+            "status": "found",
+            "orders": [{
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "02",  # buy
+                "tot_ccld_qty": "10",
+                "avg_prvs": "70500",
+                "odno": "0012345678",
+                "ord_tmd": "120030",
+            }],
         })
 
         trader = AutoTrader(
@@ -469,11 +474,11 @@ class TestOrderReconfirmation:
         mock_kis_client.place_order = AsyncMock(
             side_effect=ConnectionError("네트워크 타임아웃")
         )
-        # 재확인 시 get_order_status는 미체결 상태 반환
+        # 재확인 시 get_order_status는 미체결 상태 반환 (일치하는 체결 없음)
         mock_kis_client.get_order_status = AsyncMock(return_value={
-            "order_no": "LIVE_ORDER_002",
-            "status": "not_found",
-            "message": "주문 내역을 찾을 수 없음",
+            "order_no": "",
+            "status": "found",
+            "orders": [],
         })
 
         trader = AutoTrader(
