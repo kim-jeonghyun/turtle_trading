@@ -5,6 +5,7 @@
 - 백업 관리
 - 재시도 데코레이터
 - 구조화된 로깅
+- 심볼 입력 검증
 """
 
 import asyncio
@@ -12,6 +13,7 @@ import functools
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -20,6 +22,53 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 심볼 입력 검증
+# ---------------------------------------------------------------------------
+
+# 허용 패턴: 영문 대소문자, 숫자, 마침표(.), 슬래시(/), 하이픈(-), 밑줄(_)
+# 길이: 1~20자
+_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9._/\-]{1,20}$")
+
+
+def validate_symbol(symbol: str) -> str:
+    """심볼 문자열을 검증하고 정제된 값을 반환한다.
+
+    허용 규칙:
+        - 타입: str (None, 빈 문자열 불가)
+        - 정규식: ^[A-Za-z0-9._/-]{1,20}$
+        - 앞뒤 공백은 자동 제거(strip) 후 검증
+
+    Args:
+        symbol: 검증할 심볼 문자열
+
+    Returns:
+        strip 처리된 유효한 심볼 문자열
+
+    Raises:
+        ValueError: 심볼이 None이거나 빈 문자열이거나 허용 패턴에 맞지 않을 때
+    """
+    if not isinstance(symbol, str):
+        raise ValueError(f"심볼은 문자열이어야 합니다 (전달된 타입: {type(symbol).__name__})")
+
+    symbol = symbol.strip()
+
+    if not symbol:
+        raise ValueError("심볼은 빈 문자열일 수 없습니다")
+
+    if ".." in symbol:
+        raise ValueError(
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} (경로 순회 패턴 '..'은 허용되지 않습니다)"
+        )
+
+    if not _SYMBOL_PATTERN.match(symbol):
+        raise ValueError(
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} (허용: 영문, 숫자, '.', '/', '-', '_' / 최대 20자)"
+        )
+
+    return symbol
 
 
 def atomic_write_json(filepath: Path, data: Any):

@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
+from src.utils import validate_symbol
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,11 +48,13 @@ class ParquetDataStore:
         return age < timedelta(hours=max_age_hours)
 
     def save_ohlcv(self, symbol: str, df: pd.DataFrame):
+        symbol = validate_symbol(symbol)
         path = self._get_cache_path(symbol, "ohlcv")
         self._atomic_write_parquet(path, df)
         logger.info(f"OHLCV 저장: {symbol} -> {path}")
 
     def load_ohlcv(self, symbol: str, max_age_hours: int = 24) -> Optional[pd.DataFrame]:
+        symbol = validate_symbol(symbol)
         path = self._get_cache_path(symbol, "ohlcv")
         if not self._is_cache_valid(path, max_age_hours):
             return None
@@ -63,6 +67,7 @@ class ParquetDataStore:
             return None
 
     def save_indicators(self, symbol: str, df: pd.DataFrame):
+        symbol = validate_symbol(symbol)
         path = self._get_cache_path(symbol, "indicators")
         self._atomic_write_parquet(path, df)
 
@@ -81,6 +86,7 @@ class ParquetDataStore:
             raise
 
     def load_indicators(self, symbol: str) -> Optional[pd.DataFrame]:
+        symbol = validate_symbol(symbol)
         path = self._get_cache_path(symbol, "indicators")
         if not path.exists():
             return None
