@@ -24,7 +24,6 @@ from typing import Any, List, Optional
 logger = logging.getLogger(__name__)
 
 
-
 # ---------------------------------------------------------------------------
 # 심볼 입력 검증
 # ---------------------------------------------------------------------------
@@ -52,9 +51,7 @@ def validate_symbol(symbol: str) -> str:
         ValueError: 심볼이 None이거나 빈 문자열이거나 허용 패턴에 맞지 않을 때
     """
     if not isinstance(symbol, str):
-        raise ValueError(
-            f"심볼은 문자열이어야 합니다 (전달된 타입: {type(symbol).__name__})"
-        )
+        raise ValueError(f"심볼은 문자열이어야 합니다 (전달된 타입: {type(symbol).__name__})")
 
     symbol = symbol.strip()
 
@@ -63,14 +60,12 @@ def validate_symbol(symbol: str) -> str:
 
     if ".." in symbol:
         raise ValueError(
-            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} "
-            f"(경로 순회 패턴 '..'은 허용되지 않습니다)"
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} (경로 순회 패턴 '..'은 허용되지 않습니다)"
         )
 
     if not _SYMBOL_PATTERN.match(symbol):
         raise ValueError(
-            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} "
-            f"(허용: 영문, 숫자, '.', '/', '-', '_' / 최대 20자)"
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} (허용: 영문, 숫자, '.', '/', '-', '_' / 최대 20자)"
         )
 
     return symbol
