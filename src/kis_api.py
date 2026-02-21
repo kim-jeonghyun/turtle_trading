@@ -524,6 +524,77 @@ class KISAPIClient:
             aiohttp.ClientError,
         ),
     )
+    async def get_daily_fills(self) -> list:
+        """당일 전체 체결 내역 조회 (주문번호 필터 없음)
+
+        /uapi/domestic-stock/v1/trading/inquire-daily-ccld 엔드포인트의
+        output1 리스트를 그대로 반환한다.
+        _reconfirm_order에서 phantom fill 검색에 사용된다.
+
+        Returns:
+            KIS API output1 리스트 (각 항목은 pdno, sll_buy_dvsn_cd,
+            tot_ccld_qty, avg_prvs, ord_tmd, odno 등 KIS 원시 필드 포함)
+
+        Raises:
+            KISAPIError: API 응답 rt_cd != "0" 또는 HTTP 오류 시
+        """
+        token = await self._get_token()
+        tr_id = "TTTC8001R" if self.config.is_real else "VTTC8001R"
+
+        url = f"{self.config.base_url}/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
+        headers = self._get_headers(token, tr_id)
+        params = {
+            "CANO": self.config.account_no,
+            "ACNT_PRDT_CD": self.config.account_suffix,
+            "INQR_STRT_DT": datetime.now().strftime("%Y%m%d"),
+            "INQR_END_DT": datetime.now().strftime("%Y%m%d"),
+            "SLL_BUY_DVSN_CD": "00",  # 전체 (매수+매도)
+            "INQR_DVSN": "00",
+            "PDNO": "",
+            "CCLD_DVSN": "00",
+            "ORD_GNO_BRNO": "",
+            "ODNO": "",  # 주문번호 필터 없음 — 전체 조회
+            "INQR_DVSN_3": "00",
+            "INQR_DVSN_1": "",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        }
+
+        managed = self._get_session()
+        session_to_close = None
+        if managed is None:
+            managed = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+            session_to_close = managed
+
+        try:
+            async with self._semaphore:
+                async with managed.get(url, headers=headers, params=params) as resp:
+                    try:
+                        data = await resp.json()
+                    except (aiohttp.ContentTypeError, ValueError) as e:
+                        raise RetryableError(f"JSON 파싱 실패 (status={resp.status}): {e}")
+                    self._classify_and_handle(resp.status, data)
+                    if data.get("rt_cd") == "0":
+                        return data.get("output1", [])
+                    else:
+                        safe_msg = _sanitize_error(data)
+                        raise KISAPIError(f"당일 체결 조회 실패: {safe_msg}")
+        finally:
+            if session_to_close:
+                await session_to_close.close()
+
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        exceptions=(
+            RetryableError,
+            RateLimitError,
+            TokenExpiredError,
+            ConnectionError,
+            TimeoutError,
+            aiohttp.ClientError,
+        ),
+    )
     async def get_order_status(self, order_no: str) -> dict:
         """KIS 주문체결조회 API
 

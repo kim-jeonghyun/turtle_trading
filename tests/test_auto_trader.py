@@ -10,18 +10,17 @@ auto_trader.py 단위 테스트
 - 주문 예외 후 재확인 (phantom fill 방지)
 """
 
-import pytest
-import json
 import asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+import json
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.auto_trader import AutoTrader, OrderRecord
+from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 from src.notifier import NotificationManager
 from src.types import OrderStatus
-from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -55,12 +54,13 @@ def mock_kis_client(mock_kis_config):
         "cash": 5_000_000.0,
         "positions": []
     })
-    # get_order_status도 AsyncMock으로 설정 (재확인 메커니즘에서 사용)
+    # get_order_status도 AsyncMock으로 설정 (check_order_status에서 사용)
     client.get_order_status = AsyncMock(return_value={
         "order_no": "",
-        "status": "found",
-        "orders": [],
+        "status": "not_found",
     })
+    # get_daily_fills는 당일 체결 내역 리스트 반환 (재확인 메커니즘에서 사용)
+    client.get_daily_fills = AsyncMock(return_value=[])
     return client
 
 
@@ -424,19 +424,15 @@ class TestOrderReconfirmation:
         mock_kis_client.place_order = AsyncMock(
             side_effect=ConnectionError("네트워크 타임아웃")
         )
-        # 재확인 시 get_order_status는 체결됨을 반환 (당일 체결 내역에서 매칭)
-        mock_kis_client.get_order_status = AsyncMock(return_value={
-            "order_no": "",
-            "status": "found",
-            "orders": [{
-                "pdno": "005930",
-                "sll_buy_dvsn_cd": "02",  # buy
-                "tot_ccld_qty": "10",
-                "avg_prvs": "70500",
-                "odno": "0012345678",
-                "ord_tmd": "120030",
-            }],
-        })
+        # 재확인 시 get_daily_fills는 당일 체결 리스트 반환 (KIS 원시 형식)
+        mock_kis_client.get_daily_fills = AsyncMock(return_value=[{
+            "pdno": "005930",
+            "sll_buy_dvsn_cd": "02",  # buy
+            "tot_ccld_qty": "10",
+            "avg_prvs": "70500",
+            "odno": "0012345678",
+            "ord_tmd": "120030",
+        }])
 
         trader = AutoTrader(
             kis_client=mock_kis_client,
@@ -464,8 +460,8 @@ class TestOrderReconfirmation:
             assert record.status == OrderStatus.FILLED.value
             assert record.fill_price == 70500.0
             assert "재확인으로 FILLED 복구" in (record.error_message or "")
-            # get_order_status가 한 번 호출되었는지 확인
-            mock_kis_client.get_order_status.assert_called_once()
+            # get_daily_fills가 한 번 호출되었는지 확인
+            mock_kis_client.get_daily_fills.assert_called_once()
         finally:
             at_module.ORDER_LOG_PATH = original_path
 
@@ -474,12 +470,8 @@ class TestOrderReconfirmation:
         mock_kis_client.place_order = AsyncMock(
             side_effect=ConnectionError("네트워크 타임아웃")
         )
-        # 재확인 시 get_order_status는 미체결 상태 반환 (일치하는 체결 없음)
-        mock_kis_client.get_order_status = AsyncMock(return_value={
-            "order_no": "",
-            "status": "found",
-            "orders": [],
-        })
+        # 재확인 시 get_daily_fills는 빈 리스트 반환 (일치하는 체결 없음)
+        mock_kis_client.get_daily_fills = AsyncMock(return_value=[])
 
         trader = AutoTrader(
             kis_client=mock_kis_client,
@@ -506,7 +498,7 @@ class TestOrderReconfirmation:
             assert record.status == OrderStatus.FAILED.value
             assert record.fill_price is None
             assert "네트워크 타임아웃" in (record.error_message or "")
-            mock_kis_client.get_order_status.assert_called_once()
+            mock_kis_client.get_daily_fills.assert_called_once()
         finally:
             at_module.ORDER_LOG_PATH = original_path
 
@@ -516,7 +508,7 @@ class TestOrderReconfirmation:
             side_effect=ConnectionError("네트워크 타임아웃")
         )
         # 재확인 조회도 예외를 던진다
-        mock_kis_client.get_order_status = AsyncMock(
+        mock_kis_client.get_daily_fills = AsyncMock(
             side_effect=ConnectionError("재확인 조회 실패")
         )
 
@@ -584,8 +576,8 @@ class TestOrderReconfirmation:
 
             # dry-run이므로 DRY_RUN 상태
             assert record.status == OrderStatus.DRY_RUN.value
-            # get_order_status가 호출되지 않아야 함
-            mock_kis_client.get_order_status.assert_not_called()
+            # get_daily_fills가 호출되지 않아야 함
+            mock_kis_client.get_daily_fills.assert_not_called()
         finally:
             at_module.ORDER_LOG_PATH = original_path
 
@@ -594,7 +586,7 @@ class TestOrderReconfirmation:
         mock_kis_client.place_order = AsyncMock(
             side_effect=ConnectionError("네트워크 타임아웃")
         )
-        mock_kis_client.get_order_status = AsyncMock(
+        mock_kis_client.get_daily_fills = AsyncMock(
             side_effect=ConnectionError("재확인 조회 실패")
         )
 
@@ -626,6 +618,148 @@ class TestOrderReconfirmation:
             assert "재확인 실패" in (record.error_message or "")
         finally:
             at_module.ORDER_LOG_PATH = original_path
+
+
+# ---------------------------------------------------------------------------
+# TestFindMatchingFill -- _find_matching_fill 직접 단위 테스트
+# ---------------------------------------------------------------------------
+
+class TestFindMatchingFill:
+    """_find_matching_fill 메서드의 매칭 로직 직접 검증"""
+
+    @pytest.fixture
+    def trader(self, mock_kis_client):
+        """테스트용 AutoTrader (dry_run, 최소 설정)"""
+        return AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=True,
+            max_order_amount=5_000_000,
+        )
+
+    @pytest.fixture
+    def buy_record(self):
+        """매수 주문 기록 샘플"""
+        return OrderRecord(
+            order_id="TEST_001",
+            symbol="005930",
+            side="buy",
+            quantity=10,
+            price=70_000.0,
+            order_type="LIMIT",
+            status=OrderStatus.FAILED.value,
+            timestamp=datetime.now().isoformat(),
+            dry_run=False,
+        )
+
+    @pytest.fixture
+    def matching_fill(self):
+        """매칭되는 KIS 체결 레코드"""
+        return {
+            "pdno": "005930",
+            "sll_buy_dvsn_cd": "02",  # 02=매수
+            "tot_ccld_qty": "10",
+            "avg_prvs": "70500",
+            "ord_tmd": "100000",
+            "odno": "0001234567",
+        }
+
+    def test_matching_record_returns_it(self, trader, buy_record, matching_fill):
+        """종목/방향/수량이 일치하면 해당 레코드를 반환"""
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is not None
+        assert result["odno"] == "0001234567"
+        assert result["pdno"] == "005930"
+
+    def test_wrong_symbol_returns_none(self, trader, buy_record, matching_fill):
+        """종목코드가 다르면 None 반환"""
+        matching_fill["pdno"] = "000660"  # 다른 종목
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is None
+
+    def test_wrong_side_returns_none(self, trader, buy_record, matching_fill):
+        """매수/매도 방향이 다르면 None 반환"""
+        matching_fill["sll_buy_dvsn_cd"] = "01"  # 01=매도, 주문은 매수
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is None
+
+    def test_zero_filled_qty_returns_none(self, trader, buy_record, matching_fill):
+        """체결 수량이 0이면 None 반환"""
+        matching_fill["tot_ccld_qty"] = "0"
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is None
+
+    def test_qty_over_2x_returns_none(self, trader, buy_record, matching_fill):
+        """체결 수량이 주문 수량의 2배 초과이면 None 반환"""
+        # buy_record.quantity = 10, 2배 초과 = 21 이상
+        matching_fill["tot_ccld_qty"] = "21"
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is None
+
+    def test_qty_at_2x_returns_match(self, trader, buy_record, matching_fill):
+        """체결 수량이 주문 수량의 정확히 2배이면 매칭 (2배 이하 허용)"""
+        matching_fill["tot_ccld_qty"] = "20"
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is not None
+
+    def test_partial_fill_returns_match(self, trader, buy_record, matching_fill):
+        """부분 체결(수량 < 주문수량)도 매칭"""
+        matching_fill["tot_ccld_qty"] = "5"
+        result = trader._find_matching_fill([matching_fill], buy_record)
+        assert result is not None
+
+    def test_sell_record_matches_sell_fill(self, trader, matching_fill):
+        """매도 주문 기록이 매도 체결 레코드와 매칭"""
+        sell_record = OrderRecord(
+            order_id="TEST_002",
+            symbol="005930",
+            side="sell",
+            quantity=10,
+            price=70_000.0,
+            order_type="MARKET",
+            status=OrderStatus.FAILED.value,
+            timestamp=datetime.now().isoformat(),
+            dry_run=False,
+        )
+        matching_fill["sll_buy_dvsn_cd"] = "01"  # 01=매도
+        result = trader._find_matching_fill([matching_fill], sell_record)
+        assert result is not None
+
+    def test_empty_list_returns_none(self, trader, buy_record):
+        """빈 체결 리스트이면 None 반환"""
+        result = trader._find_matching_fill([], buy_record)
+        assert result is None
+
+    def test_multiple_fills_returns_first_match(self, trader, buy_record):
+        """여러 체결 중 첫 번째 매칭을 반환"""
+        fills = [
+            {  # 다른 종목
+                "pdno": "000660",
+                "sll_buy_dvsn_cd": "02",
+                "tot_ccld_qty": "10",
+                "avg_prvs": "50000",
+                "ord_tmd": "093000",
+                "odno": "0001111111",
+            },
+            {  # 매칭
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "02",
+                "tot_ccld_qty": "10",
+                "avg_prvs": "70500",
+                "ord_tmd": "100000",
+                "odno": "0002222222",
+            },
+            {  # 또 다른 매칭 (반환되지 않아야 함)
+                "pdno": "005930",
+                "sll_buy_dvsn_cd": "02",
+                "tot_ccld_qty": "10",
+                "avg_prvs": "71000",
+                "ord_tmd": "110000",
+                "odno": "0003333333",
+            },
+        ]
+        result = trader._find_matching_fill(fills, buy_record)
+        assert result is not None
+        assert result["odno"] == "0002222222"
 
 
 # ---------------------------------------------------------------------------
@@ -700,7 +834,7 @@ class TestAutoTradeCLI:
         import sys
         sys.argv = ["auto_trade.py"]
 
-        from scripts.auto_trade import parse_args, DEFAULT_MAX_AMOUNT
+        from scripts.auto_trade import DEFAULT_MAX_AMOUNT, parse_args
         args = parse_args()
 
         assert args.live is False

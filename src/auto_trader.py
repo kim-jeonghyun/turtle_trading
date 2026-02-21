@@ -248,11 +248,14 @@ class AutoTrader:
 
         주문 실행 중 네트워크 오류 등 예외가 발생하면 실제 체결 여부를 알 수 없다.
         KIS 주문번호를 수신하지 못했으므로 주문번호 기반 조회가 불가능하다.
-        대신 당일 체결 내역에서 동일 종목·방향·수량의 최근 체결을 검색하여
-        phantom fill 여부를 판단한다.
+        대신 당일 체결 내역 전체(get_daily_fills)에서 동일 종목·방향·수량의
+        최근 체결을 검색하여 phantom fill 여부를 판단한다.
 
         - dry_run 모드에서는 재확인을 건너뛴다.
         - 재확인 자체가 실패하면 알림을 발송하고 수동 점검을 요청한다.
+        - reconfirm_delay_sec 만큼 asyncio.sleep으로 대기한다. 이는 KIS 서버가
+          주문을 처리할 시간을 확보하기 위해 의도적으로 설정된 지연이며,
+          호출자는 이벤트 루프가 해당 시간 동안 블록되지 않도록 주의해야 한다.
 
         Args:
             record: 예외로 FAILED 처리된 주문 기록
@@ -272,9 +275,8 @@ class AutoTrader:
         await asyncio.sleep(self.reconfirm_delay_sec)
 
         try:
-            # 당일 체결 내역 전체 조회 (주문번호 없이)
-            status_result = await self.kis_client.get_order_status("")
-            filled_orders = status_result.get("orders", [])
+            # 당일 체결 내역 전체 조회 (주문번호 필터 없이)
+            filled_orders = await self.kis_client.get_daily_fills()
 
             # 동일 종목의 최근 체결 검색
             matching_fill = self._find_matching_fill(
