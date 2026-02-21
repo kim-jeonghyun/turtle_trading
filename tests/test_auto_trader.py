@@ -7,6 +7,7 @@ auto_trader.py 단위 테스트
 - Live 모드 KIS API 위임
 - 일별 통계
 - CLI 인수 파싱
+- 주문 예외 후 재확인 (phantom fill 방지)
 """
 
 import pytest
@@ -17,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
 from src.auto_trader import AutoTrader, OrderRecord
+from src.notifier import NotificationManager
 from src.types import OrderStatus
 from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 
@@ -52,6 +54,12 @@ def mock_kis_client(mock_kis_config):
         "total_equity": 10_000_000.0,
         "cash": 5_000_000.0,
         "positions": []
+    })
+    # get_order_status도 AsyncMock으로 설정 (재확인 메커니즘에서 사용)
+    client.get_order_status = AsyncMock(return_value={
+        "order_no": "",
+        "status": "not_found",
+        "message": "주문 내역을 찾을 수 없음",
     })
     return client
 
@@ -401,6 +409,218 @@ class TestAutoTrader:
         )
 
         assert result["status"] == "dry_run"
+
+
+# ---------------------------------------------------------------------------
+# TestOrderReconfirmation -- phantom fill 방지 재확인 메커니즘
+# ---------------------------------------------------------------------------
+
+class TestOrderReconfirmation:
+    """주문 예외 후 재확인 로직 검증 (Issue #7)"""
+
+    def test_exception_then_reconfirm_filled(self, mock_kis_client, temp_data_dir):
+        """예외 발생 -> 재확인 -> 체결 확인(FILLED) 전이"""
+        # place_order는 예외를 던진다 (네트워크 오류 시뮬레이션)
+        mock_kis_client.place_order = AsyncMock(
+            side_effect=ConnectionError("네트워크 타임아웃")
+        )
+        # 재확인 시 get_order_status는 체결됨을 반환
+        mock_kis_client.get_order_status = AsyncMock(return_value={
+            "order_no": "LIVE_ORDER_001",
+            "status": "filled",
+            "filled_qty": 10,
+            "filled_price": 70500.0,
+            "order_time": "120030",
+        })
+
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=False,
+            max_order_amount=5_000_000,
+            reconfirm_delay_sec=0,  # 테스트에서는 지연 없음
+        )
+        import src.auto_trader as at_module
+        original_path = at_module.ORDER_LOG_PATH
+        at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
+
+        try:
+            record = asyncio.get_event_loop().run_until_complete(
+                trader.place_order(
+                    symbol="005930",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000.0,
+                    order_type=OrderType.LIMIT,
+                    reason="재확인 FILLED 테스트",
+                )
+            )
+
+            # 재확인으로 FILLED 상태가 되어야 한다
+            assert record.status == OrderStatus.FILLED.value
+            assert record.fill_price == 70500.0
+            assert "재확인으로 FILLED 복구" in (record.error_message or "")
+            # get_order_status가 한 번 호출되었는지 확인
+            mock_kis_client.get_order_status.assert_called_once()
+        finally:
+            at_module.ORDER_LOG_PATH = original_path
+
+    def test_exception_then_reconfirm_still_failed(self, mock_kis_client, temp_data_dir):
+        """예외 발생 -> 재확인 -> 미체결(FAILED 유지) 시나리오"""
+        mock_kis_client.place_order = AsyncMock(
+            side_effect=ConnectionError("네트워크 타임아웃")
+        )
+        # 재확인 시 get_order_status는 미체결 상태 반환
+        mock_kis_client.get_order_status = AsyncMock(return_value={
+            "order_no": "LIVE_ORDER_002",
+            "status": "not_found",
+            "message": "주문 내역을 찾을 수 없음",
+        })
+
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=False,
+            max_order_amount=5_000_000,
+            reconfirm_delay_sec=0,
+        )
+        import src.auto_trader as at_module
+        original_path = at_module.ORDER_LOG_PATH
+        at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
+
+        try:
+            record = asyncio.get_event_loop().run_until_complete(
+                trader.place_order(
+                    symbol="005930",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000.0,
+                    reason="재확인 FAILED 유지 테스트",
+                )
+            )
+
+            # 재확인 후에도 FAILED 상태가 유지되어야 한다
+            assert record.status == OrderStatus.FAILED.value
+            assert record.fill_price is None
+            assert "네트워크 타임아웃" in (record.error_message or "")
+            mock_kis_client.get_order_status.assert_called_once()
+        finally:
+            at_module.ORDER_LOG_PATH = original_path
+
+    def test_reconfirm_failure_sends_notification(self, mock_kis_client, temp_data_dir):
+        """재확인 자체가 실패하면 알림이 발송되어야 한다"""
+        mock_kis_client.place_order = AsyncMock(
+            side_effect=ConnectionError("네트워크 타임아웃")
+        )
+        # 재확인 조회도 예외를 던진다
+        mock_kis_client.get_order_status = AsyncMock(
+            side_effect=ConnectionError("재확인 조회 실패")
+        )
+
+        mock_notifier = MagicMock(spec=NotificationManager)
+        mock_notifier.send_all = AsyncMock(return_value={"TelegramChannel": True})
+
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=False,
+            max_order_amount=5_000_000,
+            notifier=mock_notifier,
+            reconfirm_delay_sec=0,
+        )
+        import src.auto_trader as at_module
+        original_path = at_module.ORDER_LOG_PATH
+        at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
+
+        try:
+            record = asyncio.get_event_loop().run_until_complete(
+                trader.place_order(
+                    symbol="005930",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000.0,
+                    reason="재확인 실패 알림 테스트",
+                )
+            )
+
+            # FAILED 상태 유지
+            assert record.status == OrderStatus.FAILED.value
+            # 에러 메시지에 재확인 실패 정보 포함
+            assert "재확인 실패" in (record.error_message or "")
+            # 알림 발송이 호출되었는지 확인
+            mock_notifier.send_all.assert_called_once()
+            # 알림 메시지의 level이 ERROR인지 확인
+            sent_message = mock_notifier.send_all.call_args[0][0]
+            assert sent_message.level.value == "error"
+            assert "005930" in sent_message.title
+            assert "수동 점검" in sent_message.title
+        finally:
+            at_module.ORDER_LOG_PATH = original_path
+
+    def test_reconfirm_skipped_in_dry_run(self, mock_kis_client, temp_data_dir):
+        """dry_run 모드에서는 재확인이 스킵되어야 한다"""
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=True,
+            max_order_amount=5_000_000,
+            reconfirm_delay_sec=0,
+        )
+        import src.auto_trader as at_module
+        original_path = at_module.ORDER_LOG_PATH
+        at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
+
+        try:
+            record = asyncio.get_event_loop().run_until_complete(
+                trader.place_order(
+                    symbol="005930",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000.0,
+                    reason="Dry-run 재확인 스킵 테스트",
+                )
+            )
+
+            # dry-run이므로 DRY_RUN 상태
+            assert record.status == OrderStatus.DRY_RUN.value
+            # get_order_status가 호출되지 않아야 함
+            mock_kis_client.get_order_status.assert_not_called()
+        finally:
+            at_module.ORDER_LOG_PATH = original_path
+
+    def test_reconfirm_no_notifier_logs_warning(self, mock_kis_client, temp_data_dir):
+        """notifier 미설정 시 재확인 실패해도 로그 경고만 남기고 예외 없이 진행"""
+        mock_kis_client.place_order = AsyncMock(
+            side_effect=ConnectionError("네트워크 타임아웃")
+        )
+        mock_kis_client.get_order_status = AsyncMock(
+            side_effect=ConnectionError("재확인 조회 실패")
+        )
+
+        # notifier 없이 생성
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=False,
+            max_order_amount=5_000_000,
+            notifier=None,
+            reconfirm_delay_sec=0,
+        )
+        import src.auto_trader as at_module
+        original_path = at_module.ORDER_LOG_PATH
+        at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
+
+        try:
+            record = asyncio.get_event_loop().run_until_complete(
+                trader.place_order(
+                    symbol="005930",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000.0,
+                    reason="notifier 없음 테스트",
+                )
+            )
+
+            # 예외 없이 FAILED로 완료
+            assert record.status == OrderStatus.FAILED.value
+            assert "재확인 실패" in (record.error_message or "")
+        finally:
+            at_module.ORDER_LOG_PATH = original_path
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,10 @@
 - 주문 실행 + 추적
 - 안전 장치 (포지션 한도, 주문 크기)
 - 주문 이력 로깅
+- 주문 예외 후 재확인 (phantom fill 방지)
 """
 
+import asyncio
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -13,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from src.kis_api import KISAPIClient, OrderSide, OrderType
+from src.notifier import NotificationLevel, NotificationManager, NotificationMessage
 from src.types import OrderStatus
 from src.utils import atomic_write_json, safe_load_json
 
@@ -51,10 +54,22 @@ class AutoTrader:
     - dry_run=False (live): KIS API를 통한 실거래
     """
 
-    def __init__(self, kis_client: KISAPIClient, dry_run: bool = True, max_order_amount: float = 5_000_000):
+    # 주문 예외 후 재확인까지 대기 시간 (초)
+    DEFAULT_RECONFIRM_DELAY_SEC = 30
+
+    def __init__(
+        self,
+        kis_client: KISAPIClient,
+        dry_run: bool = True,
+        max_order_amount: float = 5_000_000,
+        notifier: Optional[NotificationManager] = None,
+        reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
+    ):
         self.kis_client = kis_client
         self.dry_run = dry_run
         self.max_order_amount = max_order_amount
+        self.notifier = notifier
+        self.reconfirm_delay_sec = reconfirm_delay_sec
         self._order_counter = 0
 
         if not dry_run:
@@ -221,9 +236,106 @@ class AutoTrader:
                 error_message=error_msg,
                 reason=reason,
             )
+            # Phantom fill 방지: 예외 발생 후 지연 재확인
+            record = await self._reconfirm_order(record)
 
         self._append_order_to_log(record)
         return record
+
+    async def _reconfirm_order(self, record: OrderRecord) -> OrderRecord:
+        """
+        주문 예외 후 지연 재확인 (phantom fill 방지)
+
+        주문 실행 중 네트워크 오류 등 예외가 발생하면 실제 체결 여부를 알 수 없다.
+        일정 시간 후 KIS API get_order_status()로 체결 여부를 재확인하여,
+        체결되었으면 OrderRecord를 FILLED로 갱신한다.
+
+        - dry_run 모드에서는 재확인을 건너뛴다.
+        - 재확인 자체가 실패하면 알림을 발송하고 수동 점검을 요청한다.
+
+        Args:
+            record: 예외로 FAILED 처리된 주문 기록
+
+        Returns:
+            갱신된 OrderRecord (FILLED 또는 원래 FAILED 유지)
+        """
+        if self.dry_run:
+            logger.info(f"[DRY-RUN] 주문 재확인 스킵: {record.order_id}")
+            return record
+
+        order_no = record.order_id
+        logger.info(
+            f"주문 재확인 예약: {order_no} ({record.symbol}) "
+            f"- {self.reconfirm_delay_sec}초 후 상태 조회"
+        )
+
+        await asyncio.sleep(self.reconfirm_delay_sec)
+
+        try:
+            status_result = await self.kis_client.get_order_status(order_no)
+            if status_result.get("status") == "filled":
+                logger.info(
+                    f"[RECONFIRM] 주문 체결 확인됨 (phantom fill 감지): {order_no}"
+                )
+                record.status = OrderStatus.FILLED.value
+                record.fill_price = status_result.get("filled_price", record.price)
+                record.fill_time = status_result.get(
+                    "order_time", datetime.now().isoformat()
+                )
+                record.error_message = (
+                    f"[재확인으로 FILLED 복구] 원래 예외: {record.error_message}"
+                )
+            else:
+                logger.info(
+                    f"[RECONFIRM] 주문 미체결 확인: {order_no} "
+                    f"(status={status_result.get('status')})"
+                )
+        except Exception as reconfirm_err:
+            logger.error(
+                f"[RECONFIRM] 주문 재확인 실패: {order_no} - {reconfirm_err}"
+            )
+            record.error_message = (
+                f"{record.error_message} | 재확인 실패: {reconfirm_err}"
+            )
+            # 재확인 실패 시 수동 점검 요청 알림
+            await self._notify_reconfirm_failure(record, reconfirm_err)
+
+        return record
+
+    async def _notify_reconfirm_failure(
+        self, record: OrderRecord, error: Exception
+    ) -> None:
+        """재확인 실패 시 수동 점검 요청 알림 발송"""
+        if self.notifier is None:
+            logger.warning(
+                f"[RECONFIRM] 알림 매니저 미설정 - 수동 점검 필요: "
+                f"{record.order_id} ({record.symbol})"
+            )
+            return
+
+        message = NotificationMessage(
+            title=f"주문 재확인 실패 - 수동 점검 필요: {record.symbol}",
+            body=(
+                f"주문 실행 중 예외 발생 후 재확인 조회도 실패했습니다.\n"
+                f"체결 여부를 수동으로 확인해 주세요.\n\n"
+                f"원래 예외: {record.error_message}\n"
+                f"재확인 오류: {error}"
+            ),
+            level=NotificationLevel.ERROR,
+            data={
+                "주문ID": record.order_id,
+                "종목": record.symbol,
+                "방향": record.side,
+                "수량": record.quantity,
+                "가격": f"{record.price:,.0f}",
+            },
+        )
+        try:
+            await self.notifier.send_all(message)
+        except Exception as notify_err:
+            logger.critical(
+                f"[RECONFIRM] 알림 발송 실패: {record.order_id} - {notify_err}"
+            )
 
     async def check_order_status(self, order_no: str) -> dict:
         """
