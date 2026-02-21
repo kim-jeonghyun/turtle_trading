@@ -22,7 +22,6 @@ from scripts.health_check import (
     check_yfinance_connection,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helper: fake urllib response
 # ---------------------------------------------------------------------------
@@ -395,6 +394,24 @@ class TestCheckTelegramConnection:
         ok, msg = check_telegram_connection()
         assert ok is False
         assert "error" in msg
+
+    def test_telegram_error_does_not_leak_token(self, tmp_path, monkeypatch):
+        """Telegram 에러 메시지에 봇 토큰이 노출되지 않는지 확인"""
+        fake_token = "1234567890:ABCDEFfake_token_value"
+        env_file = tmp_path / ".env"
+        env_file.write_text(f"TELEGRAM_BOT_TOKEN={fake_token}\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+        # Mock urlopen to raise an exception that includes the URL (and thus the token)
+        def raise_with_token(*args, **kwargs):
+            raise Exception(f"Connection failed: https://api.telegram.org/bot{fake_token}/getMe")
+
+        monkeypatch.setattr("urllib.request.urlopen", raise_with_token)
+        ok, msg = check_telegram_connection()
+        assert not ok
+        assert fake_token not in msg  # Token must not be in output
+        assert "***" in msg  # Token should be replaced
 
 
 # ---------------------------------------------------------------------------

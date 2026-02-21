@@ -251,6 +251,13 @@ def check_kis_api_connection() -> Tuple[bool, str]:
         return False, f"KIS API: error ({e})"
 
 
+def _sanitize_token(message: str, token: str) -> str:
+    """Remove sensitive token from error messages."""
+    if token:
+        return message.replace(token, "***")
+    return message
+
+
 def check_telegram_connection() -> Tuple[bool, str]:
     """Telegram Bot API getMe 호출로 연결 확인
 
@@ -275,13 +282,13 @@ def check_telegram_connection() -> Tuple[bool, str]:
     except urllib.error.HTTPError as e:
         if e.code == 401:
             return False, "Telegram: invalid bot token (401)"
-        return False, f"Telegram: HTTP {e.code}"
+        return False, _sanitize_token(f"Telegram: HTTP {e.code}", bot_token)
     except urllib.error.URLError as e:
-        return False, f"Telegram: unreachable ({e.reason})"
+        return False, _sanitize_token(f"Telegram: unreachable ({e.reason})", bot_token)
     except (TimeoutError, socket.timeout):
         return False, f"Telegram: timeout (>{EXTERNAL_API_TIMEOUT_SECONDS}s)"
     except Exception as e:
-        return False, f"Telegram: error ({e})"
+        return False, _sanitize_token(f"Telegram: error ({e})", bot_token)
 
 
 def check_yfinance_connection() -> Tuple[bool, str]:
