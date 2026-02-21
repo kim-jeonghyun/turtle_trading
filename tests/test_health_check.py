@@ -80,6 +80,36 @@ class TestLoadEnvVars:
         assert "KEY" in result
         assert len(result) == 1
 
+    def test_strips_double_quotes(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text('KEY="quoted_value"\n')
+        monkeypatch.chdir(tmp_path)
+        result = _load_env_vars()
+        assert result["KEY"] == "quoted_value"
+
+    def test_strips_single_quotes(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("KEY='single_quoted'\n")
+        monkeypatch.chdir(tmp_path)
+        result = _load_env_vars()
+        assert result["KEY"] == "single_quoted"
+
+    def test_value_with_equals(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("SECRET=abc=def=ghi\n")
+        monkeypatch.chdir(tmp_path)
+        result = _load_env_vars()
+        assert result["SECRET"] == "abc=def=ghi"
+
+    def test_picks_up_env_only_vars(self, tmp_path, monkeypatch):
+        """os.environ에만 있고 .env에 없는 변수도 인식"""
+        env_file = tmp_path / ".env"
+        env_file.write_text("OTHER=val\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KIS_APP_KEY", "from_env_only")
+        result = _load_env_vars()
+        assert result["KIS_APP_KEY"] == "from_env_only"
+
 
 # ---------------------------------------------------------------------------
 # check_kis_api_connection
@@ -100,35 +130,40 @@ class TestCheckKisApiConnection:
         assert "skipped" in msg
 
     @patch("scripts.health_check.urllib.request.urlopen")
-    def test_success_with_valid_token(self, mock_urlopen, tmp_path, monkeypatch):
-        """토큰 발급 성공 시 True 반환"""
+    def test_reachable(self, mock_urlopen, tmp_path, monkeypatch):
+        """서버 도달 성공 시 True 반환"""
         env_file = tmp_path / ".env"
         env_file.write_text("KIS_APP_KEY=test_key\nKIS_APP_SECRET=test_secret\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("KIS_APP_KEY", raising=False)
         monkeypatch.delenv("KIS_APP_SECRET", raising=False)
 
-        mock_urlopen.return_value = FakeHTTPResponse({"access_token": "abc123"})
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
 
         ok, msg = check_kis_api_connection()
         assert ok is True
-        assert "connected" in msg
-        assert "token valid" in msg
+        assert "reachable" in msg
 
     @patch("scripts.health_check.urllib.request.urlopen")
-    def test_reachable_but_token_failed(self, mock_urlopen, tmp_path, monkeypatch):
-        """서버 도달 성공이지만 토큰 없는 응답"""
+    def test_method_not_allowed_still_reachable(self, mock_urlopen, tmp_path, monkeypatch):
+        """HEAD 요청에 대해 405 반환 시에도 서버 도달로 판정"""
         env_file = tmp_path / ".env"
         env_file.write_text("KIS_APP_KEY=test_key\nKIS_APP_SECRET=test_secret\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("KIS_APP_KEY", raising=False)
         monkeypatch.delenv("KIS_APP_SECRET", raising=False)
 
-        mock_urlopen.return_value = FakeHTTPResponse({"rt_cd": "1", "msg1": "invalid key"})
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url="http://test", code=405, msg="Method Not Allowed", hdrs=None, fp=BytesIO(b"")
+        )
 
         ok, msg = check_kis_api_connection()
-        assert ok is False
-        assert "reachable but token failed" in msg
+        assert ok is True
+        assert "reachable" in msg
 
     @patch("scripts.health_check.urllib.request.urlopen")
     def test_http_error(self, mock_urlopen, tmp_path, monkeypatch):
@@ -178,6 +213,23 @@ class TestCheckKisApiConnection:
         assert "timeout" in msg
 
     @patch("scripts.health_check.urllib.request.urlopen")
+    def test_socket_timeout(self, mock_urlopen, tmp_path, monkeypatch):
+        """socket.timeout (Python 3.11 호환)"""
+        import socket
+
+        env_file = tmp_path / ".env"
+        env_file.write_text("KIS_APP_KEY=test_key\nKIS_APP_SECRET=test_secret\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("KIS_APP_KEY", raising=False)
+        monkeypatch.delenv("KIS_APP_SECRET", raising=False)
+
+        mock_urlopen.side_effect = socket.timeout("timed out")
+
+        ok, msg = check_kis_api_connection()
+        assert ok is False
+        assert "timeout" in msg
+
+    @patch("scripts.health_check.urllib.request.urlopen")
     def test_uses_real_url_when_is_real(self, mock_urlopen, tmp_path, monkeypatch):
         """KIS_IS_REAL=True 시 실전투자 URL 사용"""
         env_file = tmp_path / ".env"
@@ -189,7 +241,11 @@ class TestCheckKisApiConnection:
         monkeypatch.delenv("KIS_APP_SECRET", raising=False)
         monkeypatch.delenv("KIS_IS_REAL", raising=False)
 
-        mock_urlopen.return_value = FakeHTTPResponse({"access_token": "abc"})
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
 
         check_kis_api_connection()
 
@@ -198,6 +254,7 @@ class TestCheckKisApiConnection:
         request_obj = call_args[0][0]
         assert "openapi.koreainvestment.com" in request_obj.full_url
         assert "openapivts" not in request_obj.full_url
+        assert request_obj.method == "HEAD"
 
     @patch("scripts.health_check.urllib.request.urlopen")
     def test_generic_exception(self, mock_urlopen, tmp_path, monkeypatch):

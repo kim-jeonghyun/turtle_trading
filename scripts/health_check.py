@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -189,20 +190,32 @@ def _load_env_vars() -> dict:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         key, value = line.split("=", 1)
-                        env_vars[key.strip()] = value.strip()
-        except Exception:
-            pass
+                        value = value.strip()
+                        # Strip surrounding quotes (single or double)
+                        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                            value = value[1:-1]
+                        env_vars[key.strip()] = value
+        except Exception as e:
+            logger.warning("Failed to read .env file: %s", e)
     # os.environ takes precedence
     for key in list(env_vars.keys()):
         if key in os.environ:
+            env_vars[key] = os.environ[key]
+    # Also pick up common keys from os.environ that may not be in .env
+    _KNOWN_KEYS = (
+        "KIS_APP_KEY", "KIS_APP_SECRET", "KIS_IS_REAL",
+        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+    )
+    for key in _KNOWN_KEYS:
+        if key not in env_vars and key in os.environ:
             env_vars[key] = os.environ[key]
     return env_vars
 
 
 def check_kis_api_connection() -> Tuple[bool, str]:
-    """KIS API 연결 확인 (토큰 발급 엔드포인트 접근 가능 여부)
+    """KIS API 서버 도달 가능성 확인
 
-    실제 토큰 발급은 시도하지 않고, 서버 도달 가능성만 확인합니다.
+    실제 토큰 발급은 시도하지 않고, 서버 도달 가능 여부만 확인합니다.
     환경변수에 KIS 설정이 없으면 스킵합니다.
     """
     env = _load_env_vars()
@@ -219,30 +232,20 @@ def check_kis_api_connection() -> Tuple[bool, str]:
         base_url = "https://openapivts.koreainvestment.com:29443"
 
     url = f"{base_url}/oauth2/tokenP"
-    payload = json.dumps({
-        "grant_type": "client_credentials",
-        "appkey": app_key,
-        "appsecret": app_secret,
-    }).encode("utf-8")
 
     try:
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        # HEAD 요청으로 서버 도달 가능성만 확인 (토큰 발급 없이)
+        req = urllib.request.Request(url, method="HEAD")
         with urllib.request.urlopen(req, timeout=EXTERNAL_API_TIMEOUT_SECONDS) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            if "access_token" in data:
-                return True, "KIS API: connected (token valid)"
-            msg1 = data.get("msg1", "unknown")
-            return False, f"KIS API: reachable but token failed ({msg1})"
+            return True, f"KIS API: reachable (HTTP {resp.status})"
     except urllib.error.HTTPError as e:
-        return False, f"KIS API: reachable but HTTP {e.code}"
+        # 405 Method Not Allowed 또는 400 Bad Request는 서버 도달 성공
+        if e.code in (405, 400, 404):
+            return True, f"KIS API: reachable (HTTP {e.code})"
+        return False, f"KIS API: HTTP {e.code}"
     except urllib.error.URLError as e:
         return False, f"KIS API: unreachable ({e.reason})"
-    except TimeoutError:
+    except (TimeoutError, socket.timeout):
         return False, f"KIS API: timeout (>{EXTERNAL_API_TIMEOUT_SECONDS}s)"
     except Exception as e:
         return False, f"KIS API: error ({e})"
@@ -275,7 +278,7 @@ def check_telegram_connection() -> Tuple[bool, str]:
         return False, f"Telegram: HTTP {e.code}"
     except urllib.error.URLError as e:
         return False, f"Telegram: unreachable ({e.reason})"
-    except TimeoutError:
+    except (TimeoutError, socket.timeout):
         return False, f"Telegram: timeout (>{EXTERNAL_API_TIMEOUT_SECONDS}s)"
     except Exception as e:
         return False, f"Telegram: error ({e})"
