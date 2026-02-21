@@ -268,8 +268,7 @@ class AutoTrader:
             return record
 
         logger.info(
-            f"주문 재확인 예약: {record.order_id} ({record.symbol}) "
-            f"- {self.reconfirm_delay_sec}초 후 체결 내역 검색"
+            f"주문 재확인 예약: {record.order_id} ({record.symbol}) - {self.reconfirm_delay_sec}초 후 체결 내역 검색"
         )
 
         await asyncio.sleep(self.reconfirm_delay_sec)
@@ -279,48 +278,33 @@ class AutoTrader:
             filled_orders = await self.kis_client.get_daily_fills()
 
             # 동일 종목의 최근 체결 검색
-            matching_fill = self._find_matching_fill(
-                filled_orders, record
-            )
+            matching_fill = self._find_matching_fill(filled_orders, record)
 
             if matching_fill:
                 kis_order_no = matching_fill.get("odno", "unknown")
                 logger.info(
-                    f"[RECONFIRM] 주문 체결 확인됨 (phantom fill 감지): "
-                    f"{record.order_id} -> KIS#{kis_order_no}"
+                    f"[RECONFIRM] 주문 체결 확인됨 (phantom fill 감지): {record.order_id} -> KIS#{kis_order_no}"
                 )
                 record.status = OrderStatus.FILLED.value
                 record.fill_price = float(
-                    matching_fill.get("avg_prvs", 0)
-                    or matching_fill.get("filled_price", record.price)
+                    matching_fill.get("avg_prvs", 0) or matching_fill.get("filled_price", record.price)
                 )
-                record.fill_time = matching_fill.get(
-                    "ord_tmd", datetime.now().isoformat()
-                )
+                record.fill_time = matching_fill.get("ord_tmd", datetime.now().isoformat())
                 record.error_message = (
-                    f"[재확인으로 FILLED 복구] KIS#{kis_order_no} | "
-                    f"원래 예외: {record.error_message}"
+                    f"[재확인으로 FILLED 복구] KIS#{kis_order_no} | 원래 예외: {record.error_message}"
                 )
             else:
-                logger.info(
-                    f"[RECONFIRM] 일치하는 체결 내역 없음: {record.order_id} ({record.symbol})"
-                )
+                logger.info(f"[RECONFIRM] 일치하는 체결 내역 없음: {record.order_id} ({record.symbol})")
         except Exception as reconfirm_err:
             original_error = record.error_message
-            logger.error(
-                f"[RECONFIRM] 주문 재확인 실패: {record.order_id} - {reconfirm_err}"
-            )
-            record.error_message = (
-                f"{original_error} | 재확인 실패: {reconfirm_err}"
-            )
+            logger.error(f"[RECONFIRM] 주문 재확인 실패: {record.order_id} - {reconfirm_err}")
+            record.error_message = f"{original_error} | 재확인 실패: {reconfirm_err}"
             # 재확인 실패 시 수동 점검 요청 알림
             await self._notify_reconfirm_failure(record, reconfirm_err, original_error)
 
         return record
 
-    def _find_matching_fill(
-        self, filled_orders: list, record: OrderRecord
-    ) -> Optional[dict]:
+    def _find_matching_fill(self, filled_orders: list, record: OrderRecord) -> Optional[dict]:
         """당일 체결 내역에서 주문 파라미터와 일치하는 체결을 검색.
 
         Args:
@@ -360,10 +344,7 @@ class AutoTrader:
     ) -> None:
         """재확인 실패 시 수동 점검 요청 알림 발송"""
         if self.notifier is None:
-            logger.warning(
-                f"[RECONFIRM] 알림 매니저 미설정 - 수동 점검 필요: "
-                f"{record.order_id} ({record.symbol})"
-            )
+            logger.warning(f"[RECONFIRM] 알림 매니저 미설정 - 수동 점검 필요: {record.order_id} ({record.symbol})")
             return
 
         display_error = original_error or record.error_message
@@ -388,9 +369,7 @@ class AutoTrader:
         try:
             await self.notifier.send_all(message)
         except Exception as notify_err:
-            logger.critical(
-                f"[RECONFIRM] 알림 발송 실패: {record.order_id} - {notify_err}"
-            )
+            logger.critical(f"[RECONFIRM] 알림 발송 실패: {record.order_id} - {notify_err}")
 
     async def check_order_status(self, order_no: str) -> dict:
         """
