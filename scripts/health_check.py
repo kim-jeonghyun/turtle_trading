@@ -203,8 +203,11 @@ def _load_env_vars() -> dict:
             env_vars[key] = os.environ[key]
     # Also pick up common keys from os.environ that may not be in .env
     _KNOWN_KEYS = (
-        "KIS_APP_KEY", "KIS_APP_SECRET", "KIS_IS_REAL",
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "KIS_APP_KEY",
+        "KIS_APP_SECRET",
+        "KIS_IS_REAL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
     )
     for key in _KNOWN_KEYS:
         if key not in env_vars and key in os.environ:
