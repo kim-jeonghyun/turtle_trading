@@ -178,12 +178,12 @@ def live_decision(
 
     # tracker mock: 수익/손실 이력 설정
     if last_trade_profitable:
-        pos = _make_closed_position(SYMBOL, system=1, pnl=200.0)
+        pos = _make_closed_position(SYMBOL, system=system, pnl=200.0)
         tracker = MagicMock()
         tracker.get_position_history.return_value = [pos]
     else:
         # 손실 이력이 있는 경우
-        pos = _make_closed_position(SYMBOL, system=1, pnl=-100.0)
+        pos = _make_closed_position(SYMBOL, system=system, pnl=-100.0)
         tracker = MagicMock()
         tracker.get_position_history.return_value = [pos]
 
@@ -459,6 +459,20 @@ class TestShouldAllowEntryEquivalence:
             f"(profitable={is_profitable})"
         )
 
+    def test_system2_with_profitable_true_behavior(self):
+        """_should_allow_entry(2, True, ...) 동작 문서화.
+
+        _should_allow_entry(2, True, ...) 는 55일 돌파 여부와 무관하게 False를 반환한다.
+        failsafe(55일 돌파 override)는 system == 1 에만 적용되기 때문이다.
+
+        프로덕션에서는 _was_last_trade_profitable()이 system != 1 이면
+        항상 False를 반환하므로 이 경로는 실행되지 않는다.
+        """
+        # 55일 미돌파: False (하지만 프로덕션에서 호출되지 않는 경로)
+        assert _should_allow_entry(2, True, False) is False
+        # 55일 돌파여도 system=2 이면 failsafe 미적용 -> False
+        assert _should_allow_entry(2, True, True) is False
+
     def test_system2_filter_bypass_mechanism(self):
         """System 2 필터 우회 메커니즘의 동치성 검증.
 
@@ -586,7 +600,7 @@ class TestBoundaryEquivalence:
             today_low=NEUTRAL_LOW,
             direction="LONG",
         )
-        assert bt == live == False, (
+        assert bt is False and live is False and bt == live, (
             "today_high == dc_high_20: 양쪽 모두 strict > 이므로 진입 없어야 함"
         )
 
@@ -609,7 +623,7 @@ class TestBoundaryEquivalence:
             today_low=NEUTRAL_LOW,
             direction="LONG",
         )
-        assert bt == live == False, (
+        assert bt is False and live is False and bt == live, (
             "today_high == dc_high_55: 55일 failsafe 비발동, 양쪽 모두 스킵"
         )
 
@@ -630,7 +644,7 @@ class TestBoundaryEquivalence:
             today_low=DC_LOW_20,
             direction="SHORT",
         )
-        assert bt == live == False, (
+        assert bt is False and live is False and bt == live, (
             "today_low == dc_low_20: 양쪽 모두 strict < 이므로 SHORT 진입 없어야 함"
         )
 
@@ -652,6 +666,6 @@ class TestBoundaryEquivalence:
             today_low=today_low,
             direction="SHORT",
         )
-        assert bt == live == False, (
+        assert bt is False and live is False and bt == live, (
             "today_low == dc_low_55: 55일 failsafe 비발동, 양쪽 모두 SHORT 스킵"
         )
