@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 
-from src.utils import retry_async
+from src.utils import retry_async, validate_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +226,7 @@ class KISAPIClient:
     )
     async def get_korea_price(self, symbol: str) -> Dict[str, Any]:
         """국내 주식 현재가 조회"""
+        symbol = validate_symbol(symbol)
         token = await self._get_token()
         tr_id = "FHKST01010100" if self.config.is_real else "FHKST01010100"
 
@@ -282,6 +283,7 @@ class KISAPIClient:
     )
     async def get_overseas_price(self, symbol: str, market: KISMarket = KISMarket.USA) -> Dict[str, Any]:
         """해외 주식 현재가 조회"""
+        symbol = validate_symbol(symbol)
         token = await self._get_token()
         tr_id = "HHDFS00000300" if self.config.is_real else "HHDFS00000300"
 
@@ -413,6 +415,7 @@ class KISAPIClient:
         self, symbol: str, side: OrderSide, quantity: int, price: float = 0, order_type: OrderType = OrderType.MARKET
     ) -> Dict[str, Any]:
         """국내 주식 주문"""
+        symbol = validate_symbol(symbol)
         token = await self._get_token()
 
         if side == OrderSide.BUY:
@@ -462,6 +465,7 @@ class KISAPIClient:
         self, symbol: str, side: OrderSide, quantity: int, price: float, market: KISMarket = KISMarket.USA
     ) -> Dict[str, Any]:
         """해외 주식 주문"""
+        symbol = validate_symbol(symbol)
         token = await self._get_token()
 
         if side == OrderSide.BUY:

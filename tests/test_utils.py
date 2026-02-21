@@ -4,6 +4,7 @@ utils.py 단위 테스트
 - 백업 관리
 - 스키마 검증
 - safe_load_json (corrupt 파일 대응)
+- 심볼 입력 검증
 """
 
 import pytest
@@ -18,6 +19,7 @@ from src.utils import (
     backup_file,
     validate_position_schema,
     safe_load_json,
+    validate_symbol,
 )
 
 
@@ -214,3 +216,147 @@ class TestSafeLoadJson:
 
         result = safe_load_json(str(filepath))
         assert result == {"key": "value"}
+
+
+class TestValidateSymbol:
+    """validate_symbol() 단위 테스트"""
+
+    # --- 유효한 심볼 ---
+
+    def test_us_stock(self):
+        assert validate_symbol("AAPL") == "AAPL"
+
+    def test_us_stock_lowercase(self):
+        assert validate_symbol("aapl") == "aapl"
+
+    def test_kr_stock_with_dot(self):
+        assert validate_symbol("005930.KS") == "005930.KS"
+
+    def test_kr_stock_kq(self):
+        assert validate_symbol("035420.KQ") == "035420.KQ"
+
+    def test_kr_stock_numeric(self):
+        assert validate_symbol("005930") == "005930"
+
+    def test_crypto_slash(self):
+        assert validate_symbol("BTC/USDT") == "BTC/USDT"
+
+    def test_crypto_hyphen(self):
+        assert validate_symbol("BTC-USD") == "BTC-USD"
+
+    def test_etf(self):
+        assert validate_symbol("SPY") == "SPY"
+
+    def test_underscore(self):
+        assert validate_symbol("BRK_B") == "BRK_B"
+
+    def test_single_char(self):
+        assert validate_symbol("X") == "X"
+
+    def test_max_length_20(self):
+        symbol = "A" * 20
+        assert validate_symbol(symbol) == symbol
+
+    def test_mixed_chars(self):
+        assert validate_symbol("US.10Y-BOND/2") == "US.10Y-BOND/2"
+
+    # --- strip 처리 ---
+
+    def test_strips_whitespace(self):
+        assert validate_symbol("  AAPL  ") == "AAPL"
+
+    def test_strips_leading_space(self):
+        assert validate_symbol(" SPY") == "SPY"
+
+    def test_strips_trailing_space(self):
+        assert validate_symbol("SPY ") == "SPY"
+
+    # --- 유효하지 않은 심볼 (ValueError) ---
+
+    def test_empty_string(self):
+        with pytest.raises(ValueError, match="빈 문자열"):
+            validate_symbol("")
+
+    def test_whitespace_only(self):
+        with pytest.raises(ValueError, match="빈 문자열"):
+            validate_symbol("   ")
+
+    def test_none(self):
+        with pytest.raises(ValueError, match="문자열이어야"):
+            validate_symbol(None)
+
+    def test_integer(self):
+        with pytest.raises(ValueError, match="문자열이어야"):
+            validate_symbol(123)
+
+    def test_list(self):
+        with pytest.raises(ValueError, match="문자열이어야"):
+            validate_symbol(["AAPL"])
+
+    def test_too_long(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("A" * 21)
+
+    def test_special_chars_semicolon(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AAPL;DROP")
+
+    def test_special_chars_space_in_middle(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AA PL")
+
+    def test_sql_injection_attempt(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("'; DROP TABLE --")
+
+    def test_path_traversal_attempt(self):
+        """경로 순회 시도: 21자 이상이면 길이 초과로 거부"""
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("../../../etc/passwd00")
+
+    def test_path_traversal_short_uses_safe_chars(self):
+        """짧은 경로 순회 패턴은 regex 통과하지만 data_store가 /를 _로 치환하여 안전"""
+        result = validate_symbol("../../etc/passwd")
+        assert result == "../../etc/passwd"
+
+    def test_newline_trailing_stripped(self):
+        """후행 개행 문자는 strip으로 제거되어 유효한 심볼로 처리"""
+        assert validate_symbol("AAPL\n") == "AAPL"
+
+    def test_newline_embedded(self):
+        """심볼 중간의 개행 문자는 거부"""
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AA\nPL")
+
+    def test_tab_trailing_stripped(self):
+        """후행 탭 문자는 strip으로 제거되어 유효한 심볼로 처리"""
+        assert validate_symbol("AAPL\t") == "AAPL"
+
+    def test_tab_embedded(self):
+        """심볼 중간의 탭 문자는 거부"""
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AA\tPL")
+
+    def test_null_byte(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AAPL" + chr(0))
+
+    def test_unicode_korean(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("삼성전자")
+
+    def test_parentheses(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AAPL(US)")
+
+    def test_at_sign(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("AAPL@NYSE")
+
+    def test_dollar_sign(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("$AAPL")
+
+    def test_backtick(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("`ls`")

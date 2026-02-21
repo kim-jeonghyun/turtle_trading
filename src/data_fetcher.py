@@ -13,6 +13,8 @@ from typing import Dict, List, Optional
 import pandas as pd
 import yfinance as yf
 
+from src.utils import validate_symbol
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,7 @@ class DataFetcher:
         self, symbol: str, start: Optional[str] = None, end: Optional[str] = None, period: Optional[str] = None
     ) -> pd.DataFrame:
         """yfinance로 데이터 수집"""
+        symbol = validate_symbol(symbol)
         try:
             ticker = yf.Ticker(symbol)
             if period:
@@ -90,6 +93,7 @@ class DataFetcher:
 
     def fetch_fdr(self, symbol: str, start: Optional[str] = None, end: Optional[str] = None) -> pd.DataFrame:
         """FinanceDataReader로 한국 주식 데이터 수집"""
+        symbol = validate_symbol(symbol)
         try:
             import FinanceDataReader as fdr
 
@@ -121,6 +125,7 @@ class DataFetcher:
 
     def fetch_crypto(self, symbol: str, timeframe: str = "1d", limit: int = 500) -> pd.DataFrame:
         """CCXT로 암호화폐 데이터 수집"""
+        symbol = validate_symbol(symbol)
         exchange = self._get_ccxt_exchange()
         if exchange is None:
             logger.warning("ccxt 사용 불가, yfinance로 대체")
@@ -150,6 +155,7 @@ class DataFetcher:
         source: Optional[DataSource] = None,
     ) -> pd.DataFrame:
         """통합 데이터 수집 인터페이스"""
+        symbol = validate_symbol(symbol)
         market_type = get_market_type(symbol)
 
         if source:
@@ -186,6 +192,7 @@ class DataFetcher:
 
     def get_latest_price(self, symbol: str) -> Optional[float]:
         """최신 가격 조회"""
+        symbol = validate_symbol(symbol)
         df = self.fetch(symbol, period="5d")
         if df.empty:
             return None
