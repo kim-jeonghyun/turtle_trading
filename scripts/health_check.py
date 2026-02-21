@@ -5,11 +5,21 @@ Turtle Trading System Health Check
 """
 
 import json
+import logging
+import os
 import shutil
+import socket
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Tuple
+
+logger = logging.getLogger(__name__)
+
+# 외부 API 연결 확인 타임아웃 (초)
+EXTERNAL_API_TIMEOUT_SECONDS = 5
 
 
 def check_data_directory() -> Tuple[bool, str]:
@@ -169,12 +179,146 @@ def check_disk_space() -> Tuple[bool, str]:
         return False, f"Disk space: Cannot check - {e}"
 
 
+def _load_env_vars() -> dict:
+    """Load environment variables from .env file (does not override os.environ)."""
+    env_vars: dict = {}
+    env_file = Path(".env")
+    if env_file.exists():
+        try:
+            with open(env_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        value = value.strip()
+                        # Strip surrounding quotes (single or double)
+                        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                            value = value[1:-1]
+                        env_vars[key.strip()] = value
+        except Exception as e:
+            logger.warning("Failed to read .env file: %s", e)
+    # os.environ takes precedence
+    for key in list(env_vars.keys()):
+        if key in os.environ:
+            env_vars[key] = os.environ[key]
+    # Also pick up common keys from os.environ that may not be in .env
+    _KNOWN_KEYS = (
+        "KIS_APP_KEY",
+        "KIS_APP_SECRET",
+        "KIS_IS_REAL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+    )
+    for key in _KNOWN_KEYS:
+        if key not in env_vars and key in os.environ:
+            env_vars[key] = os.environ[key]
+    return env_vars
+
+
+def check_kis_api_connection() -> Tuple[bool, str]:
+    """KIS API 서버 도달 가능성 확인
+
+    실제 토큰 발급은 시도하지 않고, 서버 도달 가능 여부만 확인합니다.
+    환경변수에 KIS 설정이 없으면 스킵합니다.
+    """
+    env = _load_env_vars()
+    app_key = env.get("KIS_APP_KEY", "")
+    app_secret = env.get("KIS_APP_SECRET", "")
+
+    if not app_key or not app_secret:
+        return True, "KIS API: skipped (credentials not configured)"
+
+    is_real = env.get("KIS_IS_REAL", "false").lower() == "true"
+    if is_real:
+        base_url = "https://openapi.koreainvestment.com:9443"
+    else:
+        base_url = "https://openapivts.koreainvestment.com:29443"
+
+    url = f"{base_url}/oauth2/tokenP"
+
+    try:
+        # HEAD 요청으로 서버 도달 가능성만 확인 (토큰 발급 없이)
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=EXTERNAL_API_TIMEOUT_SECONDS) as resp:
+            return True, f"KIS API: reachable (HTTP {resp.status})"
+    except urllib.error.HTTPError as e:
+        # 405 Method Not Allowed 또는 400 Bad Request는 서버 도달 성공
+        if e.code in (405, 400, 404):
+            return True, f"KIS API: reachable (HTTP {e.code})"
+        return False, f"KIS API: HTTP {e.code}"
+    except urllib.error.URLError as e:
+        return False, f"KIS API: unreachable ({e.reason})"
+    except (TimeoutError, socket.timeout):
+        return False, f"KIS API: timeout (>{EXTERNAL_API_TIMEOUT_SECONDS}s)"
+    except Exception as e:
+        return False, f"KIS API: error ({e})"
+
+
+def _sanitize_token(message: str, token: str) -> str:
+    """Remove sensitive token from error messages."""
+    if token:
+        return message.replace(token, "***")
+    return message
+
+
+def check_telegram_connection() -> Tuple[bool, str]:
+    """Telegram Bot API getMe 호출로 연결 확인
+
+    환경변수에 TELEGRAM_BOT_TOKEN이 없으면 스킵합니다.
+    """
+    env = _load_env_vars()
+    bot_token = env.get("TELEGRAM_BOT_TOKEN", "")
+
+    if not bot_token:
+        return True, "Telegram: skipped (token not configured)"
+
+    url = f"https://api.telegram.org/bot{bot_token}/getMe"
+
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=EXTERNAL_API_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("ok"):
+                bot_name = data.get("result", {}).get("username", "unknown")
+                return True, f"Telegram: connected (@{bot_name})"
+            return False, "Telegram: API returned ok=false"
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return False, "Telegram: invalid bot token (401)"
+        return False, _sanitize_token(f"Telegram: HTTP {e.code}", bot_token)
+    except urllib.error.URLError as e:
+        return False, _sanitize_token(f"Telegram: unreachable ({e.reason})", bot_token)
+    except (TimeoutError, socket.timeout):
+        return False, f"Telegram: timeout (>{EXTERNAL_API_TIMEOUT_SECONDS}s)"
+    except Exception as e:
+        return False, _sanitize_token(f"Telegram: error ({e})", bot_token)
+
+
+def check_yfinance_connection() -> Tuple[bool, str]:
+    """yfinance로 SPY 1일 데이터를 조회하여 연결 확인"""
+    try:
+        import yfinance as yf
+
+        ticker = yf.Ticker("SPY")
+        df = ticker.history(period="1d")
+
+        if df is not None and not df.empty:
+            last_close = df["Close"].iloc[-1]
+            return True, f"yfinance: connected (SPY last={last_close:.2f})"
+        return False, "yfinance: no data returned for SPY"
+    except ImportError:
+        return True, "yfinance: skipped (package not installed)"
+    except Exception as e:
+        return False, f"yfinance: error ({e})"
+
+
 def main():
     """전체 헬스 체크 실행"""
     print("=== Turtle Trading System Health Check ===")
     print()
 
-    checks = [
+    # 필수 체크 (실패 시 종료 코드 1)
+    core_checks = [
         ("Data Directory", check_data_directory),
         ("Python Packages", check_python_packages),
         ("Position Files", check_position_files),
@@ -183,20 +327,38 @@ def main():
         ("Disk Space", check_disk_space),
     ]
 
-    results = []
-    for name, check_func in checks:
+    # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)
+    external_checks = [
+        ("KIS API", check_kis_api_connection),
+        ("Telegram", check_telegram_connection),
+        ("yfinance", check_yfinance_connection),
+    ]
+
+    core_results = []
+    for name, check_func in core_checks:
         ok, msg = check_func()
         status = "[OK]  " if ok else "[WARN]"
         print(f"{status} {msg}")
-        results.append(ok)
+        core_results.append(ok)
 
     print()
-    passed = sum(results)
-    total = len(results)
-    print(f"=== {passed}/{total} checks passed ===")
+    print("--- External API Connectivity ---")
+    external_results = []
+    for name, check_func in external_checks:
+        ok, msg = check_func()
+        status = "[OK]  " if ok else "[WARN]"
+        print(f"{status} {msg}")
+        external_results.append(ok)
 
-    # 실패가 있으면 종료 코드 1 반환 (스크립트 자동화용)
-    sys.exit(0 if passed == total else 1)
+    print()
+    core_passed = sum(core_results)
+    core_total = len(core_results)
+    ext_passed = sum(external_results)
+    ext_total = len(external_results)
+    print(f"=== Core: {core_passed}/{core_total} passed | External: {ext_passed}/{ext_total} passed ===")
+
+    # 종료 코드는 핵심 체크만 기준 (외부 API 실패는 경고만)
+    sys.exit(0 if core_passed == core_total else 1)
 
 
 if __name__ == "__main__":
