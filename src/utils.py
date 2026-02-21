@@ -61,9 +61,15 @@ def validate_symbol(symbol: str) -> str:
     if not symbol:
         raise ValueError("심볼은 빈 문자열일 수 없습니다")
 
+    if ".." in symbol:
+        raise ValueError(
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} "
+            f"(경로 순회 패턴 '..'은 허용되지 않습니다)"
+        )
+
     if not _SYMBOL_PATTERN.match(symbol):
         raise ValueError(
-            f"유효하지 않은 심볼 형식입니다: '{symbol}' "
+            f"유효하지 않은 심볼 형식입니다: {repr(symbol[:30])} "
             f"(허용: 영문, 숫자, '.', '/', '-', '_' / 최대 20자)"
         )
 

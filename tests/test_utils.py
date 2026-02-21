@@ -310,14 +310,18 @@ class TestValidateSymbol:
             validate_symbol("'; DROP TABLE --")
 
     def test_path_traversal_attempt(self):
-        """경로 순회 시도: 21자 이상이면 길이 초과로 거부"""
+        """경로 순회 시도: '..'이 포함되어 있어 거부"""
         with pytest.raises(ValueError, match="유효하지 않은 심볼"):
             validate_symbol("../../../etc/passwd00")
 
-    def test_path_traversal_short_uses_safe_chars(self):
-        """짧은 경로 순회 패턴은 regex 통과하지만 data_store가 /를 _로 치환하여 안전"""
-        result = validate_symbol("../../etc/passwd")
-        assert result == "../../etc/passwd"
+    def test_path_traversal_short(self):
+        """경로 순회 패턴 '..'은 항상 거부"""
+        with pytest.raises(ValueError, match="경로 순회"):
+            validate_symbol("../../etc/passwd")
+
+    def test_backslash_path(self):
+        with pytest.raises(ValueError, match="유효하지 않은 심볼"):
+            validate_symbol("..\\..\\etc")
 
     def test_newline_trailing_stripped(self):
         """후행 개행 문자는 strip으로 제거되어 유효한 심볼로 처리"""
