@@ -1,4 +1,4 @@
-# 🐢 터틀 트레이딩 시스템 v2.0
+# 🐢 터틀 트레이딩 시스템 v3.2.1
 
 터틀 트레이딩 전략을 기반으로 한 반자동 투자 시스템입니다.
 
@@ -37,7 +37,7 @@
 ```bash
 git clone https://github.com/kim-jeonghyun/turtle_trading.git
 cd turtle_trading
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ### 2. 환경 변수 설정

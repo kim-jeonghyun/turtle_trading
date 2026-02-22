@@ -163,7 +163,6 @@ Last updated: 2026-02-19
 
 ### 7.2 주요 실행 명령
 
-- 시그널 점검: `python scripts/check_positions.py`
 - 포지션 점검: `python scripts/check_positions.py`
 - 포지션 데이터 정합성: `python scripts/list_positions.py`
 - 백테스트: `python scripts/run_backtest.py`
@@ -311,12 +310,10 @@ Last updated: 2026-02-19
 
 ## 16. 연결 문서
 
-- `/.codex/plans/dazzling-rolling-swing.md`  
 - `research/readings/youtube/`
 - `research/readings/blog/`
 - `config/correlation_groups.yaml`
 - `config/universe.yaml`
-- `CLAUDE.md.backup` (이전 버전 참고)
 
 ---
 
