@@ -211,7 +211,7 @@ Last updated: 2026-02-19
 
 | 계층 | 역할 | 수단 |
 |------|------|------|
-| 계층 1: GitHub 서버 | push 시점 차단 | Branch Protection Rules |
+| 계층 1: GitHub 서버 | push 시점 차단 | Branch Protection Rules ✅ 활성 |
 | 계층 2: 로컬 결정론적 | AI 커밋/푸시 시도 차단 | `.claude/settings.json` hooks |
 | 계층 3: 행동 지침 | AI에게 "왜/어떻게" 안내 | CLAUDE.md + `.claude/rules/` |
 
