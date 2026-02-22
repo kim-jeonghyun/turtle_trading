@@ -26,8 +26,8 @@ st.set_page_config(
 def init_components():
     data_fetcher = DataFetcher()
     data_store = ParquetDataStore()
-    universe_path = Path("data/turtle_universe_full.csv")
-    universe = UniverseManager(str(universe_path) if universe_path.exists() else None)
+    universe_path = Path("config/universe.yaml")
+    universe = UniverseManager(str(universe_path))
     return data_fetcher, data_store, universe
 
 
@@ -35,7 +35,7 @@ data_fetcher, data_store, universe = init_components()
 
 
 def main():
-    st.title("🐢 터틀 트레이딩 시스템 v2.0")
+    st.title("🐢 터틀 트레이딩 시스템 v3.2.1")
 
     # 사이드바
     with st.sidebar:
