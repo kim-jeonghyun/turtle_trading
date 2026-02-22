@@ -657,8 +657,8 @@ class TestShouldAllowEntry:
     def test_profitable_system1_without_55day_breakout_blocks(self):
         assert _should_allow_entry(system=1, is_profitable=True, is_55day_breakout=False) is False
 
-    def test_profitable_system2_always_allows(self):
-        """System 2는 _was_last_trade_profitable이 False를 반환하므로 is_profitable=False로 호출됨.
-        하지만 만약 True로 호출되더라도, system != 1이므로 failsafe 조건 미충족 → block."""
-        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=True) is False
-        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=False) is False
+    def test_system2_always_allows_regardless_of_profitability(self):
+        """System 2는 필터 없음 — is_profitable 값에 관계없이 항상 True 반환."""
+        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=True) is True
+        assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=False) is True
+        assert _should_allow_entry(system=2, is_profitable=False, is_55day_breakout=False) is True

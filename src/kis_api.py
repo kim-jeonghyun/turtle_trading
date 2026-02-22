@@ -54,8 +54,10 @@ class RateLimitError(KISAPIError):
     pass
 
 
-def _sanitize_error(data: dict) -> str:
+def _sanitize_error(data) -> str:
     """예외 메시지용 안전한 요약 생성 (민감 데이터 제외)"""
+    if not isinstance(data, dict):
+        return "rt_cd=N/A, msg=N/A"
     rt_cd = data.get("rt_cd", "N/A")
     msg1 = data.get("msg1", "N/A")
     return f"rt_cd={rt_cd}, msg={msg1}"
@@ -67,6 +69,8 @@ def _classify_response(status: int, data: dict) -> None:
         return  # 성공
 
     safe_msg = _sanitize_error(data)
+    # NOTE: debug 레벨에서 전체 응답 출력 — 프로덕션 로그 수집기가
+    # debug를 포함하지 않도록 운영 정책에서 관리 필요
     logger.debug("API error response (status=%d): %s", status, data)
 
     if status == 429:

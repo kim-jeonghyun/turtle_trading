@@ -48,6 +48,12 @@ class TestSanitizeError:
         for key in SENSITIVE_KEYS:
             assert key not in result
 
+    @pytest.mark.parametrize("bad_input", [None, "error string", ["list"], 42, True])
+    def test_non_dict_input_returns_safe_default(self, bad_input):
+        result = _sanitize_error(bad_input)
+        assert "rt_cd=N/A" in result
+        assert "msg=N/A" in result
+
 
 class TestClassifyResponseSecurity:
     """_classify_response()가 전체 data dict를 예외 메시지에 포함하지 않는지 검증"""
