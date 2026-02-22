@@ -339,7 +339,7 @@ if ! python scripts/health_check.py; then
 fi
 
 # Your trading logic here
-python scripts/daily_signal_check.py
+python scripts/check_positions.py
 ```
 
 ---

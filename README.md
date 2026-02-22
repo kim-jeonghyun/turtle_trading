@@ -54,7 +54,7 @@ cp .env.example .env
 streamlit run app.py
 
 # 시그널 체크 (수동)
-python scripts/signal_check.py
+python scripts/check_positions.py
 
 # 일일 리포트
 python scripts/daily_report.py
@@ -84,7 +84,6 @@ turtle_trading/
 │   ├── notifier.py          # 알림 시스템
 │   └── backtester.py        # 백테스터
 ├── scripts/
-│   ├── signal_check.py      # 시그널 체크 스크립트
 │   └── daily_report.py      # 일일 리포트 스크립트
 ├── config/
 │   └── notifications.yaml   # 알림 설정

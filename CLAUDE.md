@@ -117,7 +117,6 @@ Last updated: 2026-02-19
 
 | 파일 | 목적 | 빈도 |
 | --- | --- | --- |
-| `scripts/signal_check.py` | 일중 시그널 점검 | 매일 |
 | `scripts/check_positions.py` | 포지션 상태/Stop logic 점검 | 매시 또는 cron |
 | `scripts/check_risk_limits.py` | 리스크 한도 상태 점검 | 주기적 |
 | `scripts/daily_report.py` | 일일 요약 전송 | 매일 |
@@ -164,7 +163,7 @@ Last updated: 2026-02-19
 
 ### 7.2 주요 실행 명령
 
-- 시그널 점검: `python scripts/signal_check.py`
+- 시그널 점검: `python scripts/check_positions.py`
 - 포지션 점검: `python scripts/check_positions.py`
 - 포지션 데이터 정합성: `python scripts/list_positions.py`
 - 백테스트: `python scripts/run_backtest.py`
