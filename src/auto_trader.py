@@ -307,6 +307,10 @@ class AutoTrader:
     def _find_matching_fill(self, filled_orders: list, record: OrderRecord) -> Optional[dict]:
         """당일 체결 내역에서 주문 파라미터와 일치하는 체결을 검색.
 
+        피라미딩 등으로 동일 종목에 대해 같은 날 여러 주문이 발생할 수 있다.
+        ord_tmd(체결 시각, HHMMSS)와 주문 시각을 비교하여 주문 이전에
+        발생한 체결을 건너뛰어 잘못된 매칭을 방지한다 (Issue #29).
+
         Args:
             filled_orders: KIS API에서 반환한 당일 체결 목록
             record: 매칭할 주문 기록
@@ -314,6 +318,9 @@ class AutoTrader:
         Returns:
             매칭된 체결 dict, 없으면 None
         """
+        # 주문 시각을 HHMMSS 형식으로 추출 (ISO timestamp → HHMMSS)
+        order_time_hhmmss = self._extract_hhmmss(record.timestamp)
+
         for order in filled_orders:
             # 종목코드 일치
             order_symbol = order.get("pdno", "")
@@ -335,9 +342,33 @@ class AutoTrader:
             if filled_qty > record.quantity * 2:
                 continue  # 수량이 2배 이상 다르면 다른 주문
 
+            # 시간 필터: 주문 이전 체결은 건너뛰기 (Issue #29)
+            ord_tmd = order.get("ord_tmd", "")
+            if order_time_hhmmss and ord_tmd and len(ord_tmd) == 6:
+                if ord_tmd < order_time_hhmmss:
+                    continue  # 체결이 주문보다 먼저 발생 → 이전 주문의 체결
+
             return order
 
         return None
+
+    @staticmethod
+    def _extract_hhmmss(iso_timestamp: str) -> str:
+        """ISO 형식 타임스탬프에서 HHMMSS 문자열을 추출.
+
+        Args:
+            iso_timestamp: "2025-01-01T12:30:45" 또는 유사 ISO 형식
+
+        Returns:
+            "123045" 형태의 HHMMSS 문자열. 파싱 실패 시 빈 문자열.
+        """
+        if not iso_timestamp:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_timestamp)
+            return dt.strftime("%H%M%S")
+        except (ValueError, TypeError):
+            return ""
 
     async def _notify_reconfirm_failure(
         self, record: OrderRecord, error: Exception, original_error: Optional[str] = None
