@@ -425,13 +425,14 @@ class TestOrderReconfirmation:
             side_effect=ConnectionError("네트워크 타임아웃")
         )
         # 재확인 시 get_daily_fills는 당일 체결 리스트 반환 (KIS 원시 형식)
+        # ord_tmd를 하루 끝 시각으로 설정하여 시간 필터(Issue #29) 통과 보장
         mock_kis_client.get_daily_fills = AsyncMock(return_value=[{
             "pdno": "005930",
             "sll_buy_dvsn_cd": "02",  # buy
             "tot_ccld_qty": "10",
             "avg_prvs": "70500",
             "odno": "0012345678",
-            "ord_tmd": "120030",
+            "ord_tmd": "235959",
         }])
 
         trader = AutoTrader(
@@ -638,7 +639,7 @@ class TestFindMatchingFill:
 
     @pytest.fixture
     def buy_record(self):
-        """매수 주문 기록 샘플"""
+        """매수 주문 기록 샘플 (시간 필터 호환: 체결 이전 시각으로 고정)"""
         return OrderRecord(
             order_id="TEST_001",
             symbol="005930",
@@ -647,7 +648,7 @@ class TestFindMatchingFill:
             price=70_000.0,
             order_type="LIMIT",
             status=OrderStatus.FAILED.value,
-            timestamp=datetime.now().isoformat(),
+            timestamp="2025-01-15T09:00:00",  # 체결(ord_tmd=100000) 이전 시각
             dry_run=False,
         )
 
@@ -717,7 +718,7 @@ class TestFindMatchingFill:
             price=70_000.0,
             order_type="MARKET",
             status=OrderStatus.FAILED.value,
-            timestamp=datetime.now().isoformat(),
+            timestamp="2025-01-15T09:00:00",  # 체결(ord_tmd=100000) 이전 시각
             dry_run=False,
         )
         matching_fill["sll_buy_dvsn_cd"] = "01"  # 01=매도
@@ -900,3 +901,202 @@ class TestCalculateOrderQuantity:
         signal = {"entry_price": 100.0, "n_value": 0}
         qty = calculate_order_quantity(signal, account_balance=100_000)
         assert qty == 0
+
+
+# ---------------------------------------------------------------------------
+# TestExtractHhmmss -- _extract_hhmmss 정적 메서드 단위 테스트
+# ---------------------------------------------------------------------------
+
+class TestExtractHhmmss:
+    """AutoTrader._extract_hhmmss 메서드 검증"""
+
+    def test_iso_format_basic(self):
+        """표준 ISO 타임스탬프에서 HHMMSS 추출"""
+        assert AutoTrader._extract_hhmmss("2025-01-15T09:30:00") == "093000"
+
+    def test_iso_format_with_microseconds(self):
+        """마이크로초 포함 ISO 타임스탬프에서 HHMMSS 추출"""
+        assert AutoTrader._extract_hhmmss("2025-01-15T14:05:30.123456") == "140530"
+
+    def test_empty_string_returns_empty(self):
+        """빈 문자열 입력 시 빈 문자열 반환"""
+        assert AutoTrader._extract_hhmmss("") == ""
+
+    def test_none_returns_empty(self):
+        """None 입력 시 빈 문자열 반환"""
+        assert AutoTrader._extract_hhmmss(None) == ""
+
+    def test_invalid_format_returns_empty(self):
+        """잘못된 형식 입력 시 빈 문자열 반환"""
+        assert AutoTrader._extract_hhmmss("not-a-date") == ""
+
+    def test_midnight(self):
+        """자정 시각 추출"""
+        assert AutoTrader._extract_hhmmss("2025-01-15T00:00:00") == "000000"
+
+    def test_end_of_day(self):
+        """하루 마지막 시각 추출"""
+        assert AutoTrader._extract_hhmmss("2025-01-15T23:59:59") == "235959"
+
+
+# ---------------------------------------------------------------------------
+# TestFindMatchingFillTimeFilter -- Issue #29 시간 필터 테스트
+# ---------------------------------------------------------------------------
+
+class TestFindMatchingFillTimeFilter:
+    """Issue #29: ord_tmd 시간 필터로 이전 체결 매칭 방지."""
+
+    @pytest.fixture
+    def trader(self, mock_kis_client):
+        """테스트용 AutoTrader (dry_run, 최소 설정)"""
+        return AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=True,
+            max_order_amount=5_000_000,
+        )
+
+    def _make_record(self, timestamp: str, symbol: str = "005930", side: str = "buy", quantity: int = 10):
+        """주문 기록 헬퍼"""
+        return OrderRecord(
+            order_id="TEST_TIME_001",
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=70_000.0,
+            order_type="LIMIT",
+            status=OrderStatus.FAILED.value,
+            timestamp=timestamp,
+            dry_run=False,
+        )
+
+    def _make_fill(self, ord_tmd: str, symbol: str = "005930", side_cd: str = "02", qty: str = "10"):
+        """KIS 체결 레코드 헬퍼"""
+        return {
+            "pdno": symbol,
+            "sll_buy_dvsn_cd": side_cd,
+            "tot_ccld_qty": qty,
+            "avg_prvs": "70500",
+            "ord_tmd": ord_tmd,
+            "odno": f"ORD_{ord_tmd}",
+        }
+
+    def test_fill_after_order_time_matches(self, trader):
+        """체결 시각이 주문 시각 이후이면 매칭 성공"""
+        # 주문: 10:00:00, 체결: 10:00:30
+        record = self._make_record("2025-01-15T10:00:00")
+        fill = self._make_fill("100030")
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
+        assert result["odno"] == "ORD_100030"
+
+    def test_fill_before_order_time_skipped(self, trader):
+        """체결 시각이 주문 시각 이전이면 매칭 건너뜀 (None 반환)"""
+        # 주문: 10:30:00, 체결: 10:00:00
+        record = self._make_record("2025-01-15T10:30:00")
+        fill = self._make_fill("100000")
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is None
+
+    def test_fill_at_same_time_matches(self, trader):
+        """체결 시각이 주문 시각과 동일하면 매칭 허용 (경계값)"""
+        # 주문: 10:00:00, 체결: 10:00:00
+        record = self._make_record("2025-01-15T10:00:00")
+        fill = self._make_fill("100000")
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
+
+    def test_ord_tmd_missing_allows_match(self, trader):
+        """ord_tmd가 비어 있으면 기존 동작 유지 (매칭 허용)"""
+        record = self._make_record("2025-01-15T10:30:00")
+        fill = self._make_fill("")
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
+
+    def test_ord_tmd_absent_allows_match(self, trader):
+        """ord_tmd 키가 아예 없으면 기존 동작 유지 (매칭 허용)"""
+        record = self._make_record("2025-01-15T10:30:00")
+        fill = {
+            "pdno": "005930",
+            "sll_buy_dvsn_cd": "02",
+            "tot_ccld_qty": "10",
+            "avg_prvs": "70500",
+            "odno": "ORD_NO_TMD",
+            # ord_tmd 키 없음
+        }
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
+
+    def test_record_timestamp_invalid_allows_match(self, trader):
+        """record.timestamp 파싱 실패 시 기존 동작 유지 (매칭 허용)"""
+        record = self._make_record("invalid-timestamp")
+        fill = self._make_fill("100000")
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
+
+    def test_pyramiding_scenario_two_orders_correct_match(self, trader):
+        """피라미딩 시나리오: 동일 종목 2개 주문이 각각 올바른 체결에 매칭.
+
+        1차 주문 09:30 → 1차 체결 09:30:15
+        2차 주문 10:00 → 2차 체결 10:00:20
+        2차 주문의 재확인에서 1차 체결이 매칭되면 안 된다.
+        """
+        # 1차 체결 (09:30:15) - 2차 주문(10:00) 입장에서는 이전 체결
+        fill_1 = self._make_fill("093015")
+        fill_1["odno"] = "ORD_FIRST"
+
+        # 2차 체결 (10:00:20) - 2차 주문(10:00) 입장에서는 이후 체결
+        fill_2 = self._make_fill("100020")
+        fill_2["odno"] = "ORD_SECOND"
+
+        # 2차 주문 기록 (10:00:00)
+        record_2 = self._make_record("2025-01-15T10:00:00")
+
+        # 체결 리스트: 시간 순서대로
+        result = trader._find_matching_fill([fill_1, fill_2], record_2)
+
+        # 1차 체결(09:30:15)은 건너뛰고, 2차 체결(10:00:20)이 매칭
+        assert result is not None
+        assert result["odno"] == "ORD_SECOND"
+
+    def test_pyramiding_first_order_matches_first_fill(self, trader):
+        """피라미딩 시나리오: 1차 주문은 1차 체결에 정상 매칭."""
+        fill_1 = self._make_fill("093015")
+        fill_1["odno"] = "ORD_FIRST"
+
+        fill_2 = self._make_fill("100020")
+        fill_2["odno"] = "ORD_SECOND"
+
+        # 1차 주문 기록 (09:30:00)
+        record_1 = self._make_record("2025-01-15T09:30:00")
+
+        result = trader._find_matching_fill([fill_1, fill_2], record_1)
+
+        # 1차 체결(09:30:15)이 매칭되어야 함 (1차 주문 이후이므로)
+        assert result is not None
+        assert result["odno"] == "ORD_FIRST"
+
+    def test_all_fills_before_order_returns_none(self, trader):
+        """모든 체결이 주문 시각 이전이면 None 반환"""
+        record = self._make_record("2025-01-15T14:00:00")
+        fills = [
+            self._make_fill("093000"),
+            self._make_fill("100000"),
+            self._make_fill("130000"),
+        ]
+
+        result = trader._find_matching_fill(fills, record)
+        assert result is None
+
+    def test_ord_tmd_short_format_allows_match(self, trader):
+        """ord_tmd가 6자리가 아닌 경우 시간 필터 미적용 (기존 동작)"""
+        record = self._make_record("2025-01-15T10:30:00")
+        fill = self._make_fill("1000")  # 4자리 → len != 6 → 필터 미적용
+
+        result = trader._find_matching_fill([fill], record)
+        assert result is not None
