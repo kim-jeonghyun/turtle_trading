@@ -18,7 +18,6 @@ Issue #18: 동일한 시장 상황에서 backtester와 live checker가 동일한
 
 import sys
 from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -462,16 +461,11 @@ class TestShouldAllowEntryEquivalence:
     def test_system2_with_profitable_true_behavior(self):
         """_should_allow_entry(2, True, ...) 동작 문서화.
 
-        _should_allow_entry(2, True, ...) 는 55일 돌파 여부와 무관하게 False를 반환한다.
-        failsafe(55일 돌파 override)는 system == 1 에만 적용되기 때문이다.
-
-        프로덕션에서는 _was_last_trade_profitable()이 system != 1 이면
-        항상 False를 반환하므로 이 경로는 실행되지 않는다.
+        System 2는 필터 없음 → is_profitable 값에 관계없이 항상 True 반환.
+        함수 첫 줄에서 system == 2 조기 반환으로 명시적 처리 (PR #24).
         """
-        # 55일 미돌파: False (하지만 프로덕션에서 호출되지 않는 경로)
-        assert _should_allow_entry(2, True, False) is False
-        # 55일 돌파여도 system=2 이면 failsafe 미적용 -> False
-        assert _should_allow_entry(2, True, True) is False
+        assert _should_allow_entry(2, True, False) is True
+        assert _should_allow_entry(2, True, True) is True
 
     def test_system2_filter_bypass_mechanism(self):
         """System 2 필터 우회 메커니즘의 동치성 검증.

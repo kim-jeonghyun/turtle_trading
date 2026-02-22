@@ -123,6 +123,18 @@ def setup_risk_manager() -> PortfolioRiskManager:
     return PortfolioRiskManager(symbol_groups=symbol_groups)
 
 
+def check_stop_loss(position, today_data) -> bool:
+    """스톱로스 발동 여부 확인.
+
+    LONG: 장중 저가(low)가 stop_loss 이하이면 발동
+    SHORT: 장중 고가(high)가 stop_loss 이상이면 발동
+    """
+    if position.direction == "LONG":
+        return today_data["low"] <= position.stop_loss
+    else:  # SHORT
+        return today_data["high"] >= position.stop_loss
+
+
 def is_korean_market(symbol: str) -> bool:
     """한국 시장 종목 여부 (공매도 제한)"""
     return symbol.endswith(".KS") or symbol.endswith(".KQ")
@@ -369,14 +381,8 @@ async def _run_checks():
 
             today = df.iloc[-1]
 
-            # 스톱로스 체크 — 현재 포지션 단위로 직접 비교
-            # LONG: today["low"]으로 체크 (장중 최악), SHORT: today["high"]으로 체크
-            check_price = today["low"] if pos.direction == "LONG" else today["high"]
-            stop_triggered = (pos.direction == "LONG" and check_price <= pos.stop_loss) or (
-                pos.direction == "SHORT" and check_price >= pos.stop_loss
-            )
-
-            if stop_triggered:
+            # 스톱로스 체크
+            if check_stop_loss(pos, today):
                 logger.warning(f"스톱로스 발동: {pos.symbol} ({pos.direction}) @ {today['close']}")
                 tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
                 direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
