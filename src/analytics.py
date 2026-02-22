@@ -396,7 +396,7 @@ def calculate_sharpe_ratio(returns: list, risk_free_rate: float = 0.03) -> float
     variance = sum((r - mean_return) ** 2 for r in returns) / (n - 1)
     std_return = math.sqrt(variance)
 
-    if std_return == 0:
+    if std_return < 1e-10:
         return 0.0
 
     # 일별 무위험 수익률로 변환 (거래일 252일 기준)

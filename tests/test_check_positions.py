@@ -1,10 +1,10 @@
 """
-scripts/check_positions.py - check_entry_signals() 단위 테스트
+scripts/check_positions.py 단위 테스트
 
-System 1 필터 로직:
-- 직전 System 1 거래가 수익이면 20일 브레이크아웃 진입 스킵
-- 단, 55일 failsafe breakout이면 필터 무시하고 진입 허용
-- System 2는 필터 없음
+- check_entry_signals(): 진입 시그널 + System 1 필터
+- check_exit_signals(): 청산 시그널 (10일/20일 이탈)
+- check_stop_loss(): 스톱로스 발동 판단
+- _should_allow_entry(): System 1 필터 헬퍼
 """
 
 import sys
@@ -12,11 +12,17 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 # scripts/ 디렉토리를 import 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scripts.check_positions import _should_allow_entry, check_entry_signals
+from scripts.check_positions import (
+    _should_allow_entry,
+    check_entry_signals,
+    check_exit_signals,
+    check_stop_loss,
+)
 from src.position_tracker import Position
 from src.types import SignalType
 
@@ -662,3 +668,340 @@ class TestShouldAllowEntry:
         assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=True) is True
         assert _should_allow_entry(system=2, is_profitable=True, is_55day_breakout=False) is True
         assert _should_allow_entry(system=2, is_profitable=False, is_55day_breakout=False) is True
+
+
+# ---------------------------------------------------------------------------
+# 청산 시그널 헬퍼
+# ---------------------------------------------------------------------------
+
+# 청산용 Donchian 채널 값
+DC_HIGH_10 = 103.0  # System 1 숏 청산 기준
+DC_LOW_10 = 97.0    # System 1 롱 청산 기준
+DC_HIGH_20_EXIT = 107.0  # System 2 숏 청산 기준
+DC_LOW_20_EXIT = 93.0    # System 2 롱 청산 기준
+
+
+def _make_exit_df(
+    today_high: float,
+    today_low: float,
+    today_close: float,
+    n_value: float = 2.0,
+) -> pd.DataFrame:
+    """check_exit_signals용 2행 DataFrame 생성."""
+    yesterday = {
+        "date": pd.Timestamp("2025-03-01"),
+        "high": 100.0,
+        "low": 98.0,
+        "close": 99.0,
+        "N": n_value,
+        "dc_low_10": DC_LOW_10,
+        "dc_high_10": DC_HIGH_10,
+        "dc_low_20": DC_LOW_20_EXIT,
+        "dc_high_20": DC_HIGH_20_EXIT,
+    }
+    today = {
+        "date": pd.Timestamp("2025-03-02"),
+        "high": today_high,
+        "low": today_low,
+        "close": today_close,
+        "N": n_value,
+        "dc_low_10": DC_LOW_10,
+        "dc_high_10": DC_HIGH_10,
+        "dc_low_20": DC_LOW_20_EXIT,
+        "dc_high_20": DC_HIGH_20_EXIT,
+    }
+    return pd.DataFrame([yesterday, today])
+
+
+def _make_open_position(
+    symbol: str = "SPY",
+    direction: str = "LONG",
+    system: int = 1,
+    stop_loss: float = 96.0,
+) -> Position:
+    """오픈 포지션 생성."""
+    return Position(
+        position_id=f"{symbol}_{system}_{direction}_20250201_120000",
+        symbol=symbol,
+        system=system,
+        direction=direction,
+        entry_date="2025-02-01",
+        entry_price=100.0,
+        entry_n=2.0,
+        units=1,
+        max_units=4,
+        shares_per_unit=40,
+        total_shares=40,
+        stop_loss=stop_loss,
+        pyramid_level=0,
+        exit_period=10 if system == 1 else 20,
+        status="open",
+        last_update="2025-02-15T12:00:00",
+    )
+
+
+# ---------------------------------------------------------------------------
+# check_exit_signals() 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestExitSignalsLong:
+    """롱 포지션 청산 시그널 테스트."""
+
+    def test_system1_long_exit_below_dc_low_10(self):
+        """System 1 롱: today low < yesterday dc_low_10 → 청산"""
+        pos = _make_open_position(direction="LONG", system=1)
+        df = _make_exit_df(today_high=100.0, today_low=DC_LOW_10 - 1.0, today_close=97.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is not None
+        assert result["type"] == SignalType.EXIT_LONG.value
+        assert result["position_id"] == pos.position_id
+        assert result["price"] == DC_LOW_10
+
+    def test_system2_long_exit_below_dc_low_20(self):
+        """System 2 롱: today low < yesterday dc_low_20 → 청산"""
+        pos = _make_open_position(direction="LONG", system=2)
+        df = _make_exit_df(today_high=100.0, today_low=DC_LOW_20_EXIT - 1.0, today_close=93.0)
+
+        result = check_exit_signals(df, pos, system=2)
+
+        assert result is not None
+        assert result["type"] == SignalType.EXIT_LONG.value
+        assert result["price"] == DC_LOW_20_EXIT
+
+    def test_long_no_exit_when_above_channel(self):
+        """롱: today low > dc_low_10 → 청산 아님"""
+        pos = _make_open_position(direction="LONG", system=1)
+        df = _make_exit_df(today_high=102.0, today_low=DC_LOW_10 + 1.0, today_close=101.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is None
+
+    def test_long_no_exit_boundary_equal(self):
+        """롱: today low == dc_low_10 → strict < 비교이므로 청산 아님"""
+        pos = _make_open_position(direction="LONG", system=1)
+        df = _make_exit_df(today_high=100.0, today_low=DC_LOW_10, today_close=98.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is None
+
+    def test_long_exit_insufficient_data(self):
+        """데이터 1행이면 None 반환"""
+        pos = _make_open_position(direction="LONG", system=1)
+        df = _make_exit_df(today_high=100.0, today_low=90.0, today_close=91.0)
+        single = df.iloc[:1]
+
+        result = check_exit_signals(single, pos, system=1)
+
+        assert result is None
+
+
+class TestExitSignalsShort:
+    """숏 포지션 청산 시그널 테스트."""
+
+    def test_system1_short_exit_above_dc_high_10(self):
+        """System 1 숏: today high > yesterday dc_high_10 → 청산"""
+        pos = _make_open_position(direction="SHORT", system=1)
+        df = _make_exit_df(today_high=DC_HIGH_10 + 1.0, today_low=99.0, today_close=103.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is not None
+        assert result["type"] == SignalType.EXIT_SHORT.value
+        assert result["position_id"] == pos.position_id
+        assert result["price"] == DC_HIGH_10
+
+    def test_system2_short_exit_above_dc_high_20(self):
+        """System 2 숏: today high > yesterday dc_high_20 → 청산"""
+        pos = _make_open_position(direction="SHORT", system=2)
+        df = _make_exit_df(today_high=DC_HIGH_20_EXIT + 1.0, today_low=99.0, today_close=107.0)
+
+        result = check_exit_signals(df, pos, system=2)
+
+        assert result is not None
+        assert result["type"] == SignalType.EXIT_SHORT.value
+        assert result["price"] == DC_HIGH_20_EXIT
+
+    def test_short_no_exit_when_below_channel(self):
+        """숏: today high < dc_high_10 → 청산 아님"""
+        pos = _make_open_position(direction="SHORT", system=1)
+        df = _make_exit_df(today_high=DC_HIGH_10 - 1.0, today_low=98.0, today_close=100.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is None
+
+    def test_short_no_exit_boundary_equal(self):
+        """숏: today high == dc_high_10 → strict > 비교이므로 청산 아님"""
+        pos = _make_open_position(direction="SHORT", system=1)
+        df = _make_exit_df(today_high=DC_HIGH_10, today_low=98.0, today_close=100.0)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is None
+
+
+class TestExitSignalStructure:
+    """청산 시그널 딕셔너리 구조 검증."""
+
+    def test_exit_signal_has_required_keys(self):
+        """청산 시그널에 필수 키가 포함되어야 한다."""
+        pos = _make_open_position(direction="LONG", system=1, stop_loss=90.0)
+        df = _make_exit_df(today_high=100.0, today_low=DC_LOW_10 - 1.0, today_close=96.5)
+
+        result = check_exit_signals(df, pos, system=1)
+
+        assert result is not None
+        required_keys = {"symbol", "type", "system", "position_id", "price", "current", "n", "date", "message"}
+        assert required_keys.issubset(result.keys()), f"누락 키: {required_keys - result.keys()}"
+        assert result["symbol"] == pos.symbol
+        assert result["system"] == 1
+        assert result["date"] == "2025-03-02"
+
+
+# ---------------------------------------------------------------------------
+# check_stop_loss() 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestStopLoss:
+    """check_stop_loss() 스톱로스 발동 테스트."""
+
+    def test_long_stop_triggered_low_below_stop(self):
+        """LONG: 장중 저가가 stop_loss 이하이면 발동"""
+        pos = _make_open_position(direction="LONG", stop_loss=96.0)
+        today = {"low": 95.5, "high": 100.0}
+
+        assert check_stop_loss(pos, today) is True
+
+    def test_long_stop_triggered_low_equals_stop(self):
+        """LONG: 장중 저가가 stop_loss와 정확히 같으면 발동 (<=)"""
+        pos = _make_open_position(direction="LONG", stop_loss=96.0)
+        today = {"low": 96.0, "high": 100.0}
+
+        assert check_stop_loss(pos, today) is True
+
+    def test_long_stop_not_triggered(self):
+        """LONG: 장중 저가가 stop_loss 초과이면 미발동"""
+        pos = _make_open_position(direction="LONG", stop_loss=96.0)
+        today = {"low": 96.5, "high": 100.0}
+
+        assert check_stop_loss(pos, today) is False
+
+    def test_short_stop_triggered_high_above_stop(self):
+        """SHORT: 장중 고가가 stop_loss 이상이면 발동"""
+        pos = _make_open_position(direction="SHORT", stop_loss=104.0)
+        today = {"low": 99.0, "high": 104.5}
+
+        assert check_stop_loss(pos, today) is True
+
+    def test_short_stop_triggered_high_equals_stop(self):
+        """SHORT: 장중 고가가 stop_loss와 정확히 같으면 발동 (>=)"""
+        pos = _make_open_position(direction="SHORT", stop_loss=104.0)
+        today = {"low": 99.0, "high": 104.0}
+
+        assert check_stop_loss(pos, today) is True
+
+    def test_short_stop_not_triggered(self):
+        """SHORT: 장중 고가가 stop_loss 미만이면 미발동"""
+        pos = _make_open_position(direction="SHORT", stop_loss=104.0)
+        today = {"low": 99.0, "high": 103.5}
+
+        assert check_stop_loss(pos, today) is False
+
+    @pytest.mark.parametrize(
+        "direction,stop_loss,low,high,expected",
+        [
+            ("LONG", 100.0, 99.0, 105.0, True),
+            ("LONG", 100.0, 100.0, 105.0, True),
+            ("LONG", 100.0, 100.01, 105.0, False),
+            ("SHORT", 100.0, 95.0, 101.0, True),
+            ("SHORT", 100.0, 95.0, 100.0, True),
+            ("SHORT", 100.0, 95.0, 99.99, False),
+        ],
+        ids=[
+            "long-below", "long-equal", "long-above",
+            "short-above", "short-equal", "short-below",
+        ],
+    )
+    def test_stop_loss_parametrized(self, direction, stop_loss, low, high, expected):
+        """다양한 가격 조합의 스톱로스 발동 경계값 검증."""
+        pos = _make_open_position(direction=direction, stop_loss=stop_loss)
+        today = {"low": low, "high": high}
+
+        assert check_stop_loss(pos, today) is expected
+
+
+# ---------------------------------------------------------------------------
+# 리스크 매니저 통합 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestRiskManagerIntegration:
+    """진입 시그널이 리스크 매니저에 의해 필터링되는 시나리오 검증.
+
+    check_entry_signals 자체는 리스크 매니저를 호출하지 않으므로,
+    _run_checks 에서 사용하는 패턴을 재현하여 통합 동작을 검증한다.
+    """
+
+    def test_signal_passes_risk_check(self):
+        """리스크 한도 내이면 시그널이 유지된다."""
+        from src.risk_manager import PortfolioRiskManager
+        from src.types import Direction
+
+        risk_mgr = PortfolioRiskManager(symbol_groups={})
+        df = _make_df(
+            today_high=ABOVE_20_ONLY,
+            today_low=99.0,
+            today_close=ABOVE_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
+
+        accepted = []
+        for sig in signals:
+            direction = Direction.LONG if sig["direction"] == "LONG" else Direction.SHORT
+            can_add, _ = risk_mgr.can_add_position(
+                symbol=sig["symbol"], units=1, n_value=sig["n"], direction=direction,
+            )
+            if can_add:
+                accepted.append(sig)
+                risk_mgr.add_position(sig["symbol"], 1, sig["n"], direction)
+
+        assert len(accepted) >= 1, "리스크 한도 내에서 시그널이 통과해야 한다"
+
+    def test_signal_blocked_by_direction_limit(self):
+        """단일 방향 한도(12 Units) 초과 시 시그널이 거부된다."""
+        from src.risk_manager import PortfolioRiskManager
+        from src.types import Direction
+
+        risk_mgr = PortfolioRiskManager(symbol_groups={})
+
+        # 12개 롱 포지션을 미리 추가하여 한도 채움
+        for i in range(12):
+            risk_mgr.add_position(f"SYM{i}", 1, 2.0, Direction.LONG)
+
+        df = _make_df(
+            today_high=ABOVE_20_ONLY,
+            today_low=99.0,
+            today_close=ABOVE_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) >= 1, "시그널 자체는 생성되어야 한다"
+
+        can_add, reason = risk_mgr.can_add_position(
+            symbol=SYMBOL_US, units=1, n_value=long_signals[0]["n"], direction=Direction.LONG,
+        )
+        assert can_add is False, f"단일 방향 12 Units 초과 시 거부되어야 한다. reason={reason}"
