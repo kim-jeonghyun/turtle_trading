@@ -6,11 +6,12 @@ SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 PYTHONPATH=/app
 
-# 한국 시장 시그널 체크 (장 마감 후 16:00)
-0 16 * * 1-5 cd /app && python scripts/signal_check.py >> /app/logs/signal_kr.log 2>&1
+# 한국 시장 시그널+포지션 체크 (장 마감 후 16:00)
+0 16 * * 1-5 cd /app && python scripts/check_positions.py >> /app/logs/check_kr.log 2>&1
 
-# 미국 시장 시그널 체크 (한국시간 07:00 = 미국 동부 17:00/18:00)
-0 7 * * 2-6 cd /app && python scripts/signal_check.py >> /app/logs/signal_us.log 2>&1
+# 미국 시장 시그널+포지션 체크 (한국시간 07:00)
+# NOTE: KR 심볼도 재처리됨 (should_check_signals 통과). 무해 — v3.3.0에서 --market 인자로 분리 예정
+0 7 * * 2-6 cd /app && python scripts/check_positions.py >> /app/logs/check_us.log 2>&1
 
 # 일일 리포트 (매일 08:00)
 0 8 * * * cd /app && python scripts/daily_report.py >> /app/logs/daily_report.log 2>&1

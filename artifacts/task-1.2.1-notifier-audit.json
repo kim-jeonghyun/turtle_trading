@@ -1,0 +1,24 @@
+{
+  "audit_date": "2026-02-22",
+  "auditor": "Claude",
+  "channels": {
+    "telegram": {
+      "configured_in_check_positions": true,
+      "env_vars": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
+      "notes": "setup_notifier() in check_positions.py only configures TelegramChannel"
+    },
+    "discord": {
+      "configured_in_check_positions": false,
+      "env_vars": ["DISCORD_WEBHOOK_URL"],
+      "notes": "DiscordChannel is NOT imported or configured in check_positions.py. Was present in signal_check.py"
+    },
+    "email": {
+      "configured_in_check_positions": false,
+      "env_vars": ["SMTP_HOST", "SMTP_PORT", "EMAIL_USER", "EMAIL_PASSWORD", "EMAIL_TO"],
+      "notes": "EmailChannel is NOT imported or configured in check_positions.py. Was present in signal_check.py"
+    }
+  },
+  "conclusion": "check_positions.py uses Telegram only. Discord and Email channels that existed in signal_check.py were not carried over to the unified script. daily_report.py still has all three channels configured.",
+  "risk_assessment": "LOW - If users relied on Discord/Email notifications from signal_check.py, those notifications will stop. However, check_positions.py was already the active script and only used Telegram. Users who need Discord/Email can add channels to check_positions.py in a future release.",
+  "next_review": "next release"
+}
