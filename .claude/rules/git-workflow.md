@@ -25,3 +25,16 @@
 - force push, rebase -i
 - .env/credentials 커밋
 - 테스트 없는 코드 변경
+
+## Branch Protection 설정 (main)
+
+2026-02-23 적용. GitHub API로 설정됨.
+
+| 설정 | 값 |
+|------|-----|
+| Required status checks | lint, test (strict: true) |
+| Require PR reviews | 0 approvals (1인 개발) |
+| Enforce admins | true |
+| Force push | 차단 |
+| Branch deletion | 차단 |
+| Required signatures | false (향후 실거래 시 검토) |
