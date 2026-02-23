@@ -93,6 +93,8 @@ class ParquetDataStore:
         return pd.read_parquet(path)
 
     def save_trade(self, trade: Dict[str, Any]):
+        trade["symbol"] = validate_symbol(trade.get("symbol", ""))
+
         today = datetime.now().strftime("%Y%m%d")
         path = self.trades_dir / f"trades_{today}.parquet"
 
@@ -120,6 +122,8 @@ class ParquetDataStore:
         return pd.DataFrame()
 
     def save_signal(self, signal: Dict[str, Any]):
+        signal["symbol"] = validate_symbol(signal.get("symbol", ""))
+
         today = datetime.now().strftime("%Y%m%d")
         path = self.signals_dir / f"signals_{today}.parquet"
 

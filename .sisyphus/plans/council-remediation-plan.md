@@ -75,7 +75,7 @@ Agent Council이 PR #32 머지와 v3.2.1 마감에 대해 3가지 조건부 승�
 #### Task 1.2.3: Crontab 전환 검증 체크리스트
 
 **Pre-deployment (crontab 변경 전):**
-- [ ] 심볼 유니버스 동등성 확인: `data/turtle_universe_full.csv` vs `config/universe.yaml`
+- [ ] 심볼 유니버스 확인: `config/universe.yaml` 심볼 목록이 운영 의도와 일치하는지 검토
 - [ ] 알림 채널 동등성 확인 (Task 1.2.1) ✅
 - [ ] Dry-run (16:00 KST 시뮬레이션): KR 처리, US 스킵 확인
 - [ ] Dry-run (07:00 KST 시뮬레이션): US 처리 확인 + KR 재처리 확인
