@@ -14,8 +14,9 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-# scripts/ 디렉토리를 import 경로에 추가
+# 프로젝트 루트와 tests/ 디렉토리를 import 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from scripts.check_positions import (
     _should_allow_entry,
@@ -46,6 +47,7 @@ from scripts.check_positions import (
     LOCK_FILE,
 )
 from src.types import Direction, AssetGroup
+from conftest import PatchManager
 
 # ---------------------------------------------------------------------------
 # 헬퍼 함수
@@ -1300,7 +1302,12 @@ class TestRunChecks:
     """_run_checks() 비동기 오케스트레이션 통합 테스트."""
 
     def _make_mock_df(self, high=101.0, low=97.0, close=100.0, n=2.0):
-        """터틀 지표가 포함된 2행 DataFrame 생성."""
+        """터틀 지표가 포함된 2행 DataFrame 생성.
+
+        NOTE: conftest.py의 make_turtle_df fixture와 동일 로직.
+        클래스 내부에서 self._make_mock_df 호출이 30+건이라 당장 마이그레이션하지 않음.
+        신규 테스트 클래스에서는 make_turtle_df fixture 사용 권장.
+        """
         return pd.DataFrame([
             {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
              "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
@@ -1415,15 +1422,11 @@ class TestRunChecks:
 
     def _start_patches(self, patches):
         """패치를 모두 시작하고 반환."""
-        started = {}
-        for name, p in patches.items():
-            started[name] = p.start()
-        return started
+        return PatchManager.start_all(patches)
 
     def _stop_patches(self, patches):
         """패치를 모두 중지."""
-        for p in patches.values():
-            p.stop()
+        PatchManager.stop_all(patches)
 
     async def test_run_checks_no_positions_no_signals(self):
         """오픈 포지션 없음, 돌파 없음 -> 깨끗한 실행."""
@@ -1670,6 +1673,12 @@ class TestRunChecksInverseETF:
     """_run_checks() Inverse ETF 처리 분기 테스트."""
 
     def _make_mock_df(self, high=101.0, low=97.0, close=100.0, n=2.0):
+        """터틀 지표가 포함된 2행 DataFrame 생성.
+
+        NOTE: conftest.py의 make_turtle_df fixture와 동일 로직.
+        클래스 내부에서 self._make_mock_df 호출이 30+건이라 당장 마이그레이션하지 않음.
+        신규 테스트 클래스에서는 make_turtle_df fixture 사용 권장.
+        """
         return pd.DataFrame([
             {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
              "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
