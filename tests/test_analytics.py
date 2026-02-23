@@ -465,6 +465,15 @@ class TestRatios:
         # 손실 없음 → 0 반환 (무한대 방지)
         assert sortino == 0.0
 
+    def test_sortino_ratio_near_zero_downside_std(self):
+        """하방 표준편차가 극소값일 때 0 반환 (epsilon 가드)"""
+        # daily_rf = 0.03/252 ≈ 0.000119048
+        # 이 값보다 약간 작은 수익률 → downside_std ≈ 1e-15 수준
+        daily_rf = 0.03 / 252
+        near_rf_returns = [daily_rf - 1e-15, daily_rf - 2e-15]
+        sortino = calculate_sortino_ratio(near_rf_returns, risk_free_rate=0.03)
+        assert sortino == 0.0  # 극소 downside_std → 0 반환, 폭발적 값 방지
+
     def test_sortino_ratio_empty(self):
         """빈 수익률 리스트"""
         assert calculate_sortino_ratio([]) == 0.0

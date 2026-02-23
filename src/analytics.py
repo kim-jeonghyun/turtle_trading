@@ -436,7 +436,7 @@ def calculate_sortino_ratio(returns: list, risk_free_rate: float = 0.03) -> floa
     downside_variance = sum((r - daily_rf) ** 2 for r in downside_returns) / len(downside_returns)
     downside_std = math.sqrt(downside_variance)
 
-    if downside_std == 0:
+    if downside_std < 1e-10:
         return 0.0
 
     sortino = ((mean_return - daily_rf) / downside_std) * math.sqrt(252)
