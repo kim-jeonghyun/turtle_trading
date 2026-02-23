@@ -277,3 +277,60 @@ class TestGetGroupMapping:
         um = UniverseManager()
         mapping = um.get_group_mapping()
         assert len(mapping) == len(um.assets)
+
+
+class TestGetDisplayName:
+    """get_display_name() 메서드 단위 테스트"""
+
+    @pytest.fixture
+    def um_with_korean_and_us(self):
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity}
+    - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
+  us_equity:
+    - {symbol: SPY, name: "S&P 500 ETF", group: us_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            yield UniverseManager(yaml_path=f.name)
+        os.unlink(f.name)
+
+    def test_korean_ks_returns_name_symbol_format(self, um_with_korean_and_us):
+        """한국 .KS 종목은 "이름 심볼" 형식 반환"""
+        result = um_with_korean_and_us.get_display_name("005930.KS")
+        assert result == "삼성전자 005930.KS"
+
+    def test_korean_kq_returns_name_symbol_format(self, um_with_korean_and_us):
+        """한국 .KQ 종목은 "이름 심볼" 형식 반환"""
+        result = um_with_korean_and_us.get_display_name("035420.KQ")
+        assert result == "NAVER 035420.KQ"
+
+    def test_us_stock_returns_name_only(self, um_with_korean_and_us):
+        """미국 종목은 이름만 반환"""
+        result = um_with_korean_and_us.get_display_name("SPY")
+        assert result == "S&P 500 ETF"
+
+    def test_unknown_symbol_returns_symbol_as_is(self, um_with_korean_and_us):
+        """유니버스에 없는 심볼은 심볼 그대로 반환"""
+        result = um_with_korean_and_us.get_display_name("UNKNOWN")
+        assert result == "UNKNOWN"
+
+    def test_symbol_where_name_equals_symbol_returns_symbol(self):
+        """name이 심볼과 동일한 경우 심볼 그대로 반환"""
+        yaml_content = """
+symbols:
+  us_equity:
+    - {symbol: AAPL, name: AAPL, group: us_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                result = um.get_display_name("AAPL")
+                assert result == "AAPL"
+            finally:
+                os.unlink(f.name)

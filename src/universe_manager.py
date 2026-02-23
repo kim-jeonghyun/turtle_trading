@@ -133,5 +133,18 @@ class UniverseManager:
         """활성화된 전체 심볼 리스트 (이름 포함 튜플이 아닌 순수 심볼)"""
         return self.get_enabled_symbols()
 
+    def get_display_name(self, symbol: str) -> str:
+        """알림용 표시 이름 반환.
+
+        한국 종목(.KS/.KQ): "삼성전자 005930.KS"
+        미국/기타: 심볼 그대로 "SPY"
+        """
+        asset = self.assets.get(symbol)
+        if not asset or asset.name == symbol:
+            return symbol
+        if symbol.endswith(".KS") or symbol.endswith(".KQ"):
+            return f"{asset.name} {symbol}"
+        return asset.name
+
     def get_group_mapping(self) -> Dict[str, AssetGroup]:
         return {s: a.group for s, a in self.assets.items()}
