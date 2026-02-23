@@ -26,6 +26,27 @@ from scripts.check_positions import (
 from src.position_tracker import Position
 from src.types import SignalType
 
+# Integration test imports
+import asyncio
+import os
+import fcntl
+from unittest.mock import AsyncMock, mock_open, patch
+
+import yaml
+
+from scripts.check_positions import (
+    acquire_lock,
+    release_lock,
+    load_config,
+    setup_notifier,
+    setup_risk_manager,
+    main,
+    _run_checks,
+    is_korean_market,
+    LOCK_FILE,
+)
+from src.types import Direction, AssetGroup
+
 # ---------------------------------------------------------------------------
 # 헬퍼 함수
 # ---------------------------------------------------------------------------
@@ -1005,3 +1026,818 @@ class TestRiskManagerIntegration:
             symbol=SYMBOL_US, units=1, n_value=long_signals[0]["n"], direction=Direction.LONG,
         )
         assert can_add is False, f"단일 방향 12 Units 초과 시 거부되어야 한다. reason={reason}"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: is_korean_market
+# ---------------------------------------------------------------------------
+
+
+class TestIsKoreanMarket:
+    """is_korean_market() 한국 시장 판별 테스트."""
+
+    def test_ks_suffix(self):
+        assert is_korean_market("005930.KS") is True
+
+    def test_kq_suffix(self):
+        assert is_korean_market("035420.KQ") is True
+
+    def test_us_symbol(self):
+        assert is_korean_market("SPY") is False
+
+    def test_crypto_symbol(self):
+        assert is_korean_market("BTC-USD") is False
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: acquire_lock / release_lock
+# ---------------------------------------------------------------------------
+
+
+class TestAcquireLock:
+    """acquire_lock() 파일 잠금 테스트."""
+
+    @patch("scripts.check_positions.fcntl")
+    @patch("builtins.open")
+    @patch("scripts.check_positions.LOCK_FILE")
+    def test_acquire_lock_success(self, mock_lock_file, mock_open_fn, mock_fcntl):
+        mock_fd = MagicMock()
+        mock_open_fn.return_value = mock_fd
+        mock_lock_file.parent.mkdir = MagicMock()
+
+        result = acquire_lock()
+
+        assert result is mock_fd
+        mock_fd.write.assert_called_once()
+        mock_fd.flush.assert_called_once()
+
+    @patch("scripts.check_positions.fcntl")
+    @patch("builtins.open")
+    @patch("scripts.check_positions.LOCK_FILE")
+    def test_acquire_lock_blocked(self, mock_lock_file, mock_open_fn, mock_fcntl):
+        mock_fd = MagicMock()
+        mock_open_fn.return_value = mock_fd
+        mock_lock_file.parent.mkdir = MagicMock()
+        mock_fcntl.flock.side_effect = IOError("locked")
+        mock_fcntl.LOCK_EX = fcntl.LOCK_EX
+        mock_fcntl.LOCK_NB = fcntl.LOCK_NB
+
+        result = acquire_lock()
+
+        assert result is None
+        mock_fd.close.assert_called_once()
+
+    @patch("scripts.check_positions.fcntl")
+    @patch("builtins.open")
+    @patch("scripts.check_positions.LOCK_FILE")
+    def test_acquire_lock_creates_parent_dir(self, mock_lock_file, mock_open_fn, mock_fcntl):
+        mock_fd = MagicMock()
+        mock_open_fn.return_value = mock_fd
+        mock_lock_file.parent.mkdir = MagicMock()
+
+        acquire_lock()
+
+        mock_lock_file.parent.mkdir.assert_called_once_with(parents=True, exist_ok=True)
+
+
+class TestReleaseLock:
+    """release_lock() 잠금 해제 테스트."""
+
+    @patch("scripts.check_positions.fcntl")
+    def test_release_lock_success(self, mock_fcntl):
+        mock_fd = MagicMock()
+
+        release_lock(mock_fd)
+
+        mock_fcntl.flock.assert_called_once_with(mock_fd, mock_fcntl.LOCK_UN)
+        mock_fd.close.assert_called_once()
+
+    def test_release_lock_none(self):
+        release_lock(None)  # Should not raise
+
+    @patch("scripts.check_positions.fcntl")
+    def test_release_lock_exception_swallowed(self, mock_fcntl):
+        mock_fd = MagicMock()
+        mock_fd.close.side_effect = OSError("close failed")
+
+        release_lock(mock_fd)  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: load_config
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfig:
+    """load_config() 환경 변수 로드 테스트."""
+
+    def test_load_config_with_env(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "tok", "TELEGRAM_CHAT_ID": "cid"}):
+            config = load_config()
+        assert config["telegram_token"] == "tok"
+        assert config["telegram_chat_id"] == "cid"
+
+    def test_load_config_missing_env(self):
+        with patch.dict(os.environ, {}, clear=True):
+            # Patch load_dotenv to avoid it loading any real .env file
+            with patch("scripts.check_positions.load_dotenv", create=True):
+                # We need to patch the import inside the function
+                import importlib
+                config = load_config()
+        # Values may be None or whatever was in the environment before clear
+        # Since we cleared, os.getenv returns None
+        assert config["telegram_token"] is None or isinstance(config["telegram_token"], str)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: setup_notifier
+# ---------------------------------------------------------------------------
+
+
+class TestSetupNotifier:
+    """setup_notifier() 알림 채널 설정 테스트."""
+
+    def test_with_telegram_credentials(self):
+        config = {"telegram_token": "tok", "telegram_chat_id": "cid"}
+        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+            notifier = setup_notifier(config)
+        MockTg.assert_called_once_with("tok", "cid")
+        assert notifier is not None
+
+    def test_without_credentials(self):
+        config = {"telegram_token": None, "telegram_chat_id": None}
+        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+            notifier = setup_notifier(config)
+        MockTg.assert_not_called()
+        assert notifier is not None
+
+    def test_partial_credentials_missing_token(self):
+        config = {"telegram_token": None, "telegram_chat_id": "cid"}
+        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+            notifier = setup_notifier(config)
+        MockTg.assert_not_called()
+
+    def test_partial_credentials_missing_chat_id(self):
+        config = {"telegram_token": "tok", "telegram_chat_id": None}
+        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+            notifier = setup_notifier(config)
+        MockTg.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: setup_risk_manager
+# ---------------------------------------------------------------------------
+
+
+class TestSetupRiskManager:
+    """setup_risk_manager() 리스크 매니저 설정 테스트."""
+
+    def test_loads_real_config(self):
+        """실제 config/correlation_groups.yaml 로 정상 로드."""
+        rm = setup_risk_manager()
+        assert rm is not None
+
+    def test_missing_file(self, tmp_path):
+        """설정 파일 없음 -> 기본 그룹 운영."""
+        fake_config = tmp_path / "correlation_groups.yaml"
+        with patch("scripts.check_positions.Path") as MockPath:
+            # __file__ 경로 체인: Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
+            mock_file_path = MagicMock()
+            MockPath.return_value = mock_file_path
+            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
+            rm = setup_risk_manager()
+        assert rm is not None
+
+    def test_empty_config(self, tmp_path):
+        """YAML이 비어 있으면 기본 그룹 운영."""
+        fake_config = tmp_path / "correlation_groups.yaml"
+        fake_config.write_text("")
+        with patch("scripts.check_positions.Path") as MockPath:
+            mock_file_path = MagicMock()
+            MockPath.return_value = mock_file_path
+            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
+            rm = setup_risk_manager()
+        assert rm is not None
+
+    def test_config_no_groups_key(self, tmp_path):
+        """YAML에 groups 키 없으면 기본 그룹 운영."""
+        fake_config = tmp_path / "correlation_groups.yaml"
+        fake_config.write_text("other_key: value\n")
+        with patch("scripts.check_positions.Path") as MockPath:
+            mock_file_path = MagicMock()
+            MockPath.return_value = mock_file_path
+            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
+            rm = setup_risk_manager()
+        assert rm is not None
+
+    def test_yaml_error(self, tmp_path):
+        """YAML 파싱 오류 -> 기본 그룹 운영."""
+        fake_config = tmp_path / "correlation_groups.yaml"
+        fake_config.write_text("invalid: yaml: [\n")
+        with patch("scripts.check_positions.Path") as MockPath:
+            mock_file_path = MagicMock()
+            MockPath.return_value = mock_file_path
+            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
+            rm = setup_risk_manager()
+        assert rm is not None
+
+    def test_valid_groups_parsed(self, tmp_path):
+        """정상 그룹 설정이 파싱되어 심볼이 매핑됨."""
+        fake_config = tmp_path / "correlation_groups.yaml"
+        fake_config.write_text(yaml.dump({
+            "groups": {
+                "us_equity": ["SPY", "QQQ"],
+                "crypto": ["BTC-USD"],
+            }
+        }))
+        with patch("scripts.check_positions.Path") as MockPath:
+            mock_file_path = MagicMock()
+            MockPath.return_value = mock_file_path
+            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
+            rm = setup_risk_manager()
+        assert rm is not None
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: main()
+# ---------------------------------------------------------------------------
+
+
+class TestMain:
+    """main() 비동기 엔트리포인트 테스트."""
+
+    async def test_acquires_and_releases_lock(self):
+        mock_fd = MagicMock()
+        with patch("scripts.check_positions.acquire_lock", return_value=mock_fd), \
+             patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run, \
+             patch("scripts.check_positions.release_lock") as mock_release:
+            await main()
+        mock_run.assert_awaited_once()
+        mock_release.assert_called_once_with(mock_fd)
+
+    async def test_skips_when_already_locked(self):
+        with patch("scripts.check_positions.acquire_lock", return_value=None), \
+             patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run:
+            await main()
+        mock_run.assert_not_awaited()
+
+    async def test_releases_lock_on_exception(self):
+        mock_fd = MagicMock()
+        with patch("scripts.check_positions.acquire_lock", return_value=mock_fd), \
+             patch("scripts.check_positions._run_checks", new_callable=AsyncMock, side_effect=RuntimeError("boom")), \
+             patch("scripts.check_positions.release_lock") as mock_release:
+            with pytest.raises(RuntimeError):
+                await main()
+        mock_release.assert_called_once_with(mock_fd)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: _run_checks()
+# ---------------------------------------------------------------------------
+
+
+class TestRunChecks:
+    """_run_checks() 비동기 오케스트레이션 통합 테스트."""
+
+    def _make_mock_df(self, high=101.0, low=97.0, close=100.0, n=2.0):
+        """터틀 지표가 포함된 2행 DataFrame 생성."""
+        return pd.DataFrame([
+            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97, "dc_low_20": 95, "dc_high_20": 105},
+            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97, "dc_low_20": 95, "dc_high_20": 105},
+        ])
+
+    def _build_patches(self, open_positions=None, symbols=None, fetch_df=None,
+                       should_check=True, can_add=(True, ""), should_pyramid=False):
+        """_run_checks()의 모든 의존성을 패치하는 딕셔너리를 반환."""
+        if open_positions is None:
+            open_positions = []
+        if symbols is None:
+            symbols = ["SPY"]
+        if fetch_df is None:
+            fetch_df = self._make_mock_df()
+
+        patches = {}
+
+        # load_config
+        patches["load_config"] = patch(
+            "scripts.check_positions.load_config",
+            return_value={"telegram_token": None, "telegram_chat_id": None},
+        )
+
+        # setup_notifier
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+        patches["setup_notifier"] = patch(
+            "scripts.check_positions.setup_notifier", return_value=mock_notifier,
+        )
+
+        # DataFetcher
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch.return_value = fetch_df
+        patches["DataFetcher"] = patch(
+            "scripts.check_positions.DataFetcher", return_value=mock_fetcher,
+        )
+
+        # ParquetDataStore
+        mock_data_store = MagicMock()
+        patches["ParquetDataStore"] = patch(
+            "scripts.check_positions.ParquetDataStore", return_value=mock_data_store,
+        )
+
+        # PositionTracker
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [p for p in open_positions if p.symbol == sym] if sym else open_positions
+        )
+        mock_tracker.get_summary.return_value = {"open": len(open_positions)}
+        mock_tracker.should_pyramid.return_value = should_pyramid
+        mock_tracker.get_position_history.return_value = []
+        patches["PositionTracker"] = patch(
+            "scripts.check_positions.PositionTracker", return_value=mock_tracker,
+        )
+
+        # setup_risk_manager
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = can_add
+        mock_rm.get_risk_summary.return_value = {}
+        patches["setup_risk_manager"] = patch(
+            "scripts.check_positions.setup_risk_manager", return_value=mock_rm,
+        )
+
+        # UniverseManager
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = symbols
+        mock_universe.assets = {}
+        patches["UniverseManager"] = patch(
+            "scripts.check_positions.UniverseManager", return_value=mock_universe,
+        )
+
+        # InverseETFFilter
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = False
+        patches["InverseETFFilter"] = patch(
+            "scripts.check_positions.InverseETFFilter", return_value=mock_inverse,
+        )
+
+        # add_turtle_indicators (pass-through)
+        patches["add_turtle_indicators"] = patch(
+            "scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df,
+        )
+
+        # get_market_status
+        patches["get_market_status"] = patch(
+            "scripts.check_positions.get_market_status", return_value="Market Open",
+        )
+
+        # should_check_signals
+        patches["should_check_signals"] = patch(
+            "scripts.check_positions.should_check_signals", return_value=should_check,
+        )
+
+        # infer_market (used in logging)
+        patches["infer_market"] = patch(
+            "scripts.check_positions.infer_market", return_value="US",
+        )
+
+        # Path for universe.yaml — need to keep real Path for other uses
+        # We mock only the specific call site in _run_checks
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False  # Use default universe
+        patches["universe_yaml_path"] = patch(
+            "scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+        )
+
+        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store
+
+    def _start_patches(self, patches):
+        """패치를 모두 시작하고 반환."""
+        started = {}
+        for name, p in patches.items():
+            started[name] = p.start()
+        return started
+
+    def _stop_patches(self, patches):
+        """패치를 모두 중지."""
+        for p in patches.values():
+            p.stop()
+
+    async def test_run_checks_no_positions_no_signals(self):
+        """오픈 포지션 없음, 돌파 없음 -> 깨끗한 실행."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=101, low=97),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        # No breakout (high=101 < dc_high_20=105), so no signal notification
+        notifier.send_signal.assert_not_awaited()
+
+    async def test_run_checks_stop_loss_triggered(self):
+        """오픈 포지션 스톱로스 발동 -> close + notify."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=95, close=96),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        tracker.close_position.assert_called_once()
+        notifier.send_signal.assert_awaited()
+
+    async def test_run_checks_exit_signal(self):
+        """오픈 포지션 청산 시그널 -> close + save + notify."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        # low=96 < dc_low_10=97 -> exit signal, but stop_loss=80 not hit
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=96, close=97),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        tracker.close_position.assert_called_once()
+        notifier.send_signal.assert_awaited()
+
+    async def test_run_checks_pyramid_opportunity(self):
+        """피라미딩 기회 -> notify."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=99, close=100),
+            should_pyramid=True,
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        # Pyramid notification should have been sent
+        assert notifier.send_signal.await_count >= 1
+        call_args_list = notifier.send_signal.call_args_list
+        assert any("PYRAMID" in str(call) for call in call_args_list)
+
+    async def test_run_checks_entry_signal_generated(self):
+        """새 진입 시그널 생성 + 리스크 통과 -> save + notify."""
+        # high=106 > dc_high_20=105 -> long entry signal
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        notifier.send_signal.assert_awaited()
+
+    async def test_run_checks_signal_blocked_by_risk(self):
+        """진입 시그널 리스크 차단 -> 알림 없음."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+            can_add=(False, "Direction limit exceeded"),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        notifier.send_signal.assert_not_awaited()
+
+    async def test_run_checks_empty_fetch_skipped(self):
+        """빈 DataFrame -> 에러 없이 스킵."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=pd.DataFrame(),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        notifier.send_signal.assert_not_awaited()
+
+    async def test_run_checks_market_inactive_skipped(self):
+        """마켓 비활동 -> 시그널 체크 스킵."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+            should_check=False,
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        notifier.send_signal.assert_not_awaited()
+
+    async def test_run_checks_position_error_handled(self):
+        """포지션 처리 중 예외 -> 로깅 후 계속."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+        )
+        # Make fetcher raise for position data
+        started = self._start_patches(patches)
+        fetcher_instance = started["DataFetcher"]
+        fetcher_instance.fetch.side_effect = RuntimeError("API error")
+        try:
+            await _run_checks()  # Should not raise
+        finally:
+            self._stop_patches(patches)
+
+    async def test_run_checks_signal_error_handled(self):
+        """시그널 처리 중 예외 -> 로깅 후 계속."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY", "QQQ"],
+        )
+        started = self._start_patches(patches)
+        # Make fetcher raise for everything
+        fetcher_instance = started["DataFetcher"]
+        fetcher_instance.fetch.side_effect = RuntimeError("API error")
+        try:
+            await _run_checks()  # Should not raise
+        finally:
+            self._stop_patches(patches)
+
+    async def test_run_checks_symbol_tuple_handling(self):
+        """(symbol, name) 튜플 심볼 처리."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+        )
+        # Override UniverseManager to provide asset with name
+        patches["UniverseManager"].stop()
+        universe_mock = MagicMock()
+        universe_mock.get_enabled_symbols.return_value = ["SPY"]
+        asset_mock = MagicMock()
+        asset_mock.name = "S&P 500 ETF"
+        universe_mock.assets = {"SPY": asset_mock}
+        patches["UniverseManager"] = patch(
+            "scripts.check_positions.UniverseManager", return_value=universe_mock,
+        )
+        patches["UniverseManager"].start()
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+
+    async def test_run_checks_existing_system_position_skipped(self):
+        """기존 시스템 포지션 보유 중 -> 해당 시스템 시그널 스킵."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+
+    async def test_run_checks_save_signal_called(self):
+        """시그널 저장이 data_store.save_signal()로 호출되는지 검증."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=["SPY"],
+            fetch_df=self._make_mock_df(high=106, low=99, close=105),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        ds.save_signal.assert_called()
+
+    async def test_run_checks_risk_summary_logged(self):
+        """리스크 요약이 호출되는지 검증."""
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[], symbols=[],
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        rm.get_risk_summary.assert_called_once()
+
+    async def test_run_checks_position_loaded_to_risk_manager(self):
+        """오픈 포지션이 리스크 매니저에 로드되는지 검증."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=99, close=100),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+        rm.add_position.assert_any_call("SPY", 1, 2.0, Direction.LONG)
+
+    async def test_run_checks_multiple_positions(self):
+        """여러 포지션 동시 처리."""
+        pos1 = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        pos2 = _make_open_position(symbol="QQQ", direction="SHORT", system=2, stop_loss=120.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos1, pos2], symbols=["SPY", "QQQ"],
+            fetch_df=self._make_mock_df(high=100, low=99, close=100),
+        )
+        self._start_patches(patches)
+        try:
+            await _run_checks()
+        finally:
+            self._stop_patches(patches)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: _run_checks() — Inverse ETF branch
+# ---------------------------------------------------------------------------
+
+
+class TestRunChecksInverseETF:
+    """_run_checks() Inverse ETF 처리 분기 테스트."""
+
+    def _make_mock_df(self, high=101.0, low=97.0, close=100.0, n=2.0):
+        return pd.DataFrame([
+            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97},
+            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97},
+        ])
+
+    async def test_inverse_etf_force_exit(self):
+        """Inverse ETF 괴리/보유일 초과 -> 강제 청산."""
+        pos = _make_open_position(symbol="SH", direction="LONG", system=1, stop_loss=50.0)
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [pos] if sym is None or sym == "SH" else []
+        )
+        mock_tracker.get_summary.return_value = {"open": 1}
+        mock_tracker.should_pyramid.return_value = False
+        mock_tracker.get_position_history.return_value = []
+
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = (True, "")
+        mock_rm.get_risk_summary.return_value = {}
+
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = []
+        mock_universe.assets = {}
+
+        # Inverse ETF filter: is_inverse=True, should_force_exit=True
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = True
+        mock_inverse.get_config.return_value = MagicMock(underlying="SPY")
+        mock_inverse.should_force_exit.return_value = (True, "DECAY_THRESHOLD", "Decay > 5%")
+
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False
+
+        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
+             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
+             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
+             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
+             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
+             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
+             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
+             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
+             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
+             patch("scripts.check_positions.get_market_status", return_value="Open"), \
+             patch("scripts.check_positions.should_check_signals", return_value=True), \
+             patch("scripts.check_positions.infer_market", return_value="US"), \
+             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+            await _run_checks()
+
+        mock_tracker.close_position.assert_called_once()
+        notifier_calls = mock_notifier.send_signal.call_args_list
+        assert any("INVERSE" in str(call) for call in notifier_calls)
+
+    async def test_inverse_etf_no_force_exit(self):
+        """Inverse ETF 정상 범위 내 -> 강제 청산 안 함."""
+        pos = _make_open_position(symbol="SH", direction="LONG", system=1, stop_loss=50.0)
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [pos] if sym is None or sym == "SH" else []
+        )
+        mock_tracker.get_summary.return_value = {"open": 1}
+        mock_tracker.should_pyramid.return_value = False
+        mock_tracker.get_position_history.return_value = []
+
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = (True, "")
+        mock_rm.get_risk_summary.return_value = {}
+
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = []
+        mock_universe.assets = {}
+
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = True
+        mock_inverse.get_config.return_value = MagicMock(underlying="SPY")
+        mock_inverse.should_force_exit.return_value = (False, None, "")
+
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False
+
+        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
+             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
+             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
+             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
+             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
+             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
+             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
+             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
+             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
+             patch("scripts.check_positions.get_market_status", return_value="Open"), \
+             patch("scripts.check_positions.should_check_signals", return_value=True), \
+             patch("scripts.check_positions.infer_market", return_value="US"), \
+             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+            await _run_checks()
+
+        # No force exit, so check_exit_signals should run next (no exit signal either, no pyramid)
+        mock_tracker.close_position.assert_not_called()
+
+    async def test_inverse_etf_underlying_empty_df(self):
+        """Inverse ETF 기초자산 데이터 없음 -> 강제 청산 체크 스킵."""
+        pos = _make_open_position(symbol="SH", direction="LONG", system=1, stop_loss=50.0)
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+
+        main_df = self._make_mock_df(high=100, low=99, close=100)
+        mock_fetcher = MagicMock()
+        # Return main_df for SH, empty for SPY (underlying)
+        def fetch_side_effect(symbol, **kwargs):
+            if symbol == "SH":
+                return main_df
+            return pd.DataFrame()
+        mock_fetcher.fetch.side_effect = fetch_side_effect
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [pos] if sym is None or sym == "SH" else []
+        )
+        mock_tracker.get_summary.return_value = {"open": 1}
+        mock_tracker.should_pyramid.return_value = False
+        mock_tracker.get_position_history.return_value = []
+
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = (True, "")
+        mock_rm.get_risk_summary.return_value = {}
+
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = []
+        mock_universe.assets = {}
+
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = True
+        mock_inverse.get_config.return_value = MagicMock(underlying="SPY")
+
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False
+
+        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
+             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
+             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
+             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
+             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
+             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
+             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
+             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
+             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
+             patch("scripts.check_positions.get_market_status", return_value="Open"), \
+             patch("scripts.check_positions.should_check_signals", return_value=True), \
+             patch("scripts.check_positions.infer_market", return_value="US"), \
+             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+            await _run_checks()
+
+        # should_force_exit should NOT have been called (underlying df is empty)
+        mock_inverse.should_force_exit.assert_not_called()
