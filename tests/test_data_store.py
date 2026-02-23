@@ -53,6 +53,16 @@ class TestSignalStorage:
         loaded = data_store.load_signals()
         assert len(loaded) == 3
 
+    def test_save_signal_invalid_symbol_raises(self, data_store):
+        signal = {"symbol": "'; DROP TABLE--", "type": "ENTRY"}
+        with pytest.raises(ValueError):
+            data_store.save_signal(signal)
+
+    def test_save_signal_empty_symbol_raises(self, data_store):
+        signal = {"symbol": "", "type": "ENTRY"}
+        with pytest.raises(ValueError):
+            data_store.save_signal(signal)
+
 
 class TestTradeStorage:
     def test_save_trade(self, data_store):
