@@ -61,7 +61,7 @@ def print_positions_table(positions: List[Position], show_closed: bool = False):
             system = f"S{p.system}"
 
             print(
-                f"{p.symbol:<12} | {system:<6} | {p.direction:<9} | "
+                f"{p.symbol:<12} | {system:<6} | {p.direction.value:<9} | "
                 f"{entry_price:<10} | {units:<5} | {stop_loss:<10} | "
                 f"{p.entry_date:<10}"
             )

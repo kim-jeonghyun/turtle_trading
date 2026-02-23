@@ -129,7 +129,7 @@ def check_stop_loss(position, today_data) -> bool:
     LONG: 장중 저가(low)가 stop_loss 이하이면 발동
     SHORT: 장중 고가(high)가 stop_loss 이상이면 발동
     """
-    if position.direction == "LONG":
+    if position.direction == Direction.LONG:
         return today_data["low"] <= position.stop_loss
     else:  # SHORT
         return today_data["high"] >= position.stop_loss
@@ -265,7 +265,7 @@ def check_exit_signals(df, position, system: int = 1) -> Optional[dict]:
         low_col = "dc_low_20"
 
     # 롱 포지션 청산 (저가 이탈)
-    if position.direction == "LONG" and today["low"] < yesterday[low_col]:
+    if position.direction == Direction.LONG and today["low"] < yesterday[low_col]:
         return {
             "symbol": position.symbol,
             "type": SignalType.EXIT_LONG.value,
@@ -279,7 +279,7 @@ def check_exit_signals(df, position, system: int = 1) -> Optional[dict]:
         }
 
     # 숏 포지션 청산 (고가 돌파)
-    if position.direction == "SHORT":
+    if position.direction == Direction.SHORT:
         if system == 1:
             short_high_col = "dc_high_10"
         else:
@@ -347,8 +347,7 @@ async def _run_checks():
 
     # Load current open positions into risk manager
     for pos in open_positions:
-        direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
-        risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, direction)
+        risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, pos.direction)
 
     # Inverse ETF 필터 초기화
     inverse_filter = InverseETFFilter()
@@ -383,16 +382,15 @@ async def _run_checks():
 
             # 스톱로스 체크
             if check_stop_loss(pos, today):
-                logger.warning(f"스톱로스 발동: {pos.symbol} ({pos.direction}) @ {today['close']}")
+                logger.warning(f"스톱로스 발동: {pos.symbol} ({pos.direction.value}) @ {today['close']}")
                 tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
-                direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
-                risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
+                risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action="🛑 STOP LOSS",
                     price=pos.stop_loss,
                     quantity=pos.total_shares,
-                    reason=f"스톱로스 발동 ({pos.direction}, 진입가: {pos.entry_price:,.0f})",
+                    reason=f"스톱로스 발동 ({pos.direction.value}, 진입가: {pos.entry_price:,.0f})",
                 )
                 continue
 
@@ -412,8 +410,7 @@ async def _run_checks():
                         if should_exit:
                             logger.warning(f"Inverse ETF 강제 청산: {pos.symbol} - {reason}")
                             tracker.close_position(pos.position_id, today["close"], f"Inverse Filter: {msg}")
-                            direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
-                            risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
+                            risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                             await notifier.send_signal(
                                 symbol=pos.symbol,
                                 action="INVERSE ETF EXIT",
@@ -428,8 +425,7 @@ async def _run_checks():
             if exit_signal:
                 logger.info(f"청산 시그널: {pos.symbol}")
                 tracker.close_position(pos.position_id, exit_signal["price"], exit_signal["message"])
-                direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
-                risk_manager.remove_position(pos.symbol, pos.units, direction, n_value=pos.entry_n)
+                risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action=f"EXIT System {pos.system}",
@@ -443,7 +439,7 @@ async def _run_checks():
             # 피라미딩 기회 체크
             if tracker.should_pyramid(pos, today["close"]):
                 logger.info(f"피라미딩 기회: {pos.symbol}")
-                direction_text = "상승" if pos.direction == "LONG" else "하락"
+                direction_text = "상승" if pos.direction == Direction.LONG else "하락"
                 await notifier.send_signal(
                     symbol=pos.symbol,
                     action=f"📈 PYRAMID System {pos.system}",
@@ -498,7 +494,7 @@ async def _run_checks():
 
             # 리스크 매니저 필터링
             for signal in signals_s1 + signals_s2:
-                direction = Direction.LONG if signal["direction"] == "LONG" else Direction.SHORT
+                direction = Direction(signal["direction"])
                 can_add, reason = risk_manager.can_add_position(
                     symbol=signal["symbol"], units=1, n_value=signal["n"], direction=direction
                 )

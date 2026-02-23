@@ -23,6 +23,7 @@ except ImportError:
 from src.data_fetcher import DataFetcher
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
 from src.position_tracker import Position, PositionTracker
+from src.types import Direction
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def calculate_unrealized_pnl(position: Position, current_price: float) -> tuple:
     Returns:
         (pnl_dollar, pnl_percent)
     """
-    if position.direction == "LONG":
+    if position.direction == Direction.LONG:
         pnl_dollar = (current_price - position.entry_price) * position.total_shares
         pnl_percent = (current_price - position.entry_price) / position.entry_price
     else:  # SHORT
@@ -72,7 +73,7 @@ def format_position_status(position: Position, current_price: float) -> str:
     status_lines = [
         f"심볼: {position.symbol}",
         f"시스템: System {position.system}",
-        f"방향: {position.direction}",
+        f"방향: {position.direction.value}",
         f"진입가: {position.entry_price:,.2f}",
         f"현재가: {current_price:,.2f}",
         f"유닛: {position.units}/{position.max_units}",
@@ -119,7 +120,7 @@ async def monitor_single_position(
             logger.info(f"{position.symbol}: {current_price:,.2f} (PnL: {pnl_percent * 100:+.2f}%)")
 
         # 1. 스톱로스 체크
-        if position.direction == "LONG" and current_price <= position.stop_loss:
+        if position.direction == Direction.LONG and current_price <= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
             position_info = format_position_status(position, current_price)
@@ -138,7 +139,7 @@ async def monitor_single_position(
             )
             return True
 
-        elif position.direction == "SHORT" and current_price >= position.stop_loss:
+        elif position.direction == Direction.SHORT and current_price >= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
             position_info = format_position_status(position, current_price)

@@ -10,6 +10,7 @@ import pytest
 import json
 from pathlib import Path
 from src.position_tracker import PositionTracker, Position, PositionStatus
+from src.types import Direction
 
 
 @pytest.fixture
@@ -181,6 +182,114 @@ class TestPnLCalculation:
         # PnL%: 400 / (100*40) * 100 = 10.0
         assert closed.pnl == 400.0
         assert abs(closed.pnl_pct - 10.0) < 0.01
+
+
+class TestDirectionEnum:
+    """Direction enum 변환 및 직렬화 테스트"""
+
+    def test_post_init_converts_string_to_enum(self, tracker):
+        """str 'LONG' → Direction.LONG 자동 변환"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        assert isinstance(pos.direction, Direction)
+        assert pos.direction == Direction.LONG
+
+    def test_post_init_converts_short_string(self, tracker):
+        """str 'SHORT' → Direction.SHORT 자동 변환"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        assert isinstance(pos.direction, Direction)
+        assert pos.direction == Direction.SHORT
+
+    def test_post_init_accepts_enum_directly(self, tracker):
+        """Direction enum 직접 전달 시 그대로 유지"""
+        pos = tracker.open_position("SPY", 1, Direction.LONG, 100.0, 2.5, 40)
+        assert pos.direction == Direction.LONG
+
+    def test_invalid_direction_raises(self):
+        """잘못된 direction 값 → ValueError"""
+        with pytest.raises(ValueError):
+            Position(
+                position_id="test", symbol="SPY", system=1, direction="INVALID",
+                entry_date="2025-01-01", entry_price=100.0, entry_n=2.0,
+                units=1, max_units=4, shares_per_unit=40, total_shares=40,
+                stop_loss=95.0, pyramid_level=0, exit_period=10,
+                status="open", last_update="2025-01-01",
+            )
+
+    def test_to_dict_serializes_as_string(self, tracker):
+        """to_dict()는 direction을 문자열로 출력"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        d = pos.to_dict()
+        assert d["direction"] == "LONG"
+        assert isinstance(d["direction"], str)
+
+    def test_from_dict_round_trip(self, tracker):
+        """to_dict() → from_dict() 왕복 시 데이터 무결성 유지"""
+        original = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        restored = Position.from_dict(original.to_dict())
+
+        assert restored.direction == Direction.SHORT
+        assert isinstance(restored.direction, Direction)
+        assert restored.symbol == original.symbol
+        assert restored.entry_price == original.entry_price
+        assert restored.stop_loss == original.stop_loss
+
+    def test_json_round_trip(self, tracker):
+        """JSON 직렬화·역직렬화 시 Direction 복원"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        json_str = json.dumps(pos.to_dict())
+        restored = Position.from_dict(json.loads(json_str))
+
+        assert restored.direction == Direction.LONG
+        assert isinstance(restored.direction, Direction)
+
+    def test_persistence_preserves_direction_type(self, temp_data_dir):
+        """파일 저장 후 재로드 시 Direction enum 타입 유지"""
+        tracker1 = PositionTracker(base_dir=str(temp_data_dir))
+        tracker1.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+
+        tracker2 = PositionTracker(base_dir=str(temp_data_dir))
+        loaded = tracker2.get_open_positions()[0]
+        assert isinstance(loaded.direction, Direction)
+        assert loaded.direction == Direction.SHORT
+
+
+class TestShortDirection:
+    """SHORT 방향 PnL 및 R-multiple 테스트"""
+
+    def test_short_pnl_profit(self, tracker):
+        """SHORT 수익 시 PnL 양수"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        closed = tracker.close_position(pos.position_id, 90.0)
+        # PnL: (100-90) * 40 = 400
+        assert closed.pnl == 400.0
+
+    def test_short_pnl_loss(self, tracker):
+        """SHORT 손실 시 PnL 음수"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        closed = tracker.close_position(pos.position_id, 110.0)
+        # PnL: (100-110) * 40 = -400
+        assert closed.pnl == -400.0
+
+    def test_short_r_multiple(self, tracker):
+        """SHORT R-배수 계산"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        closed = tracker.close_position(pos.position_id, 95.0)
+        # R = (100-95) / (2*2.5) = 5/5 = 1.0R
+        assert closed.r_multiple == 1.0
+
+    def test_short_stop_loss_r(self, tracker):
+        """SHORT 스톱로스 청산 시 -1.0R"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        # stop_loss = 100 + 2*2.5 = 105
+        closed = tracker.close_position(pos.position_id, pos.stop_loss)
+        assert abs(closed.r_multiple - (-1.0)) < 0.01
+
+    def test_short_pyramid(self, tracker):
+        """SHORT 피라미딩: 가격 하락 시 트리거"""
+        pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
+        # 0.5N = 1.25 하락 필요
+        assert tracker.should_pyramid(pos, 99.0) is False   # Not enough
+        assert tracker.should_pyramid(pos, 98.75) is True   # Exactly 0.5N
 
 
 class TestPersistence:

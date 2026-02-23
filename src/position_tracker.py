@@ -13,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .types import Direction
 from .utils import atomic_write_json, backup_file, safe_load_json, validate_position_schema
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,12 @@ class Position:
     position_id: str
     symbol: str
     system: int  # 1 or 2
-    direction: str  # LONG or SHORT
+    direction: Direction  # LONG or SHORT
+
+    def __post_init__(self):
+        """문자열로 전달된 direction을 Direction enum으로 변환"""
+        if isinstance(self.direction, str):
+            self.direction = Direction(self.direction)
 
     # 진입 정보
     entry_date: str
@@ -64,22 +70,27 @@ class Position:
     r_multiple: Optional[float] = None  # N의 배수로 수익 표현
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["direction"] = self.direction.value
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Position":
-        return cls(**data)
+        return cls(**dict(data))
 
     def calculate_pnl(self, exit_price: float) -> float:
         """손익 계산"""
-        if self.direction == "LONG":
+        if self.direction == Direction.LONG:
             return (exit_price - self.entry_price) * self.total_shares
         else:  # SHORT
             return (self.entry_price - exit_price) * self.total_shares
 
     def calculate_r_multiple(self, exit_price: float) -> float:
         """R-배수 계산 (리스크 대비 수익)"""
-        pnl_per_share = exit_price - self.entry_price if self.direction == "LONG" else self.entry_price - exit_price
+        if self.direction == Direction.LONG:
+            pnl_per_share = exit_price - self.entry_price
+        else:
+            pnl_per_share = self.entry_price - exit_price
         risk_per_share = 2 * self.entry_n  # 2N 리스크
         return pnl_per_share / risk_per_share if risk_per_share > 0 else 0
 
@@ -152,20 +163,22 @@ class PositionTracker:
         self,
         symbol: str,
         system: int,
-        direction: str,
+        direction: Direction,
         entry_price: float,
         n_value: float,
         shares: int,
         account_equity: float = 100000,
     ) -> Position:
         """새 포지션 생성"""
-        position_id = f"{symbol}_{system}_{direction}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if isinstance(direction, str):
+            direction = Direction(direction)
+        position_id = f"{symbol}_{system}_{direction.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # 청산 기간 설정
         exit_period = 10 if system == 1 else 20
 
         # 스톱로스 계산
-        if direction == "LONG":
+        if direction == Direction.LONG:
             stop_loss = entry_price - (2 * n_value)
         else:  # SHORT
             stop_loss = entry_price + (2 * n_value)
@@ -208,7 +221,7 @@ class PositionTracker:
         entries.append(entry)
         self._save_entries(entries)
 
-        logger.info(f"포지션 오픈: {symbol} {direction} @ {entry_price}")
+        logger.info(f"포지션 오픈: {symbol} {direction.value} @ {entry_price}")
         return position
 
     def add_pyramid(self, position_id: str, entry_price: float, n_value: float, shares: int) -> Optional[Position]:
@@ -264,7 +277,7 @@ class PositionTracker:
                 entries = self.get_entries(pos.position_id)
                 if entries:
                     avg_cost = sum(e.entry_price * e.shares for e in entries) / pos.total_shares
-                    if pos.direction == "LONG":
+                    if pos.direction == Direction.LONG:
                         pos.pnl = (exit_price - avg_cost) * pos.total_shares
                     else:
                         pos.pnl = (avg_cost - exit_price) * pos.total_shares
@@ -334,9 +347,9 @@ class PositionTracker:
             price = prices.get(pos.symbol)
             if price is None:
                 continue
-            if pos.direction == "LONG" and price <= pos.stop_loss:
+            if pos.direction == Direction.LONG and price <= pos.stop_loss:
                 to_close.append(pos)
-            elif pos.direction == "SHORT" and price >= pos.stop_loss:
+            elif pos.direction == Direction.SHORT and price >= pos.stop_loss:
                 to_close.append(pos)
 
         return to_close
@@ -354,7 +367,7 @@ class PositionTracker:
         last_entry = max(entries, key=lambda e: e.pyramid_level)
         threshold = 0.5 * position.entry_n
 
-        if position.direction == "LONG":
+        if position.direction == Direction.LONG:
             return current_price >= last_entry.entry_price + threshold
         else:  # SHORT
             return current_price <= last_entry.entry_price - threshold

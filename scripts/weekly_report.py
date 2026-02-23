@@ -34,7 +34,7 @@ from src.data_store import ParquetDataStore
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
 from src.position_tracker import PositionStatus, PositionTracker
 from src.risk_manager import PortfolioRiskManager
-from src.types import AssetGroup, Direction
+from src.types import AssetGroup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -217,7 +217,7 @@ def format_open_positions_summary(positions: List) -> str:
         symbol = pos.symbol
         direction = pos.direction
         units = pos.units
-        summary_lines.append(f"  • {symbol} {direction} ({units}U)")
+        summary_lines.append(f"  • {symbol} {direction.value} ({units}U)")
 
     return "\n".join(summary_lines)
 
@@ -226,8 +226,7 @@ def format_risk_summary(risk_manager: PortfolioRiskManager, positions: List) -> 
     """리스크 상태 요약"""
     # 리스크 상태 로드
     for pos in positions:
-        direction = Direction.LONG if pos.direction == "LONG" else Direction.SHORT
-        risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, direction)
+        risk_manager.add_position(pos.symbol, pos.units, pos.entry_n, pos.direction)
 
     summary = risk_manager.get_risk_summary()
 

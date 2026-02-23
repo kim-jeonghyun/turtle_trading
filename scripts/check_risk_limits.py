@@ -42,7 +42,7 @@ except ImportError:
 
 from src.position_tracker import Position, PositionTracker
 from src.risk_manager import PortfolioRiskManager, RiskLimits
-from src.types import AssetGroup, Direction
+from src.types import AssetGroup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -106,8 +106,7 @@ def build_risk_state(positions: List[Position], risk_manager: PortfolioRiskManag
         }
     """
     for position in positions:
-        direction = Direction.LONG if position.direction == "LONG" else Direction.SHORT
-        risk_manager.add_position(position.symbol, position.units, position.entry_n, direction)
+        risk_manager.add_position(position.symbol, position.units, position.entry_n, position.direction)
 
     return {
         "units_by_symbol": dict(risk_manager.state.units_by_symbol),
