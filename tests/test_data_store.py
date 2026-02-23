@@ -53,6 +53,16 @@ class TestSignalStorage:
         loaded = data_store.load_signals()
         assert len(loaded) == 3
 
+    def test_save_signal_invalid_symbol_raises(self, data_store):
+        signal = {"symbol": "'; DROP TABLE--", "type": "ENTRY"}
+        with pytest.raises(ValueError):
+            data_store.save_signal(signal)
+
+    def test_save_signal_empty_symbol_raises(self, data_store):
+        signal = {"symbol": "", "type": "ENTRY"}
+        with pytest.raises(ValueError):
+            data_store.save_signal(signal)
+
 
 class TestTradeStorage:
     def test_save_trade(self, data_store):
@@ -65,6 +75,21 @@ class TestTradeStorage:
         data_store.save_trade(trade)
         loaded = data_store.load_trades()
         assert len(loaded) == 1
+
+    def test_save_trade_invalid_symbol_raises(self, data_store):
+        trade = {"symbol": "'; DROP TABLE--", "pnl": 0.0}
+        with pytest.raises(ValueError):
+            data_store.save_trade(trade)
+
+    def test_save_trade_empty_symbol_raises(self, data_store):
+        trade = {"symbol": "", "pnl": 0.0}
+        with pytest.raises(ValueError):
+            data_store.save_trade(trade)
+
+    def test_save_trade_missing_symbol_raises(self, data_store):
+        trade = {"pnl": 0.0}
+        with pytest.raises(ValueError):
+            data_store.save_trade(trade)
 
 
 class TestIndicatorStorage:
