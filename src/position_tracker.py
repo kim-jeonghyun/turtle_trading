@@ -76,10 +76,7 @@ class Position:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Position":
-        data = dict(data)  # shallow copy to avoid mutating caller's dict
-        if isinstance(data.get("direction"), str):
-            data["direction"] = Direction(data["direction"])
-        return cls(**data)
+        return cls(**dict(data))
 
     def calculate_pnl(self, exit_price: float) -> float:
         """손익 계산"""

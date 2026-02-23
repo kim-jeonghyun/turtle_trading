@@ -988,7 +988,7 @@ class TestRiskManagerIntegration:
 
         accepted = []
         for sig in signals:
-            direction = Direction.LONG if sig["direction"] == "LONG" else Direction.SHORT
+            direction = Direction(sig["direction"])
             can_add, _ = risk_mgr.can_add_position(
                 symbol=sig["symbol"], units=1, n_value=sig["n"], direction=direction,
             )

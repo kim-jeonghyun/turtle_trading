@@ -494,7 +494,7 @@ async def _run_checks():
 
             # 리스크 매니저 필터링
             for signal in signals_s1 + signals_s2:
-                direction = Direction.LONG if signal["direction"] == "LONG" else Direction.SHORT
+                direction = Direction(signal["direction"])
                 can_add, reason = risk_manager.can_add_position(
                     symbol=signal["symbol"], units=1, n_value=signal["n"], direction=direction
                 )
