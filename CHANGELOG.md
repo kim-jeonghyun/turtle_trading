@@ -7,6 +7,14 @@
 
 ---
 
+## [Unreleased]
+
+### Security
+- PR #60: 보안 리뷰 HIGH/MEDIUM 8건 수정 — SMTP SSL 컨텍스트, KIS API 로그 마스킹, Discord URL 검증
+- PR #61: 보안 피드백 후속 개선 — Discord URL scheme/path 심화 검증, 운영 문서 보강
+
+---
+
 ## [3.3.0] — 2026-02-24
 
 Phase 2 완료 — 테스트 인프라, 타입 시스템, 코드 품질 전반 개선.
