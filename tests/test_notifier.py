@@ -481,5 +481,15 @@ class TestSecurityFixes:
 
     def test_discord_no_host_rejected(self):
         """호스트가 없는 URL은 거부된다."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="HTTPS"):
             DiscordChannel(webhook_url="not-a-url")
+
+    def test_discord_http_scheme_rejected(self):
+        """HTTP 스킴은 ValueError를 발생시킨다."""
+        with pytest.raises(ValueError, match="HTTPS"):
+            DiscordChannel(webhook_url="http://discord.com/api/webhooks/123")
+
+    def test_discord_invalid_path_rejected(self):
+        """올바르지 않은 경로는 ValueError를 발생시킨다."""
+        with pytest.raises(ValueError, match="webhook path"):
+            DiscordChannel(webhook_url="https://discord.com/other/path")

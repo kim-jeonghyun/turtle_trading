@@ -97,8 +97,12 @@ _DISCORD_ALLOWED_HOSTS = ("discord.com", "discordapp.com")
 class DiscordChannel(NotificationChannel):
     def __init__(self, webhook_url: str):
         parsed = urlparse(webhook_url)
+        if parsed.scheme != "https":
+            raise ValueError(f"Discord webhook URL must use HTTPS, got: {parsed.scheme!r}")
         if parsed.hostname not in _DISCORD_ALLOWED_HOSTS:
             raise ValueError(f"Invalid Discord webhook URL domain: {parsed.hostname}")
+        if not parsed.path.startswith("/api/webhooks/"):
+            raise ValueError(f"Invalid Discord webhook path: {parsed.path!r}")
         self.webhook_url = webhook_url
 
     def _format_embed(self, message: NotificationMessage) -> Dict:
