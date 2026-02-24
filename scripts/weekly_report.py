@@ -35,6 +35,7 @@ from src.notifier import NotificationLevel, NotificationManager, NotificationMes
 from src.position_tracker import PositionStatus, PositionTracker
 from src.risk_manager import PortfolioRiskManager
 from src.types import AssetGroup
+from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -162,14 +163,15 @@ def get_closed_trades_this_week(tracker: PositionTracker) -> List:
     return sorted(closed_this_week, key=lambda p: p.exit_date, reverse=True)
 
 
-def format_signals_summary(signals: List[Dict]) -> str:
+def format_signals_summary(signals: List[Dict], get_display_name=None) -> str:
     """신규 시그널 요약"""
     if not signals:
         return "없음"
 
     summary_lines = []
     for signal in signals[:5]:  # 최근 5개만
-        symbol = signal.get("symbol", "N/A")
+        raw = signal.get("symbol", "N/A")
+        symbol = get_display_name(raw) if get_display_name else raw
         direction = signal.get("direction", "N/A")
         price = signal.get("price", "N/A")
         summary_lines.append(f"  • {symbol} {direction} @ {price}")
@@ -180,7 +182,7 @@ def format_signals_summary(signals: List[Dict]) -> str:
     return "\n".join(summary_lines)
 
 
-def format_closed_trades_summary(trades: List) -> str:
+def format_closed_trades_summary(trades: List, get_display_name=None) -> str:
     """청산된 거래 요약"""
     if not trades:
         return "없음"
@@ -189,7 +191,7 @@ def format_closed_trades_summary(trades: List) -> str:
     total_pnl = 0.0
 
     for trade in trades[:5]:  # 최근 5개만
-        symbol = trade.symbol
+        symbol = get_display_name(trade.symbol) if get_display_name else trade.symbol
         pnl = trade.pnl if trade.pnl else 0.0
         total_pnl += pnl
 
@@ -207,14 +209,14 @@ def format_closed_trades_summary(trades: List) -> str:
     return "\n".join(summary_lines)
 
 
-def format_open_positions_summary(positions: List) -> str:
+def format_open_positions_summary(positions: List, get_display_name=None) -> str:
     """오픈 포지션 요약"""
     if not positions:
         return "없음"
 
     summary_lines = []
     for pos in positions:
-        symbol = pos.symbol
+        symbol = get_display_name(pos.symbol) if get_display_name else pos.symbol
         direction = pos.direction
         units = pos.units
         summary_lines.append(f"  • {symbol} {direction.value} ({units}U)")
@@ -251,6 +253,13 @@ async def main(args):
     risk_manager = setup_risk_manager()
     notifier = setup_notifier(config)
 
+    # 유니버스 매니저
+    universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
+    if universe_yaml.exists():
+        universe = UniverseManager(yaml_path=str(universe_yaml))
+    else:
+        universe = UniverseManager()
+
     # 데이터 수집
     try:
         signals = get_signals_this_week(data_store)
@@ -275,13 +284,13 @@ async def main(args):
 기간: {week_start.strftime("%Y-%m-%d")} ~ {datetime.now().strftime("%Y-%m-%d")}
 
 🆕 **NEW SIGNALS**
-{format_signals_summary(signals)}
+{format_signals_summary(signals, universe.get_display_name)}
 
 💰 **CLOSED TRADES**
-{format_closed_trades_summary(closed_trades)}
+{format_closed_trades_summary(closed_trades, universe.get_display_name)}
 
 📈 **OPEN POSITIONS**
-{format_open_positions_summary(open_positions)}
+{format_open_positions_summary(open_positions, universe.get_display_name)}
 
 ⚠️  **RISK STATUS**
 {format_risk_summary(risk_manager, open_positions)}
