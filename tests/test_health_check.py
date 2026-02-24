@@ -50,6 +50,13 @@ class FakeHTTPResponse:
 
 
 class TestLoadEnvVars:
+    @pytest.fixture(autouse=True)
+    def _isolate_known_keys(self, monkeypatch):
+        """_load_env_vars()의 _KNOWN_KEYS가 호스트 환경에서 누출되지 않도록 격리."""
+        for key in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_IS_REAL",
+                    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+            monkeypatch.delenv(key, raising=False)
+
     def test_reads_env_file(self, tmp_path, monkeypatch):
         env_file = tmp_path / ".env"
         env_file.write_text("FOO=bar\nBAZ=qux\n")
