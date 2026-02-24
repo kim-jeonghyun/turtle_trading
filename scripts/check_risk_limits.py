@@ -32,25 +32,13 @@ except ImportError:
         return "\n".join(lines)
 
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-
-    def load_dotenv():
-        pass
-
-
 from src.position_tracker import Position, PositionTracker
 from src.risk_manager import PortfolioRiskManager, RiskLimits
+from src.script_helpers import load_config
 from src.types import AssetGroup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def load_config():
-    """환경 변수에서 설정 로드"""
-    load_dotenv()
 
 
 def setup_risk_manager() -> PortfolioRiskManager:

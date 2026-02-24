@@ -22,9 +22,9 @@ from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
 from src.inverse_filter import InverseETFFilter
 from src.market_calendar import get_market_status, infer_market, should_check_signals
-from src.notifier import NotificationManager, TelegramChannel
 from src.position_tracker import PositionTracker
 from src.risk_manager import PortfolioRiskManager
+from src.script_helpers import load_config, setup_notifier
 from src.types import AssetGroup, Direction, SignalType
 from src.universe_manager import UniverseManager
 
@@ -57,29 +57,6 @@ def release_lock(fd):
             fd.close()
         except Exception:
             pass
-
-
-def load_config():
-    """환경 변수에서 설정 로드"""
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    return {
-        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
-    }
-
-
-def setup_notifier(config: dict) -> NotificationManager:
-    """알림 채널 설정"""
-    notifier = NotificationManager()
-
-    if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
-        logger.info("Telegram 채널 활성화")
-
-    return notifier
 
 
 def setup_risk_manager() -> PortfolioRiskManager:

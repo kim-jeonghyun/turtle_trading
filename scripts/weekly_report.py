@@ -11,7 +11,6 @@
 import argparse
 import asyncio
 import logging
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
@@ -22,43 +21,16 @@ except ImportError:
     yaml = None
     logging.getLogger(__name__).warning("pyyaml 미설치. YAML 설정 파일을 사용할 수 없습니다.")
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-
-    def load_dotenv():
-        pass
-
-
 from src.data_store import ParquetDataStore
-from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
+from src.notifier import NotificationLevel, NotificationMessage
 from src.position_tracker import PositionStatus, PositionTracker
 from src.risk_manager import PortfolioRiskManager
+from src.script_helpers import load_config, setup_notifier
 from src.types import AssetGroup
 from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def load_config():
-    """환경 변수에서 설정 로드"""
-    load_dotenv()
-    return {
-        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
-    }
-
-
-def setup_notifier(config: dict) -> NotificationManager:
-    """알림 채널 설정"""
-    notifier = NotificationManager()
-
-    if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
-        logger.info("Telegram 채널 활성화")
-
-    return notifier
 
 
 def setup_risk_manager() -> PortfolioRiskManager:

@@ -9,45 +9,17 @@
 import argparse
 import asyncio
 import logging
-import os
 from datetime import datetime
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-
-    def load_dotenv():
-        pass
-
-
 from src.data_fetcher import DataFetcher
-from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
+from src.notifier import NotificationLevel, NotificationManager, NotificationMessage
 from src.position_tracker import Position, PositionTracker
+from src.script_helpers import load_config, setup_notifier
 from src.types import Direction
 from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def load_config():
-    """환경 변수에서 설정 로드"""
-    load_dotenv()
-    return {
-        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
-    }
-
-
-def setup_notifier(config: dict) -> NotificationManager:
-    """알림 채널 설정"""
-    notifier = NotificationManager()
-
-    if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
-        logger.info("Telegram 채널 활성화")
-
-    return notifier
 
 
 def calculate_unrealized_pnl(position: Position, current_price: float) -> tuple:
