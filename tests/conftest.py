@@ -97,3 +97,33 @@ def sample_position_data():
         "status": "open",
         "last_update": "2025-01-01T12:00:00"
     }
+
+
+@pytest.fixture
+def make_turtle_df():
+    """터틀 지표가 포함된 mock DataFrame 팩토리."""
+    def _factory(high=101.0, low=97.0, close=100.0, n=2.0):
+        return pd.DataFrame([
+            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97},
+            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
+             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
+             "dc_high_10": 103, "dc_low_10": 97},
+        ])
+    return _factory
+
+
+class PatchManager:
+    """unittest.mock 패치 일괄 관리 유틸리티."""
+
+    @staticmethod
+    def start_all(patches: dict) -> dict:
+        """모든 패치를 시작하고 started mock 딕셔너리를 반환."""
+        return {name: p.start() for name, p in patches.items()}
+
+    @staticmethod
+    def stop_all(patches: dict):
+        """모든 패치를 중지."""
+        for p in patches.values():
+            p.stop()
