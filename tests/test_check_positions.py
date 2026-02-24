@@ -1160,27 +1160,27 @@ class TestSetupNotifier:
 
     def test_with_telegram_credentials(self):
         config = {"telegram_token": "tok", "telegram_chat_id": "cid"}
-        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+        with patch("src.script_helpers.TelegramChannel") as MockTg:
             notifier = setup_notifier(config)
         MockTg.assert_called_once_with("tok", "cid")
         assert notifier is not None
 
     def test_without_credentials(self):
         config = {"telegram_token": None, "telegram_chat_id": None}
-        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+        with patch("src.script_helpers.TelegramChannel") as MockTg:
             notifier = setup_notifier(config)
         MockTg.assert_not_called()
         assert notifier is not None
 
     def test_partial_credentials_missing_token(self):
         config = {"telegram_token": None, "telegram_chat_id": "cid"}
-        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+        with patch("src.script_helpers.TelegramChannel") as MockTg:
             notifier = setup_notifier(config)
         MockTg.assert_not_called()
 
     def test_partial_credentials_missing_chat_id(self):
         config = {"telegram_token": "tok", "telegram_chat_id": None}
-        with patch("scripts.check_positions.TelegramChannel") as MockTg:
+        with patch("src.script_helpers.TelegramChannel") as MockTg:
             notifier = setup_notifier(config)
         MockTg.assert_not_called()
 
