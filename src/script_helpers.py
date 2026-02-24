@@ -57,7 +57,7 @@ def setup_notifier(config: Dict[str, Any]) -> NotificationManager:
         notifier.add_channel(DiscordChannel(config["discord_webhook"]))
         logger.info("Discord 채널 활성화")
 
-    if config.get("email_user") and config.get("email_to"):
+    if config.get("email_user") and config.get("email_pass") and config.get("email_to"):
         notifier.add_channel(
             EmailChannel(
                 config["smtp_host"],

@@ -13,7 +13,7 @@ class TestLoadConfig:
         {
             "TELEGRAM_BOT_TOKEN": "test_token",
             "TELEGRAM_CHAT_ID": "test_chat",
-            "DISCORD_WEBHOOK_URL": "https://discord.webhook",
+            "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/test",
             "EMAIL_USER": "user@test.com",
             "EMAIL_PASSWORD": "pass",
             "EMAIL_TO": "to@test.com",
@@ -24,7 +24,7 @@ class TestLoadConfig:
         config = load_config()
         assert config["telegram_token"] == "test_token"
         assert config["telegram_chat_id"] == "test_chat"
-        assert config["discord_webhook"] == "https://discord.webhook"
+        assert config["discord_webhook"] == "https://discord.com/api/webhooks/test"
         assert config["email_user"] == "user@test.com"
 
     @patch.dict("os.environ", {}, clear=True)
@@ -68,7 +68,7 @@ class TestSetupNotifier:
         assert len(notifier.channels) == 1
 
     def test_discord_only(self):
-        config = {"discord_webhook": "https://hook"}
+        config = {"discord_webhook": "https://discord.com/api/webhooks/hook"}
         notifier = setup_notifier(config)
         assert len(notifier.channels) == 1
 
@@ -87,7 +87,7 @@ class TestSetupNotifier:
         config = {
             "telegram_token": "tok",
             "telegram_chat_id": "chat",
-            "discord_webhook": "https://hook",
+            "discord_webhook": "https://discord.com/api/webhooks/hook",
             "email_user": "user@test.com",
             "email_pass": "pass",
             "smtp_host": "localhost",
@@ -106,3 +106,27 @@ class TestSetupNotifier:
         config = {"email_user": "user@test.com", "email_pass": "pass", "smtp_host": "localhost", "smtp_port": 587}
         notifier = setup_notifier(config)
         assert len(notifier.channels) == 0
+
+    def test_email_missing_password_no_channel(self):
+        """email_pass가 None이면 EmailChannel이 생성되지 않는다."""
+        config = {
+            "email_user": "user@test.com",
+            "email_pass": None,
+            "smtp_host": "localhost",
+            "smtp_port": 587,
+            "email_to": ["to@test.com"],
+        }
+        notifier = setup_notifier(config)
+        assert len(notifier.channels) == 0
+
+    def test_email_with_password_creates_channel(self):
+        """email_pass가 설정되면 EmailChannel이 생성된다."""
+        config = {
+            "email_user": "user@test.com",
+            "email_pass": "password123",
+            "smtp_host": "localhost",
+            "smtp_port": 587,
+            "email_to": ["to@test.com"],
+        }
+        notifier = setup_notifier(config)
+        assert len(notifier.channels) == 1

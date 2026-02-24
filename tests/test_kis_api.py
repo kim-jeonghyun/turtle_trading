@@ -14,6 +14,7 @@ from src.kis_api import (
     TokenExpiredError,
     _classify_response,
     _sanitize_error,
+    _sanitize_response_for_log,
 )
 
 # 민감 정보가 포함된 가짜 API 응답
@@ -108,3 +109,27 @@ class TestClassifyResponseSecurity:
         error_msg = str(exc_info.value)
         assert "output" not in error_msg
         assert "{" not in error_msg or "rt_cd=" in error_msg
+
+
+class TestSanitizeResponseForLog:
+    """_sanitize_response_for_log 보안 테스트"""
+
+    def test_only_safe_keys_returned(self):
+        result = _sanitize_response_for_log(SENSITIVE_DATA)
+        assert set(result.keys()) == {"rt_cd", "msg_cd", "msg1"}
+        assert result["rt_cd"] == "1"
+        assert result["msg1"] == "잔고 부족"
+
+    def test_sensitive_data_excluded(self):
+        result = _sanitize_response_for_log(SENSITIVE_DATA)
+        assert "output" not in result
+        assert "CANO" not in str(result)
+        assert "dnca_tot_amt" not in str(result)
+
+    def test_non_dict_returns_empty(self):
+        assert _sanitize_response_for_log("not a dict") == {}
+        assert _sanitize_response_for_log(None) == {}
+        assert _sanitize_response_for_log(42) == {}
+
+    def test_empty_dict_returns_empty(self):
+        assert _sanitize_response_for_log({}) == {}

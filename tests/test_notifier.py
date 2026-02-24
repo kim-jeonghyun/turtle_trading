@@ -100,7 +100,7 @@ class TestTelegramChannelFormatting:
 
 class TestDiscordChannelFormatting:
     def test_format_embed_basic(self):
-        ch = DiscordChannel(webhook_url="https://fake.webhook")
+        ch = DiscordChannel(webhook_url="https://discord.com/api/webhooks/fake")
         msg = NotificationMessage(title="Test", body="Hello")
         embed = ch._format_embed(msg)
         assert embed["title"] == "Test"
@@ -108,7 +108,7 @@ class TestDiscordChannelFormatting:
         assert "color" in embed
 
     def test_format_embed_with_data(self):
-        ch = DiscordChannel(webhook_url="https://fake.webhook")
+        ch = DiscordChannel(webhook_url="https://discord.com/api/webhooks/fake")
         msg = NotificationMessage(
             title="Signal",
             body="Buy",
@@ -119,13 +119,13 @@ class TestDiscordChannelFormatting:
         assert len(embed["fields"]) == 2
 
     def test_format_embed_no_data(self):
-        ch = DiscordChannel(webhook_url="https://fake.webhook")
+        ch = DiscordChannel(webhook_url="https://discord.com/api/webhooks/fake")
         msg = NotificationMessage(title="Test", body="No data")
         embed = ch._format_embed(msg)
         assert "fields" not in embed
 
     def test_embed_color_by_level(self):
-        ch = DiscordChannel(webhook_url="https://fake.webhook")
+        ch = DiscordChannel(webhook_url="https://discord.com/api/webhooks/fake")
         info_embed = ch._format_embed(NotificationMessage(title="", body="", level=NotificationLevel.INFO))
         error_embed = ch._format_embed(NotificationMessage(title="", body="", level=NotificationLevel.ERROR))
         assert info_embed["color"] != error_embed["color"]
@@ -441,3 +441,45 @@ class TestEmailChannelRetry:
             await ch.send(msg)
 
         mock_smtp_cls.assert_called_once_with("localhost", 587, timeout=10)
+
+
+class TestSecurityFixes:
+    """보안 수정 검증 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_smtp_starttls_uses_ssl_context(self):
+        """SMTP starttls()가 SSL context와 함께 호출된다."""
+        ch = _make_email_channel()
+
+        with patch("smtplib.SMTP") as mock_smtp_cls:
+            mock_server = MagicMock()
+            mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
+            mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            with patch("src.notifier.ssl.create_default_context") as mock_ssl:
+                mock_context = MagicMock()
+                mock_ssl.return_value = mock_context
+                msg = NotificationMessage(title="SSL Test", body="Hello")
+                await ch.send(msg)
+
+            mock_server.starttls.assert_called_once_with(context=mock_context)
+
+    def test_discord_valid_url_accepted(self):
+        """discord.com 도메인 URL은 정상 생성된다."""
+        ch = DiscordChannel(webhook_url="https://discord.com/api/webhooks/12345/abcde")
+        assert ch.webhook_url == "https://discord.com/api/webhooks/12345/abcde"
+
+    def test_discord_discordapp_url_accepted(self):
+        """discordapp.com 도메인도 허용된다."""
+        ch = DiscordChannel(webhook_url="https://discordapp.com/api/webhooks/12345/abcde")
+        assert ch.webhook_url == "https://discordapp.com/api/webhooks/12345/abcde"
+
+    def test_discord_invalid_url_rejected(self):
+        """Discord 외 도메인은 ValueError를 발생시킨다."""
+        with pytest.raises(ValueError, match="Invalid Discord webhook URL domain"):
+            DiscordChannel(webhook_url="https://evil.com/api/webhooks/12345")
+
+    def test_discord_no_host_rejected(self):
+        """호스트가 없는 URL은 거부된다."""
+        with pytest.raises(ValueError):
+            DiscordChannel(webhook_url="not-a-url")
