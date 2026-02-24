@@ -10,66 +10,13 @@ from datetime import datetime, timedelta
 from src.analytics import TradeAnalytics
 from src.data_store import ParquetDataStore
 from src.market_calendar import get_market_status
-from src.notifier import (
-    DiscordChannel,
-    EmailChannel,
-    NotificationManager,
-    TelegramChannel,
-)
 from src.position_tracker import PositionTracker
 from src.risk_manager import PortfolioRiskManager
+from src.script_helpers import load_config, setup_notifier
 from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def load_config():
-    import os
-
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-
-        def load_dotenv():
-            pass
-
-    load_dotenv()
-
-    return {
-        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID"),
-        "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL"),
-        "smtp_host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
-        "smtp_port": int(os.getenv("SMTP_PORT", "587")),
-        "email_user": os.getenv("EMAIL_USER"),
-        "email_pass": os.getenv("EMAIL_PASSWORD"),
-        "email_to": os.getenv("EMAIL_TO", "").split(","),
-    }
-
-
-def setup_notifier(config: dict) -> NotificationManager:
-    notifier = NotificationManager()
-
-    if config.get("telegram_token") and config.get("telegram_chat_id"):
-        notifier.add_channel(TelegramChannel(config["telegram_token"], config["telegram_chat_id"]))
-
-    if config.get("discord_webhook"):
-        notifier.add_channel(DiscordChannel(config["discord_webhook"]))
-
-    if config.get("email_user") and config.get("email_to"):
-        notifier.add_channel(
-            EmailChannel(
-                config["smtp_host"],
-                config["smtp_port"],
-                config["email_user"],
-                config["email_pass"],
-                config["email_user"],
-                config["email_to"],
-            )
-        )
-
-    return notifier
 
 
 def generate_report(
