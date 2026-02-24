@@ -45,6 +45,8 @@ Last updated: 2026-02-23
 - API key / secret / token 은 `.env` 또는 환경 변수만 사용
 - 로그/에러에 민감정보 마스킹 적용, 브랜치/커밋에 계좌/주문 값 노출 금지
 - 실거래 키는 개발 키와 분리 보관
+- Discord 웹훅 URL: HTTPS 필수, `discord.com`/`discordapp.com` 도메인만 허용, `/api/webhooks/` 경로 필수 (`src/notifier.py` 참조)
+- KIS API 응답 로그: `_SAFE_LOG_KEYS`(`rt_cd`, `msg_cd`, `msg1`)만 DEBUG 출력, 민감 필드 자동 제외 (`docs/operations-guide.md` 참조)
 
 ### 거래 제약
 
