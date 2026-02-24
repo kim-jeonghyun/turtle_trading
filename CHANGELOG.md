@@ -7,6 +7,16 @@
 
 ---
 
+## [Unreleased]
+
+### Added
+- PR #63: `/release` 커맨드 — CHANGELOG/pyproject.toml 갱신 → PR → GitHub Release 자동화
+- PR #63: `/security-fix` 커맨드 — 보안 계획 파일 기반 Wave별 일괄 수정 자동화
+- PR #63: Docker cron non-root ADR — supercronic 전환 Deferred 결정 문서화
+- PR #63: git-workflow.md에 `release/`, `security/` 브랜치 접두어 공식 추가
+
+---
+
 ## [3.3.1] — 2026-02-24
 
 보안 리뷰 결과 반영 — SMTP SSL, KIS API 로그 마스킹, Discord URL 검증 강화.
