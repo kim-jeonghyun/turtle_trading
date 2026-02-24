@@ -10,7 +10,7 @@ from src.types import Direction
 
 
 @dataclass
-class Position:
+class LivePosition:
     symbol: str
     direction: Direction
     entry_date: datetime
@@ -36,7 +36,7 @@ class AccountState:
     initial_capital: float
     current_equity: float = 0.0
     cash: float = 0.0
-    positions: Dict[str, Position] = field(default_factory=dict)
+    positions: Dict[str, LivePosition] = field(default_factory=dict)
     peak_equity: float = 0.0
     max_drawdown: float = 0.0
     realized_pnl: float = 0.0
@@ -65,6 +65,10 @@ class AccountState:
 
         current_dd = (self.peak_equity - self.current_equity) / self.peak_equity
         self.max_drawdown = max(self.max_drawdown, current_dd)
+
+
+# Backward compatibility alias (deprecated, will be removed in v4.0)
+Position = LivePosition
 
 
 class PositionSizer:

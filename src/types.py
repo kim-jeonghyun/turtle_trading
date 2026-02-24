@@ -6,6 +6,7 @@
 """
 
 from enum import Enum
+from typing import Protocol, runtime_checkable
 
 
 class SerializableEnum(str, Enum):
@@ -55,3 +56,20 @@ class OrderStatus(SerializableEnum):
     CANCELLED = "cancelled"
     DRY_RUN = "dry_run"
     UNKNOWN = "unknown"
+
+
+@runtime_checkable
+class PositionSnapshot(Protocol):
+    """포지션 공통 스냅샷 인터페이스 (risk_manager 등 공통 참조용)"""
+
+    symbol: str
+    direction: Direction
+    entry_price: float
+    quantity: int
+    current_price: float
+
+    @property
+    def market_value(self) -> float: ...
+
+    @property
+    def unrealized_pnl(self) -> float: ...
