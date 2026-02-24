@@ -16,6 +16,7 @@ class SerializableEnum(str, Enum):
     - == "LONG" 등 문자열 직접 비교 가능
     - .value 접근도 여전히 동작 (하위 호환)
     """
+
     pass
 
 
