@@ -7,15 +7,15 @@ position_sizer.py 단위 테스트
 - Position 데이터 클래스
 """
 
-import pytest
 from datetime import datetime
-from src.position_sizer import PositionSizer, AccountState, Position
-from src.types import Direction
+
+from src.position_sizer import AccountState, LivePosition, PositionSizer
+from src.types import Direction, PositionSnapshot
 
 
-class TestPosition:
+class TestLivePosition:
     def test_market_value(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -28,7 +28,7 @@ class TestPosition:
         assert pos.market_value == 1050.0  # 10 * 105
 
     def test_market_value_zero_price(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -41,7 +41,7 @@ class TestPosition:
         assert pos.market_value == 0.0
 
     def test_unrealized_pnl_long_profit(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -54,7 +54,7 @@ class TestPosition:
         assert pos.unrealized_pnl == 100.0  # (110 - 100) * 10
 
     def test_unrealized_pnl_long_loss(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -67,7 +67,7 @@ class TestPosition:
         assert pos.unrealized_pnl == -100.0  # (90 - 100) * 10
 
     def test_unrealized_pnl_short_profit(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.SHORT,
             entry_date=datetime(2025, 1, 1),
@@ -80,7 +80,7 @@ class TestPosition:
         assert pos.unrealized_pnl == 100.0  # (100 - 90) * 10
 
     def test_unrealized_pnl_short_loss(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.SHORT,
             entry_date=datetime(2025, 1, 1),
@@ -93,7 +93,7 @@ class TestPosition:
         assert pos.unrealized_pnl == -100.0  # (100 - 110) * 10
 
     def test_default_current_price(self):
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -224,7 +224,7 @@ class TestAccountState:
 
     def test_update_equity_with_positions(self):
         account = AccountState(initial_capital=100000.0)
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -242,7 +242,7 @@ class TestAccountState:
 
     def test_update_equity_with_prices(self):
         account = AccountState(initial_capital=100000.0)
-        pos = Position(
+        pos = LivePosition(
             symbol="SPY",
             direction=Direction.LONG,
             entry_date=datetime(2025, 1, 1),
@@ -262,3 +262,21 @@ class TestAccountState:
     def test_empty_positions_dict(self):
         account = AccountState(initial_capital=100000.0)
         assert len(account.positions) == 0
+
+
+class TestPositionSnapshot:
+    def test_live_position_satisfies_protocol(self):
+        """LivePosition이 PositionSnapshot Protocol을 만족한다"""
+        assert isinstance(
+            LivePosition(
+                symbol="SPY",
+                direction=Direction.LONG,
+                entry_date=datetime.now(),
+                entry_price=500.0,
+                quantity=10,
+                n_at_entry=5.0,
+                stop_price=490.0,
+                current_price=505.0,
+            ),
+            PositionSnapshot,
+        )
