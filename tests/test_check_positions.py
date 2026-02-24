@@ -1114,8 +1114,10 @@ class TestReleaseLock:
         mock_fcntl.flock.assert_called_once_with(mock_fd, mock_fcntl.LOCK_UN)
         mock_fd.close.assert_called_once()
 
-    def test_release_lock_none(self):
+    @patch("scripts.check_positions.fcntl")
+    def test_release_lock_none(self, mock_fcntl):
         release_lock(None)  # Should not raise
+        mock_fcntl.flock.assert_not_called()
 
     @patch("scripts.check_positions.fcntl")
     def test_release_lock_exception_swallowed(self, mock_fcntl):
@@ -1123,6 +1125,7 @@ class TestReleaseLock:
         mock_fd.close.side_effect = OSError("close failed")
 
         release_lock(mock_fd)  # Should not raise
+        mock_fcntl.flock.assert_called_once_with(mock_fd, mock_fcntl.LOCK_UN)
 
 
 # ---------------------------------------------------------------------------
@@ -1141,14 +1144,10 @@ class TestLoadConfig:
 
     def test_load_config_missing_env(self):
         with patch.dict(os.environ, {}, clear=True):
-            # Patch load_dotenv to avoid it loading any real .env file
-            with patch("scripts.check_positions.load_dotenv", create=True):
-                # We need to patch the import inside the function
-                import importlib
+            with patch("dotenv.load_dotenv"):
                 config = load_config()
-        # Values may be None or whatever was in the environment before clear
-        # Since we cleared, os.getenv returns None
-        assert config["telegram_token"] is None or isinstance(config["telegram_token"], str)
+        assert config["telegram_token"] is None
+        assert config["telegram_chat_id"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1552,28 +1551,30 @@ class TestRunChecks:
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
             open_positions=[pos],
         )
-        # Make fetcher raise for position data
-        started = self._start_patches(patches)
-        fetcher_instance = started["DataFetcher"]
-        fetcher_instance.fetch.side_effect = RuntimeError("API error")
+        # Make fetcher raise for position data (use instance mock, not class mock)
+        fetcher.fetch.side_effect = RuntimeError("API error")
+        self._start_patches(patches)
         try:
             await _run_checks()  # Should not raise
         finally:
             self._stop_patches(patches)
+        # Verify error was handled gracefully: no signal sent, no crash
+        notifier.send_signal.assert_not_awaited()
 
     async def test_run_checks_signal_error_handled(self):
         """시그널 처리 중 예외 -> 로깅 후 계속."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
             open_positions=[], symbols=["SPY", "QQQ"],
         )
-        started = self._start_patches(patches)
-        # Make fetcher raise for everything
-        fetcher_instance = started["DataFetcher"]
-        fetcher_instance.fetch.side_effect = RuntimeError("API error")
+        # Make fetcher raise for everything (use instance mock, not class mock)
+        fetcher.fetch.side_effect = RuntimeError("API error")
+        self._start_patches(patches)
         try:
             await _run_checks()  # Should not raise
         finally:
             self._stop_patches(patches)
+        # Verify error was handled gracefully: no signal sent despite 2 symbols
+        notifier.send_signal.assert_not_awaited()
 
     async def test_run_checks_symbol_tuple_handling(self):
         """(symbol, name) 튜플 심볼 처리."""
