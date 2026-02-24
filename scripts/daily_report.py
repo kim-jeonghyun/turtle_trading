@@ -18,6 +18,7 @@ from src.notifier import (
 )
 from src.position_tracker import PositionTracker
 from src.risk_manager import PortfolioRiskManager
+from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -72,7 +73,10 @@ def setup_notifier(config: dict) -> NotificationManager:
 
 
 def generate_report(
-    data_store: ParquetDataStore, tracker: PositionTracker = None, risk_manager: PortfolioRiskManager = None
+    data_store: ParquetDataStore,
+    tracker: PositionTracker = None,
+    risk_manager: PortfolioRiskManager = None,
+    universe: UniverseManager = None,
 ) -> dict:
     """Enhanced 일일 리포트 데이터 생성"""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -119,7 +123,7 @@ def generate_report(
             for pos in open_positions:
                 position_data.append(
                     {
-                        "symbol": pos.symbol,
+                        "symbol": universe.get_display_name(pos.symbol) if universe else pos.symbol,
                         "system": pos.system,
                         "entry_price": pos.entry_price,
                         "units": pos.units,
@@ -178,8 +182,17 @@ async def main():
     tracker = PositionTracker()
     risk_manager = PortfolioRiskManager()
 
+    # 유니버스 매니저
+    from pathlib import Path
+
+    universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
+    if universe_yaml.exists():
+        universe = UniverseManager(yaml_path=str(universe_yaml))
+    else:
+        universe = UniverseManager()
+
     # 리포트 생성
-    report_data = generate_report(data_store, tracker, risk_manager)
+    report_data = generate_report(data_store, tracker, risk_manager, universe)
     logger.info(f"리포트 데이터: {report_data}")
 
     # 알림 전송

@@ -277,3 +277,68 @@ class TestGetGroupMapping:
         um = UniverseManager()
         mapping = um.get_group_mapping()
         assert len(mapping) == len(um.assets)
+
+
+class TestGetDisplayName:
+    def test_korean_stock_ks(self):
+        """한국 종목(.KS)은 '이름 심볼' 형태"""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.get_display_name("005930.KS") == "삼성전자 005930.KS"
+            finally:
+                os.unlink(f.name)
+
+    def test_korean_stock_kq(self):
+        """한국 종목(.KQ)은 '이름 심볼' 형태"""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.get_display_name("035420.KQ") == "NAVER 035420.KQ"
+            finally:
+                os.unlink(f.name)
+
+    def test_us_stock_returns_name(self):
+        """미국 종목은 이름 반환 (SPY → S&P 500 ETF)"""
+        um = UniverseManager()  # defaults
+        assert um.get_display_name("SPY") == "S&P 500 ETF"
+
+    def test_us_stock_name_equals_symbol(self):
+        """이름이 심볼과 같으면 심볼 그대로"""
+        yaml_content = """
+symbols:
+  us_equity:
+    - {symbol: AAPL, name: "AAPL", group: us_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.get_display_name("AAPL") == "AAPL"
+            finally:
+                os.unlink(f.name)
+
+    def test_unknown_symbol(self):
+        """유니버스에 없는 심볼은 그대로 반환"""
+        um = UniverseManager()
+        assert um.get_display_name("UNKNOWN") == "UNKNOWN"
+
+    def test_unknown_korean_symbol(self):
+        """유니버스에 없는 한국 심볼은 그대로 반환"""
+        um = UniverseManager()
+        assert um.get_display_name("999999.KS") == "999999.KS"

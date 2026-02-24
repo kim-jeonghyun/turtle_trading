@@ -386,7 +386,7 @@ async def _run_checks():
                 tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
-                    symbol=pos.symbol,
+                    symbol=universe.get_display_name(pos.symbol),
                     action="🛑 STOP LOSS",
                     price=pos.stop_loss,
                     quantity=pos.total_shares,
@@ -412,7 +412,7 @@ async def _run_checks():
                             tracker.close_position(pos.position_id, today["close"], f"Inverse Filter: {msg}")
                             risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                             await notifier.send_signal(
-                                symbol=pos.symbol,
+                                symbol=universe.get_display_name(pos.symbol),
                                 action="INVERSE ETF EXIT",
                                 price=today["close"],
                                 quantity=pos.total_shares,
@@ -427,7 +427,7 @@ async def _run_checks():
                 tracker.close_position(pos.position_id, exit_signal["price"], exit_signal["message"])
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
-                    symbol=pos.symbol,
+                    symbol=universe.get_display_name(pos.symbol),
                     action=f"EXIT System {pos.system}",
                     price=exit_signal["price"],
                     quantity=pos.total_shares,
@@ -441,7 +441,7 @@ async def _run_checks():
                 logger.info(f"피라미딩 기회: {pos.symbol}")
                 direction_text = "상승" if pos.direction == Direction.LONG else "하락"
                 await notifier.send_signal(
-                    symbol=pos.symbol,
+                    symbol=universe.get_display_name(pos.symbol),
                     action=f"📈 PYRAMID System {pos.system}",
                     price=today["close"],
                     quantity=0,
@@ -518,7 +518,7 @@ async def _run_checks():
 
             # 알림 전송
             await notifier.send_signal(
-                symbol=signal["symbol"],
+                symbol=universe.get_display_name(signal["symbol"]),
                 action=f"System {signal['system']} {signal['direction']}",
                 price=signal["price"],
                 quantity=0,

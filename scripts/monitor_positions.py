@@ -24,6 +24,7 @@ from src.data_fetcher import DataFetcher
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage, TelegramChannel
 from src.position_tracker import Position, PositionTracker
 from src.types import Direction
+from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -66,12 +67,12 @@ def calculate_unrealized_pnl(position: Position, current_price: float) -> tuple:
     return pnl_dollar, pnl_percent
 
 
-def format_position_status(position: Position, current_price: float) -> str:
+def format_position_status(position: Position, current_price: float, display_name: str = None) -> str:
     """포지션 상태를 포맷된 문자열로 반환"""
     pnl_dollar, pnl_percent = calculate_unrealized_pnl(position, current_price)
 
     status_lines = [
-        f"심볼: {position.symbol}",
+        f"심볼: {display_name or position.symbol}",
         f"시스템: System {position.system}",
         f"방향: {position.direction.value}",
         f"진입가: {position.entry_price:,.2f}",
@@ -92,6 +93,7 @@ async def monitor_single_position(
     notifier: NotificationManager,
     threshold: float,
     verbose: bool = False,
+    display_name: str = None,
 ) -> bool:
     """
     개별 포지션 모니터링
@@ -123,7 +125,7 @@ async def monitor_single_position(
         if position.direction == Direction.LONG and current_price <= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
-            position_info = format_position_status(position, current_price)
+            position_info = format_position_status(position, current_price, display_name)
             await notifier.send_message(
                 NotificationMessage(
                     title="🛑 STOP LOSS TRIGGERED",
@@ -142,7 +144,7 @@ async def monitor_single_position(
         elif position.direction == Direction.SHORT and current_price >= position.stop_loss:
             logger.error(f"스톱로스 발동: {position.symbol} @ {current_price:,.2f}")
 
-            position_info = format_position_status(position, current_price)
+            position_info = format_position_status(position, current_price, display_name)
             await notifier.send_message(
                 NotificationMessage(
                     title="🛑 STOP LOSS TRIGGERED",
@@ -162,7 +164,7 @@ async def monitor_single_position(
         if pnl_percent < -threshold:
             logger.warning(f"미실현 손실 임계값 초과: {position.symbol} ({pnl_percent * 100:.2f}%)")
 
-            position_info = format_position_status(position, current_price)
+            position_info = format_position_status(position, current_price, display_name)
             await notifier.send_message(
                 NotificationMessage(
                     title="⚠️ UNREALIZED LOSS THRESHOLD",
@@ -189,6 +191,15 @@ async def main(args):
     data_fetcher = DataFetcher()
     tracker = PositionTracker()
 
+    # 유니버스 매니저
+    from pathlib import Path
+
+    universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
+    if universe_yaml.exists():
+        universe = UniverseManager(yaml_path=str(universe_yaml))
+    else:
+        universe = UniverseManager()
+
     # 오픈 포지션 로드
     try:
         open_positions = tracker.get_open_positions()
@@ -213,7 +224,15 @@ async def main(args):
     problems_found = False
     for position in open_positions:
         try:
-            has_problem = await monitor_single_position(position, data_fetcher, notifier, args.threshold, args.verbose)
+            display_name = universe.get_display_name(position.symbol)
+            has_problem = await monitor_single_position(
+                position,
+                data_fetcher,
+                notifier,
+                args.threshold,
+                args.verbose,
+                display_name=display_name,
+            )
             if has_problem:
                 problems_found = True
 
