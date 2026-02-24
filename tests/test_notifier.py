@@ -6,17 +6,18 @@ notifier.py 단위 테스트
 - NotificationManager 채널 관리
 """
 
-import pytest
-import asyncio
+import smtplib
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from src.notifier import (
-    NotificationLevel,
-    NotificationMessage,
-    TelegramChannel,
     DiscordChannel,
     EmailChannel,
+    NotificationLevel,
     NotificationManager,
+    NotificationMessage,
+    TelegramChannel,
 )
 
 
@@ -125,12 +126,8 @@ class TestDiscordChannelFormatting:
 
     def test_embed_color_by_level(self):
         ch = DiscordChannel(webhook_url="https://fake.webhook")
-        info_embed = ch._format_embed(
-            NotificationMessage(title="", body="", level=NotificationLevel.INFO)
-        )
-        error_embed = ch._format_embed(
-            NotificationMessage(title="", body="", level=NotificationLevel.ERROR)
-        )
+        info_embed = ch._format_embed(NotificationMessage(title="", body="", level=NotificationLevel.INFO))
+        error_embed = ch._format_embed(NotificationMessage(title="", body="", level=NotificationLevel.ERROR))
         assert info_embed["color"] != error_embed["color"]
 
 
@@ -372,3 +369,75 @@ class TestNotificationManager:
         )
         results = await manager.send_with_escalation(msg)
         assert results == {}
+
+
+def _make_email_channel() -> EmailChannel:
+    return EmailChannel(
+        smtp_host="localhost",
+        smtp_port=587,
+        username="user",
+        password="pass",
+        from_addr="from@test.com",
+        to_addrs=["to@test.com"],
+    )
+
+
+class TestEmailChannelRetry:
+    @pytest.mark.asyncio
+    async def test_email_send_success(self):
+        """_send_email 성공 시 send()가 True를 반환한다."""
+        ch = _make_email_channel()
+        with patch.object(ch, "_send_email", return_value=None) as mock_send:
+            msg = NotificationMessage(title="Test", body="Hello")
+            result = await ch.send(msg)
+        assert result is True
+        mock_send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_email_send_retry_on_failure(self):
+        """_send_email이 첫 번째에 실패하고 두 번째에 성공하면 retry가 동작하여 True를 반환한다."""
+        ch = _make_email_channel()
+        call_count = 0
+
+        def _fail_then_succeed(msg):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise smtplib.SMTPException("Connection refused")
+
+        with patch.object(ch, "_send_email", side_effect=_fail_then_succeed):
+            msg = NotificationMessage(title="Retry Test", body="Hello")
+            result = await ch.send(msg)
+
+        assert result is True
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_email_send_all_retries_exhausted(self):
+        """_send_email이 항상 실패하면 모든 재시도 소진 후 False를 반환하고 에러를 로깅한다."""
+        ch = _make_email_channel()
+
+        with patch.object(ch, "_send_email", side_effect=smtplib.SMTPException("Always fails")):
+            with patch("src.notifier.logger") as mock_logger:
+                msg = NotificationMessage(title="Fail Test", body="Hello")
+                result = await ch.send(msg)
+
+        assert result is False
+        mock_logger.error.assert_called_once()
+        error_call_args = mock_logger.error.call_args[0][0]
+        assert "모든 재시도 소진" in error_call_args
+
+    @pytest.mark.asyncio
+    async def test_email_smtp_timeout(self):
+        """SMTP가 timeout=10 파라미터와 함께 호출된다."""
+        ch = _make_email_channel()
+
+        with patch("smtplib.SMTP") as mock_smtp_cls:
+            mock_server = MagicMock()
+            mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
+            mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            msg = NotificationMessage(title="Timeout Test", body="Hello")
+            await ch.send(msg)
+
+        mock_smtp_cls.assert_called_once_with("localhost", 587, timeout=10)
