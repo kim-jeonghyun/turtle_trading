@@ -184,6 +184,7 @@ async def main():
 
     # 유니버스 매니저
     from pathlib import Path
+
     universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
     if universe_yaml.exists():
         universe = UniverseManager(yaml_path=str(universe_yaml))

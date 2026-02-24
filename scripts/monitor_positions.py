@@ -193,6 +193,7 @@ async def main(args):
 
     # 유니버스 매니저
     from pathlib import Path
+
     universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
     if universe_yaml.exists():
         universe = UniverseManager(yaml_path=str(universe_yaml))
@@ -225,7 +226,11 @@ async def main(args):
         try:
             display_name = universe.get_display_name(position.symbol)
             has_problem = await monitor_single_position(
-                position, data_fetcher, notifier, args.threshold, args.verbose,
+                position,
+                data_fetcher,
+                notifier,
+                args.threshold,
+                args.verbose,
                 display_name=display_name,
             )
             if has_problem:
