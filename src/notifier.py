@@ -151,27 +151,32 @@ class EmailChannel(NotificationChannel):
         html += "</body></html>"
         return html
 
+    @retry_async(max_retries=2, base_delay=1.0)
+    async def _send_with_retry(self, message: NotificationMessage) -> bool:
+        """재시도 로직을 포함한 실제 전송 (예외를 그대로 전파하여 retry가 동작)"""
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[Turtle] {message.title}"
+        msg["From"] = self.from_addr
+        msg["To"] = ", ".join(self.to_addrs)
+
+        html_content = self._format_html(message)
+        msg.attach(MIMEText(message.body, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._send_email, msg)
+        logger.info(f"Email 전송 성공: {message.title}")
+        return True
+
     async def send(self, message: NotificationMessage) -> bool:
         try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"[Turtle] {message.title}"
-            msg["From"] = self.from_addr
-            msg["To"] = ", ".join(self.to_addrs)
-
-            html_content = self._format_html(message)
-            msg.attach(MIMEText(message.body, "plain"))
-            msg.attach(MIMEText(html_content, "html"))
-
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._send_email, msg)
-            logger.info(f"Email 전송 성공: {message.title}")
-            return True
+            return await self._send_with_retry(message)
         except Exception as e:
-            logger.error(f"Email 오류: {e}")
+            logger.error(f"Email 오류 (모든 재시도 소진): {e}")
             return False
 
     def _send_email(self, msg: MIMEMultipart):
-        with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+        with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
             server.starttls()
             server.login(self.username, self.password)
             server.send_message(msg)
