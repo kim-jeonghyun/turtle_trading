@@ -34,7 +34,14 @@
 오류: 버전 형식이 올바르지 않습니다. 형식: X.Y.Z (예: 3.4.0)
 ```
 
-**중복 검증:** `git tag -l "vVERSION"`으로 태그가 이미 존재하는지 확인한다. 존재하면 즉시 중단한다.
+**중복 검증:** 원격 태그를 동기화한 뒤 중복을 확인한다.
+
+```bash
+git fetch --tags
+git tag -l "vVERSION"
+```
+
+태그가 이미 존재하면 즉시 중단한다.
 
 ```
 오류: 태그 vVERSION이 이미 존재합니다. 이미 릴리즈된 버전입니다.
@@ -117,7 +124,23 @@ version = "VERSION"
 
 사용자가 'y' 또는 'yes'를 입력하지 않으면 중단하고 "릴리즈가 취소되었습니다."를 출력한다.
 
-### 6단계: 릴리즈 브랜치 생성 및 커밋
+### 6단계: main 동기화 및 릴리즈 브랜치 생성
+
+먼저 main이 최신 상태이고 작업 트리가 깨끗한지 확인한다.
+
+```bash
+git checkout main
+git pull --ff-only
+git status --porcelain
+```
+
+`git status --porcelain` 출력이 비어있지 않으면 중단한다.
+
+```
+오류: 작업 트리에 커밋되지 않은 변경사항이 있습니다. 정리 후 다시 시도하세요.
+```
+
+릴리즈 브랜치를 생성하고 커밋한다.
 
 ```bash
 git checkout -b release/vVERSION
@@ -179,12 +202,14 @@ git fetch --tags
 
 ### 10단계: GitHub 릴리즈 생성
 
-CHANGELOG.md에서 `## [VERSION]` 섹션의 내용을 추출해 릴리즈 노트로 사용한다.
+CHANGELOG.md에서 `## [VERSION]` 헤더와 다음 `## [` 헤더 사이의 내용을 추출해 `RELEASE_NOTES` 변수에 저장한다. 헤더 줄 자체(`## [VERSION] — TODAY`)와 구분선(`---`)은 제외한다.
+
+추출한 내용을 릴리즈 노트로 사용한다.
 
 ```bash
 gh release create vVERSION \
   --title "vVERSION" \
-  --notes "RELEASE_NOTES"
+  --notes "$RELEASE_NOTES"
 ```
 
 릴리즈 URL을 출력한다.
