@@ -7,7 +7,55 @@ src/types.py 단위 테스트
 
 import pytest
 import json
-from src.types import Direction, SignalType, AssetGroup, OrderStatus
+from dataclasses import dataclass, asdict
+from src.types import Direction, SignalType, AssetGroup, OrderStatus, SerializableEnum
+
+
+class TestSerializableEnum:
+    """SerializableEnum(str, Enum) 베이스 클래스 동작 검증."""
+
+    def test_isinstance_str(self):
+        """Enum 멤버가 str 인스턴스."""
+        assert isinstance(Direction.LONG, str)
+        assert isinstance(OrderStatus.FILLED, str)
+
+    def test_direct_string_equality(self):
+        """.value 없이 문자열 직접 비교 가능."""
+        assert Direction.LONG == "LONG"
+        assert Direction.SHORT == "SHORT"
+        assert OrderStatus.FILLED == "filled"
+
+    def test_json_dumps_without_value(self):
+        """json.dumps에 .value 없이 직접 전달 가능."""
+        data = {"direction": Direction.LONG, "status": OrderStatus.PENDING}
+        serialized = json.dumps(data)
+        loaded = json.loads(serialized)
+        assert loaded["direction"] == "LONG"
+        assert loaded["status"] == "pending"
+
+    def test_dataclass_asdict_produces_strings(self):
+        """dataclasses.asdict가 문자열을 생성."""
+        @dataclass
+        class Sample:
+            direction: Direction
+            group: AssetGroup
+
+        obj = Sample(direction=Direction.LONG, group=AssetGroup.US_EQUITY)
+        d = asdict(obj)
+        assert d["direction"] == "LONG"
+        assert d["group"] == "us_equity"
+        assert isinstance(d["direction"], str)
+
+    def test_value_still_works(self):
+        """.value 접근 하위 호환."""
+        assert Direction.LONG.value == "LONG"
+        assert AssetGroup.CRYPTO.value == "crypto"
+
+    def test_all_enums_inherit_serializable(self):
+        """types.py의 모든 Enum이 SerializableEnum을 상속."""
+        for enum_cls in [Direction, SignalType, AssetGroup, OrderStatus]:
+            assert issubclass(enum_cls, SerializableEnum)
+            assert issubclass(enum_cls, str)
 
 
 class TestDirection:
