@@ -10,12 +10,14 @@ import asyncio
 import html as html_lib
 import logging
 import smtplib
+import ssl
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from enum import Enum
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -89,8 +91,14 @@ class TelegramChannel(NotificationChannel):
             return False
 
 
+_DISCORD_ALLOWED_HOSTS = ("discord.com", "discordapp.com")
+
+
 class DiscordChannel(NotificationChannel):
     def __init__(self, webhook_url: str):
+        parsed = urlparse(webhook_url)
+        if parsed.hostname not in _DISCORD_ALLOWED_HOSTS:
+            raise ValueError(f"Invalid Discord webhook URL domain: {parsed.hostname}")
         self.webhook_url = webhook_url
 
     def _format_embed(self, message: NotificationMessage) -> Dict:
@@ -176,8 +184,9 @@ class EmailChannel(NotificationChannel):
             return False
 
     def _send_email(self, msg: MIMEMultipart):
+        context = ssl.create_default_context()
         with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
-            server.starttls()
+            server.starttls(context=context)
             server.login(self.username, self.password)
             server.send_message(msg)
 

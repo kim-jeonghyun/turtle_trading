@@ -24,9 +24,13 @@ COPY crontab /etc/cron.d/turtle-cron
 RUN chmod 0644 /etc/cron.d/turtle-cron
 RUN crontab /etc/cron.d/turtle-cron
 
+# Non-root user for data/log directories
+RUN useradd --create-home --shell /bin/bash turtle && \
+    chown -R turtle:turtle /app/data /app/logs
+
 # 환경 변수
 ENV PYTHONUNBUFFERED=1
 ENV TZ=Asia/Seoul
 
-# 기본 명령어
+# 기본 명령어 (cron requires root — data dirs owned by turtle)
 CMD ["cron", "-f"]

@@ -63,15 +63,23 @@ def _sanitize_error(data) -> str:
     return f"rt_cd={rt_cd}, msg={msg1}"
 
 
+_SAFE_LOG_KEYS = frozenset({"rt_cd", "msg_cd", "msg1"})
+
+
+def _sanitize_response_for_log(data: dict) -> dict:
+    """로그 안전 필드만 추출 (민감 데이터 제외)"""
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if k in _SAFE_LOG_KEYS}
+
+
 def _classify_response(status: int, data: dict) -> None:
     """HTTP 응답 코드 기반 예외 분류 (성공 시 None 반환)"""
     if 200 <= status < 300:
         return  # 성공
 
     safe_msg = _sanitize_error(data)
-    # NOTE: debug 레벨에서 전체 응답 출력 — 프로덕션 로그 수집기가
-    # debug를 포함하지 않도록 운영 정책에서 관리 필요
-    logger.debug("API error response (status=%d): %s", status, data)
+    logger.debug("API error response (status=%d): %s", status, _sanitize_response_for_log(data))
 
     if status == 429:
         raise RateLimitError(f"Rate limit exceeded: {safe_msg}")
@@ -207,6 +215,7 @@ class KISAPIClient:
             raise
 
     def _get_headers(self, token: str, tr_id: str) -> Dict[str, str]:
+        # WARNING: 반환값에 appsecret 포함 — 절대 로그에 출력하지 말 것
         return {
             "Content-Type": "application/json; charset=utf-8",
             "authorization": f"Bearer {token}",
