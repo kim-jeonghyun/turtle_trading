@@ -9,14 +9,20 @@
 - feature/issue-NNN-<설명>: 신규 기능
 - bugfix/issue-NNN-<설명>: 버그 수정
 - hotfix/<설명>: 긴급 수정
+- release/v<VERSION>: 릴리즈
+- security/<설명>: 보안 수정
 
 ## 커밋 메시지 형식
 [#NNN] 제목 (50자 이내)
 
 선택적 본문: 무엇을, 왜 변경했는지
 
+예외 형식 (이슈 번호가 없는 경우):
+- 릴리즈: `[release] Release vX.Y.Z`
+- 보안 일괄: `[security] 보안 수정 적용 — <계획명>`
+
 ## PR 필수 조건
-1. PR 본문에 Fixes #NNN 포함 (이슈 자동 닫기)
+1. PR 본문에 Fixes #NNN 포함 (이슈 자동 닫기) — 릴리즈/보안 PR은 관련 이슈가 있는 경우에만
 2. CI 통과 (lint + type check + test)
 3. PR 템플릿 체크리스트 완료
 
