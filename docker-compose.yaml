@@ -1,10 +1,11 @@
 version: '3.8'
 
 services:
-  # 시그널 체크 서비스 (Cron 기반)
+  # 시그널 체크 서비스 (supercronic 기반, non-root)
   turtle-cron:
     build: .
     container_name: turtle-cron
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     env_file:
       - .env
     volumes:
@@ -18,6 +19,7 @@ services:
   turtle-dashboard:
     build: .
     container_name: turtle-dashboard
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
     ports:
       - "127.0.0.1:8501:8501"
