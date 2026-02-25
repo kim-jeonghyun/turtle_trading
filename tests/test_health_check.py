@@ -69,12 +69,32 @@ class TestCheckPythonVersion:
         assert ok is False
         assert "declares 3.99" in msg
 
+    def test_matches_with_patch_version(self, tmp_path, monkeypatch):
+        """3.12.7 형식도 major.minor 비교로 통과"""
+        version = f"{sys.version_info.major}.{sys.version_info.minor}.99"
+        (tmp_path / ".python-version").write_text(version)
+        monkeypatch.chdir(tmp_path)
+        ok, msg = check_python_version()
+        assert ok is True
+        assert "matches" in msg
+
     def test_no_file(self, tmp_path, monkeypatch):
         """.python-version 파일 없으면 스킵"""
         monkeypatch.chdir(tmp_path)
         ok, msg = check_python_version()
         assert ok is True
         assert "skipped" in msg
+
+    def test_unreadable_file(self, tmp_path, monkeypatch):
+        """파일 읽기 실패 시 False 반환"""
+        pv = tmp_path / ".python-version"
+        pv.write_text("3.12")
+        pv.chmod(0o000)
+        monkeypatch.chdir(tmp_path)
+        ok, msg = check_python_version()
+        pv.chmod(0o644)  # cleanup
+        assert ok is False
+        assert "cannot read" in msg
 
 
 # ---------------------------------------------------------------------------

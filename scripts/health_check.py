@@ -30,8 +30,12 @@ def check_python_version() -> Tuple[bool, str]:
     if not version_file.exists():
         return True, f"Python version: {current} (.python-version not found, skipped)"
 
-    declared = version_file.read_text().strip()
-    if current == declared:
+    try:
+        declared = version_file.read_text().strip()
+    except Exception as e:
+        return False, f"Python version: cannot read .python-version - {e}"
+    declared_minor = ".".join(declared.split(".")[:2])
+    if current == declared_minor:
         return True, f"Python version: {current} (matches .python-version)"
     return False, f"Python version: running {current}, .python-version declares {declared}"
 
