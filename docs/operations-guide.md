@@ -29,6 +29,13 @@ pytest tests/ -q  # 전체 테스트 통과 확인
 python scripts/health_check.py  # Python Version 항목 확인
 ```
 
+### 버전 정책
+
+- **Single Source of Truth**: `pyproject.toml`의 `[project] version` 필드
+- `src/__version__`은 `importlib.metadata`를 통해 동적 조회 (하드코딩 금지)
+- 로컬 개발 시 (`pip install -e .` 미실행) `pyproject.toml` 직접 파싱으로 fallback
+- `/release` 커맨드 실행 시 `pyproject.toml`만 갱신하면 자동 반영
+
 ## 실거래 전 체크리스트
 
 - 백테스트 성능 임계치 재확인(수익/드로우다운/거래빈도)
