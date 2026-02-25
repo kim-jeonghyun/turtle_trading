@@ -1,5 +1,34 @@
 # 운영 가이드
 
+## 개발 환경 구성
+
+### Python 3.12 가상환경 재구성
+
+`.python-version`에 선언된 Python 3.12 버전과 로컬 가상환경이 일치해야 합니다.
+
+```bash
+# 1. 기존 venv 삭제 후 재생성
+rm -rf .venv
+uv venv --python 3.12 .venv
+
+# 2. 의존성 설치
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# 3. 검증
+python --version  # Python 3.12.x 확인
+pytest tests/ -q  # 전체 테스트 통과 확인
+```
+
+### 버전 드리프트 감지
+
+`scripts/health_check.py`가 `.python-version`과 실행 중인 Python 버전 일치 여부를 자동 점검합니다.
+불일치 시 `[WARN] Python version: running 3.11, .python-version declares 3.12`로 경고합니다.
+
+```bash
+python scripts/health_check.py  # Python Version 항목 확인
+```
+
 ## 실거래 전 체크리스트
 
 - 백테스트 성능 임계치 재확인(수익/드로우다운/거래빈도)

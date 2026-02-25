@@ -6,9 +6,9 @@ pyramid_manager.py 단위 테스트
 - Trailing Stop
 """
 
-import pytest
 from datetime import datetime
-from src.pyramid_manager import PyramidManager, PyramidPosition, PyramidEntry
+
+from src.pyramid_manager import PyramidEntry, PyramidManager, PyramidPosition
 from src.types import Direction
 
 
@@ -214,10 +214,10 @@ class TestPyramidPosition:
         pos = PyramidPosition(symbol="SPY", direction=Direction.LONG, max_units=4)
         n = 2.5
 
-        pos.add_entry(datetime.now(), 100.0, 1, n)   # entry 1
-        pos.add_entry(datetime.now(), 101.25, 1, n)   # entry 2 (100 + 0.5*2.5)
-        pos.add_entry(datetime.now(), 102.50, 1, n)   # entry 3
-        pos.add_entry(datetime.now(), 103.75, 1, n)   # entry 4
+        pos.add_entry(datetime.now(), 100.0, 1, n)  # entry 1
+        pos.add_entry(datetime.now(), 101.25, 1, n)  # entry 2 (100 + 0.5*2.5)
+        pos.add_entry(datetime.now(), 102.50, 1, n)  # entry 3
+        pos.add_entry(datetime.now(), 103.75, 1, n)  # entry 4
 
         assert pos.is_full
         assert pos.total_units == 4

@@ -7,13 +7,11 @@ universe_manager.py 단위 테스트
 - get_group_mapping()
 """
 
-import pytest
-import tempfile
 import os
-from pathlib import Path
+import tempfile
 
-from src.universe_manager import UniverseManager, Asset
 from src.types import AssetGroup
+from src.universe_manager import Asset, UniverseManager
 
 
 class TestAsset:
@@ -93,7 +91,7 @@ symbols:
   commodity:
     - {symbol: GLD, name: "Gold ETF", group: commodity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -114,7 +112,7 @@ symbols:
   bond:
     - {symbol: TLT, name: "Treasury", group: bond}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -132,7 +130,7 @@ symbols:
   us_equity:
     - {symbol: SPY, name: "S&P 500", group: us_equity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -150,7 +148,7 @@ symbols:
     - {symbol: "005930.KS", name: "삼성전자", group: kr_equity}
     - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -168,7 +166,7 @@ symbols:
         yaml_content = """
 other_key: value
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -180,7 +178,7 @@ other_key: value
                 os.unlink(f.name)
 
     def test_yaml_empty_file_loads_defaults(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("")
             f.flush()
             try:
@@ -203,7 +201,7 @@ other_key: value
 class TestCSVLoading:
     def test_load_from_csv(self):
         csv_content = "Ticker,Name,Country,Type\nAAPL,Apple,US,Stock\nMSFT,Microsoft,US,Stock\n"
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             f.flush()
             try:
@@ -216,7 +214,7 @@ class TestCSVLoading:
 
     def test_csv_alternative_columns(self):
         csv_content = "symbol,name,country,type\nTSLA,Tesla,US,Stock\n"
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             f.flush()
             try:
@@ -287,7 +285,7 @@ symbols:
   kr_equity:
     - {symbol: "005930.KS", name: "삼성전자", group: kr_equity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -303,7 +301,7 @@ symbols:
   kr_equity:
     - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:
@@ -324,7 +322,7 @@ symbols:
   us_equity:
     - {symbol: AAPL, name: "AAPL", group: us_equity}
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             try:

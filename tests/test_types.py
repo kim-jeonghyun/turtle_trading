@@ -5,10 +5,12 @@ src/types.py 단위 테스트
 - 모든 Enum 값 존재 확인
 """
 
-import pytest
 import json
-from dataclasses import dataclass, asdict
-from src.types import Direction, SignalType, AssetGroup, OrderStatus, SerializableEnum
+from dataclasses import asdict, dataclass
+
+import pytest
+
+from src.types import AssetGroup, Direction, OrderStatus, SerializableEnum, SignalType
 
 
 class TestSerializableEnum:
@@ -35,6 +37,7 @@ class TestSerializableEnum:
 
     def test_dataclass_asdict_produces_strings(self):
         """dataclasses.asdict가 문자열을 생성."""
+
         @dataclass
         class Sample:
             direction: Direction

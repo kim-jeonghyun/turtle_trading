@@ -1,17 +1,15 @@
 """tests/test_market_calendar.py - 마켓 캘린더 테스트"""
 
-from datetime import datetime, date, time
+from datetime import datetime, time
 
 from src.market_calendar import (
-    is_weekend,
-    is_holiday,
-    is_market_open,
+    KR_HOLIDAYS_2026,
+    MARKET_HOURS,
+    US_HOLIDAYS_2026,
     get_market_status,
     infer_market,
-    should_check_signals,
-    MARKET_HOURS,
-    KR_HOLIDAYS_2026,
-    US_HOLIDAYS_2026,
+    is_holiday,
+    is_weekend,
 )
 
 
@@ -39,7 +37,8 @@ class TestWeekend:
     def test_saturday(self):
         # 2026-02-14 is Saturday
         from src.market_calendar import KST
-        if hasattr(KST, 'localize'):
+
+        if hasattr(KST, "localize"):
             dt = KST.localize(datetime(2026, 2, 14, 12, 0))
         else:
             dt = datetime(2026, 2, 14, 12, 0, tzinfo=KST)
@@ -47,7 +46,8 @@ class TestWeekend:
 
     def test_weekday(self):
         from src.market_calendar import KST
-        if hasattr(KST, 'localize'):
+
+        if hasattr(KST, "localize"):
             dt = KST.localize(datetime(2026, 2, 16, 12, 0))
         else:
             dt = datetime(2026, 2, 16, 12, 0, tzinfo=KST)
@@ -57,49 +57,52 @@ class TestWeekend:
 class TestHoliday:
     def test_kr_new_year(self):
         from src.market_calendar import KST
-        if hasattr(KST, 'localize'):
+
+        if hasattr(KST, "localize"):
             dt = KST.localize(datetime(2026, 1, 1, 12, 0))
         else:
             dt = datetime(2026, 1, 1, 12, 0, tzinfo=KST)
-        assert is_holiday(dt, 'KR') is True
+        assert is_holiday(dt, "KR") is True
 
     def test_kr_normal_day(self):
         from src.market_calendar import KST
-        if hasattr(KST, 'localize'):
+
+        if hasattr(KST, "localize"):
             dt = KST.localize(datetime(2026, 2, 20, 12, 0))
         else:
             dt = datetime(2026, 2, 20, 12, 0, tzinfo=KST)
-        assert is_holiday(dt, 'KR') is False
+        assert is_holiday(dt, "KR") is False
 
     def test_us_thanksgiving(self):
         from src.market_calendar import EST
-        if hasattr(EST, 'localize'):
+
+        if hasattr(EST, "localize"):
             dt = EST.localize(datetime(2026, 11, 26, 12, 0))
         else:
             dt = datetime(2026, 11, 26, 12, 0, tzinfo=EST)
-        assert is_holiday(dt, 'US') is True
+        assert is_holiday(dt, "US") is True
 
 
 class TestMarketHours:
     def test_kr_has_correct_hours(self):
-        assert MARKET_HOURS['KR']['open'] == time(9, 0)
-        assert MARKET_HOURS['KR']['close'] == time(15, 30)
+        assert MARKET_HOURS["KR"]["open"] == time(9, 0)
+        assert MARKET_HOURS["KR"]["close"] == time(15, 30)
 
     def test_us_has_correct_hours(self):
-        assert MARKET_HOURS['US']['open'] == time(9, 30)
-        assert MARKET_HOURS['US']['close'] == time(16, 0)
+        assert MARKET_HOURS["US"]["open"] == time(9, 30)
+        assert MARKET_HOURS["US"]["close"] == time(16, 0)
 
 
 class TestMarketStatus:
     def test_returns_string(self):
-        status = get_market_status('KR')
+        status = get_market_status("KR")
         assert isinstance(status, str)
-        assert '한국거래소' in status
+        assert "한국거래소" in status
 
     def test_us_market_status(self):
-        status = get_market_status('US')
+        status = get_market_status("US")
         assert isinstance(status, str)
-        assert 'NYSE' in status
+        assert "NYSE" in status
 
 
 class TestHolidayCompleteness:
@@ -112,8 +115,9 @@ class TestHolidayCompleteness:
     def test_kr_substitute_holiday(self):
         """대체공휴일 확인 - 삼일절 2026/3/1 일요일 → 3/2 월요일"""
         from src.market_calendar import KST
-        if hasattr(KST, 'localize'):
+
+        if hasattr(KST, "localize"):
             dt = KST.localize(datetime(2026, 3, 2, 12, 0))
         else:
             dt = datetime(2026, 3, 2, 12, 0, tzinfo=KST)
-        assert is_holiday(dt, 'KR') is True
+        assert is_holiday(dt, "KR") is True

@@ -3,14 +3,12 @@ analytics.py 단위 테스트
 - R-배수, 기대값, 승/패 통계, 시스템 비교, 지수 계산
 """
 
-import pytest
 from src.analytics import (
     TradeAnalytics,
+    calculate_calmar_ratio,
     calculate_sharpe_ratio,
     calculate_sortino_ratio,
-    calculate_calmar_ratio,
 )
-
 
 # 테스트용 샘플 거래 데이터
 SAMPLE_TRADES = [
@@ -129,9 +127,7 @@ class TestRMultiples:
         # 기본 범위 검증
         assert dist["max_r"] >= dist["mean_r"] >= dist["min_r"]
         assert dist["std_r"] >= 0
-        assert dist["positive_count"] + dist["negative_count"] == len(
-            analytics.calculate_r_multiples()
-        )
+        assert dist["positive_count"] + dist["negative_count"] == len(analytics.calculate_r_multiples())
 
     def test_r_distribution_empty_trades(self):
         """거래 없을 때 기본값 반환"""
@@ -288,7 +284,7 @@ class TestWinLossStats:
 
         assert stats["total_trades"] == 4
         assert stats["winners"] == 2  # SPY($2000), AAPL($1600)
-        assert stats["losers"] == 2   # QQQ(-$500), TSLA(-$600)
+        assert stats["losers"] == 2  # QQQ(-$500), TSLA(-$600)
         assert abs(stats["win_rate"] - 0.5) < 0.001
 
         # Profit Factor = 총 수익 / 총 손실 = 3600 / 1100 ≈ 3.27
@@ -404,10 +400,18 @@ class TestSystemComparison:
         comparison = analytics.get_system_comparison()
 
         required_keys = [
-            "total_trades", "winners", "losers", "win_rate",
-            "avg_win", "avg_loss", "profit_factor",
-            "largest_win", "largest_loss", "expectancy",
-            "mean_r", "total_pnl",
+            "total_trades",
+            "winners",
+            "losers",
+            "win_rate",
+            "avg_win",
+            "avg_loss",
+            "profit_factor",
+            "largest_win",
+            "largest_loss",
+            "expectancy",
+            "mean_r",
+            "total_pnl",
         ]
         for key in required_keys:
             assert key in comparison["system_1"], f"system_1에 '{key}' 키 없음"
@@ -480,7 +484,7 @@ class TestRatios:
 
     def test_calmar_ratio(self):
         """칼마 지수 = CAGR / 최대낙폭"""
-        cagr = 0.20    # 20% 연수익률
+        cagr = 0.20  # 20% 연수익률
         max_dd = 0.10  # 10% 최대낙폭
         calmar = calculate_calmar_ratio(cagr, max_dd)
 

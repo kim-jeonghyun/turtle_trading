@@ -6,10 +6,11 @@ position_tracker.py 단위 테스트
 - R-배수 계산
 """
 
-import pytest
 import json
-from pathlib import Path
-from src.position_tracker import PositionTracker, Position, PositionStatus
+
+import pytest
+
+from src.position_tracker import Position, PositionTracker
 from src.types import Direction
 
 
@@ -20,10 +21,7 @@ def tracker(temp_data_dir):
 
 class TestPositionLifecycle:
     def test_open_position(self, tracker):
-        pos = tracker.open_position(
-            symbol="SPY", system=1, direction="LONG",
-            entry_price=100.0, n_value=2.5, shares=40
-        )
+        pos = tracker.open_position(symbol="SPY", system=1, direction="LONG", entry_price=100.0, n_value=2.5, shares=40)
         assert pos.symbol == "SPY"
         assert pos.status == "open"
         assert pos.units == 1
@@ -31,10 +29,7 @@ class TestPositionLifecycle:
         assert pos.stop_loss == 95.0  # 100 - 2*2.5
 
     def test_close_position(self, tracker):
-        pos = tracker.open_position(
-            symbol="SPY", system=1, direction="LONG",
-            entry_price=100.0, n_value=2.5, shares=40
-        )
+        pos = tracker.open_position(symbol="SPY", system=1, direction="LONG", entry_price=100.0, n_value=2.5, shares=40)
         closed = tracker.close_position(pos.position_id, 110.0, "Exit Signal")
         assert closed.status == "closed"
         assert closed.pnl == 400.0  # (110-100) * 40
@@ -81,7 +76,7 @@ class TestPyramiding:
 
         # 0.5N = 1.25 상승 필요
         assert tracker.should_pyramid(pos, 101.0) is False  # Not enough
-        assert tracker.should_pyramid(pos, 101.25) is True   # Exactly 0.5N
+        assert tracker.should_pyramid(pos, 101.25) is True  # Exactly 0.5N
 
 
 class TestRMultiple:
@@ -208,11 +203,22 @@ class TestDirectionEnum:
         """잘못된 direction 값 → ValueError"""
         with pytest.raises(ValueError):
             Position(
-                position_id="test", symbol="SPY", system=1, direction="INVALID",
-                entry_date="2025-01-01", entry_price=100.0, entry_n=2.0,
-                units=1, max_units=4, shares_per_unit=40, total_shares=40,
-                stop_loss=95.0, pyramid_level=0, exit_period=10,
-                status="open", last_update="2025-01-01",
+                position_id="test",
+                symbol="SPY",
+                system=1,
+                direction="INVALID",
+                entry_date="2025-01-01",
+                entry_price=100.0,
+                entry_n=2.0,
+                units=1,
+                max_units=4,
+                shares_per_unit=40,
+                total_shares=40,
+                stop_loss=95.0,
+                pyramid_level=0,
+                exit_period=10,
+                status="open",
+                last_update="2025-01-01",
             )
 
     def test_to_dict_serializes_as_string(self, tracker):
@@ -288,8 +294,8 @@ class TestShortDirection:
         """SHORT 피라미딩: 가격 하락 시 트리거"""
         pos = tracker.open_position("SPY", 1, "SHORT", 100.0, 2.5, 40)
         # 0.5N = 1.25 하락 필요
-        assert tracker.should_pyramid(pos, 99.0) is False   # Not enough
-        assert tracker.should_pyramid(pos, 98.75) is True   # Exactly 0.5N
+        assert tracker.should_pyramid(pos, 99.0) is False  # Not enough
+        assert tracker.should_pyramid(pos, 98.75) is True  # Exactly 0.5N
 
 
 class TestPersistence:
@@ -309,6 +315,6 @@ class TestPersistence:
         tracker.open_position("QQQ", 1, "LONG", 200.0, 3.0, 30)
 
         summary = tracker.get_summary()
-        assert summary['total_positions'] == 2
-        assert summary['open_positions'] == 1
-        assert summary['closed_positions'] == 1
+        assert summary["total_positions"] == 2
+        assert summary["open_positions"] == 1
+        assert summary["closed_positions"] == 1

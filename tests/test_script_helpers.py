@@ -6,8 +6,11 @@ from unittest.mock import patch
 
 from src.script_helpers import load_config, setup_notifier
 
+_NO_DOTENV = patch("dotenv.load_dotenv", lambda *a, **kw: None)
+
 
 class TestLoadConfig:
+    @_NO_DOTENV
     @patch.dict(
         "os.environ",
         {
@@ -27,6 +30,7 @@ class TestLoadConfig:
         assert config["discord_webhook"] == "https://discord.com/api/webhooks/test"
         assert config["email_user"] == "user@test.com"
 
+    @_NO_DOTENV
     @patch.dict("os.environ", {}, clear=True)
     def test_load_empty_config(self):
         config = load_config()
@@ -34,23 +38,27 @@ class TestLoadConfig:
         assert config["discord_webhook"] is None
         assert config["email_to"] == []
 
+    @_NO_DOTENV
     @patch.dict("os.environ", {"SMTP_HOST": "custom.host", "SMTP_PORT": "465"}, clear=True)
     def test_smtp_defaults(self):
         config = load_config()
         assert config["smtp_host"] == "custom.host"
         assert config["smtp_port"] == 465
 
+    @_NO_DOTENV
     @patch.dict("os.environ", {}, clear=True)
     def test_smtp_fallback_defaults(self):
         config = load_config()
         assert config["smtp_host"] == "smtp.gmail.com"
         assert config["smtp_port"] == 587
 
+    @_NO_DOTENV
     @patch.dict("os.environ", {"EMAIL_TO": "a@b.com,c@d.com"}, clear=True)
     def test_email_to_split(self):
         config = load_config()
         assert config["email_to"] == ["a@b.com", "c@d.com"]
 
+    @_NO_DOTENV
     @patch.dict("os.environ", {"EMAIL_TO": ""}, clear=True)
     def test_email_to_empty_string(self):
         config = load_config()

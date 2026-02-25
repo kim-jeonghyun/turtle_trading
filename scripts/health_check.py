@@ -22,6 +22,24 @@ logger = logging.getLogger(__name__)
 EXTERNAL_API_TIMEOUT_SECONDS = 5
 
 
+def check_python_version() -> Tuple[bool, str]:
+    """Python 실행 버전이 .python-version 선언과 일치하는지 확인"""
+    version_file = Path(".python-version")
+    current = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+    if not version_file.exists():
+        return True, f"Python version: {current} (.python-version not found, skipped)"
+
+    try:
+        declared = version_file.read_text().strip()
+    except Exception as e:
+        return False, f"Python version: cannot read .python-version - {e}"
+    declared_minor = ".".join(declared.split(".")[:2])
+    if current == declared_minor:
+        return True, f"Python version: {current} (matches .python-version)"
+    return False, f"Python version: running {current}, .python-version declares {declared}"
+
+
 def check_data_directory() -> Tuple[bool, str]:
     """데이터 디렉토리 존재 및 쓰기 가능 여부 확인"""
     base_dir = Path("data")
@@ -319,6 +337,7 @@ def main():
 
     # 필수 체크 (실패 시 종료 코드 1)
     core_checks = [
+        ("Python Version", check_python_version),
         ("Data Directory", check_data_directory),
         ("Python Packages", check_python_packages),
         ("Position Files", check_position_files),

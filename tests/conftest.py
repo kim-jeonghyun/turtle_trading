@@ -2,21 +2,20 @@
 Turtle Trading 테스트 공통 Fixtures
 """
 
-import pytest
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from datetime import datetime, timedelta
-import tempfile
 import shutil
-import json
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
 
 
 @pytest.fixture
 def sample_ohlcv_df():
     """60일 분량의 샘플 OHLCV 데이터"""
     np.random.seed(42)
-    dates = pd.date_range(start='2025-01-01', periods=60, freq='B')
+    dates = pd.date_range(start="2025-01-01", periods=60, freq="B")
 
     # 시작 가격에서 랜덤 워크
     price = 100.0
@@ -28,14 +27,16 @@ def sample_ohlcv_df():
         low = open_price - abs(np.random.normal(1, 0.5))
         close = open_price + change
         volume = int(np.random.uniform(1000000, 5000000))
-        rows.append({
-            'date': date,
-            'open': round(open_price, 2),
-            'high': round(high, 2),
-            'low': round(low, 2),
-            'close': round(close, 2),
-            'volume': volume
-        })
+        rows.append(
+            {
+                "date": date,
+                "open": round(open_price, 2),
+                "high": round(high, 2),
+                "low": round(low, 2),
+                "close": round(close, 2),
+                "volume": volume,
+            }
+        )
         price = close
 
     return pd.DataFrame(rows)
@@ -44,7 +45,7 @@ def sample_ohlcv_df():
 @pytest.fixture
 def trending_up_df():
     """상승 추세 데이터 (시그널 테스트용)"""
-    dates = pd.date_range(start='2025-01-01', periods=80, freq='B')
+    dates = pd.date_range(start="2025-01-01", periods=80, freq="B")
     price = 100.0
     rows = []
     for i, date in enumerate(dates):
@@ -55,14 +56,16 @@ def trending_up_df():
         high = max(open_price, close) * (1 + abs(np.random.normal(0.002, 0.001)))
         low = min(open_price, close) * (1 - abs(np.random.normal(0.002, 0.001)))
         volume = int(np.random.uniform(1000000, 5000000))
-        rows.append({
-            'date': date,
-            'open': round(open_price, 2),
-            'high': round(high, 2),
-            'low': round(low, 2),
-            'close': round(close, 2),
-            'volume': volume
-        })
+        rows.append(
+            {
+                "date": date,
+                "open": round(open_price, 2),
+                "high": round(high, 2),
+                "low": round(low, 2),
+                "close": round(close, 2),
+                "volume": volume,
+            }
+        )
         price = close
 
     return pd.DataFrame(rows)
@@ -95,22 +98,46 @@ def sample_position_data():
         "pyramid_level": 0,
         "exit_period": 10,
         "status": "open",
-        "last_update": "2025-01-01T12:00:00"
+        "last_update": "2025-01-01T12:00:00",
     }
 
 
 @pytest.fixture
 def make_turtle_df():
     """터틀 지표가 포함된 mock DataFrame 팩토리."""
+
     def _factory(high=101.0, low=97.0, close=100.0, n=2.0):
-        return pd.DataFrame([
-            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97},
-            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2025-03-01"),
+                    "high": 100,
+                    "low": 98,
+                    "close": 99,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+                {
+                    "date": pd.Timestamp("2025-03-02"),
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+            ]
+        )
+
     return _factory
 
 
