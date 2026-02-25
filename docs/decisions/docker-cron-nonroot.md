@@ -116,10 +116,13 @@ CMD ["supercronic", "/etc/cron.d/turtle-cron"]
 ### 구현 내역 (2026-02-25)
 
 - `Dockerfile`: apt `cron` 제거, `curl` 추가, supercronic v0.2.33 설치 (SHA1 체크섬 검증, TARGETARCH 멀티아키텍처)
+- `Dockerfile`: TARGETARCH를 `dpkg --print-architecture` fallback으로 안전화 (docker build 시 TARGETARCH 미설정 대비)
+- `Dockerfile`: turtle UID/GID 1000 고정 (`groupadd --gid 1000`, `useradd --uid 1000 --gid 1000`) — 호스트 bind mount 소유권과 일관성 확보, `docker-compose.yaml`에서 `DOCKER_UID`/`DOCKER_GID` 환경변수로 오버라이드 가능
+- `entrypoint.sh`: preflight check로 `/app/data`, `/app/logs` 디렉토리의 쓰기 권한을 컨테이너 시작 시 즉시 검증 — 권한 불일치 시 명확한 에러 메시지와 함께 즉시 종료하여 런타임 권한 오류 사전 차단
 - 크론탭 경로: `/etc/cron.d/turtle-cron` → `/app/crontab`으로 단순화
 - `USER turtle` + `CMD ["supercronic", "/app/crontab"]`로 non-root 실행
 - `ENV PYTHONPATH=/app` 명시 추가
-- `docker-compose.yaml`: `user: "turtle"` 방어적 명시
+- `docker-compose.yaml`: `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`으로 유연한 UID/GID 매핑
 
 ### 롤백 절차 (긴급 시)
 
@@ -131,8 +134,9 @@ CMD ["supercronic", "/etc/cron.d/turtle-cron"]
 ### 관련 파일
 
 - `Dockerfile` — supercronic 설치 및 non-root 실행 설정
+- `entrypoint.sh` — bind mount 쓰기 권한 preflight check
 - `crontab` — 스케줄 정의 (프로젝트 루트, Docker 내 `/app/crontab`으로 복사됨)
-- `docker-compose.yaml` — `user: "turtle"` 명시
+- `docker-compose.yaml` — `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"` 유연한 UID/GID 매핑
 - `scripts/` — cron이 호출하는 스크립트들
 
 ---

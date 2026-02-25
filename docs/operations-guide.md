@@ -104,6 +104,23 @@ v3.4.0부터 Docker 컨테이너의 cron 스케줄러가 `apt cron`(root)에서 
 - 실행 유저: `turtle` (non-root)
 - 아키텍처: TARGETARCH 자동 감지 (amd64/arm64)
 
+**호스트 디렉토리 권한 설정 (최초 배포 / root→non-root 마이그레이션):**
+
+컨테이너가 non-root 유저(기본 UID 1000)로 실행되므로, bind mount 대상 디렉토리의 소유권을 맞춰야 합니다.
+`entrypoint.sh`가 시작 시 쓰기 권한을 자동 검증하며, 권한 불일치 시 즉시 종료됩니다.
+
+```bash
+# 최초 배포 시
+mkdir -p ./data ./logs
+chown -R 1000:1000 ./data ./logs
+
+# 기존 root cron → supercronic 마이그레이션 시
+sudo chown -R 1000:1000 ./data ./logs
+
+# UID가 1000이 아닌 환경에서는 환경변수로 오버라이드
+DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d
+```
+
 **롤백 절차** (긴급 시):
 1. Dockerfile에서 `cron` 패키지 재설치, supercronic 설치 블록 제거
 2. `COPY crontab /etc/cron.d/turtle-cron` + `RUN crontab /etc/cron.d/turtle-cron`으로 복원
