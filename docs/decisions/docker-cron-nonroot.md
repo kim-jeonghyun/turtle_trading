@@ -1,6 +1,9 @@
 # ADR: Docker Cron Non-Root 실행
 
-## 상태: Deferred
+## 상태: Accepted
+
+- 구현일: 2026-02-25
+- 적용 버전: supercronic v0.2.33
 
 ---
 
@@ -25,20 +28,20 @@ CMD ["cron", "-f"]
 
 ## 결정
 
-**현상 유지 (Deferred).** 현 단계에서는 `supercronic`으로의 전환을 보류한다.
+**supercronic v0.2.33으로 전환하여 non-root 실행을 구현한다.**
 
 근거:
-1. 실거래 환경 미도입 상태에서 cron 교체로 인한 동작 변경 위험이 실익보다 크다.
-2. 1인 개발 환경에서 컨테이너가 Docker 내부에 격리되어 있으므로 root cron의 실질 공격 표면이 제한적이다.
-3. 실거래 진입 전 인프라 강화 단계에서 `supercronic` 전환을 묶어 처리하는 것이 효율적이다.
-
-**단, 실거래 도입 전 `supercronic` 전환을 필수 항목으로 등록한다.**
+1. 실거래 도입 전 인프라 보안 강화의 필수 항목으로 등록되어 있었다.
+2. supercronic은 Kubernetes 생태계에서 검증된 경량 cron 대체 바이너리로, non-root 실행이 기본 지원된다.
+3. 표준 crontab 문법을 그대로 사용하므로 기존 crontab 자산을 재활용할 수 있다.
+4. 단일 바이너리로 apt 패키지 의존 없이 설치 가능하며, TARGETARCH를 통해 amd64/arm64 멀티아키텍처를 지원한다.
+5. SHA1 체크섬 검증으로 바이너리 무결성을 보장한다.
 
 ---
 
 ## 대안
 
-### 1. supercronic (권장 대안)
+### 1. supercronic (채택)
 
 **설명:** Kubernetes 생태계에서 검증된 경량 cron 대체 바이너리. non-root로 동작하며 표준 crontab 문법을 그대로 사용한다.
 
@@ -110,26 +113,26 @@ CMD ["supercronic", "/etc/cron.d/turtle-cron"]
 
 ## 결과
 
-### 현재 (Deferred 상태)
+### 구현 내역 (2026-02-25)
 
-- cron은 root로 계속 실행
-- 컨테이너 격리가 유일한 완화 수단
-- 실거래 미도입 상태에서 실질 위험은 낮음
+- `Dockerfile`: apt `cron` 제거, `curl` 추가, supercronic v0.2.33 설치 (SHA1 체크섬 검증, TARGETARCH 멀티아키텍처)
+- 크론탭 경로: `/etc/cron.d/turtle-cron` → `/app/crontab`으로 단순화
+- `USER turtle` + `CMD ["supercronic", "/app/crontab"]`로 non-root 실행
+- `ENV PYTHONPATH=/app` 명시 추가
+- `docker-compose.yaml`: `user: "turtle"` 방어적 명시
 
-### 실거래 도입 전 필수 조치
+### 롤백 절차 (긴급 시)
 
-`supercronic` 전환을 실거래 인프라 강화 체크리스트에 포함:
-
-1. Dockerfile에서 `apt install cron` 제거
-2. supercronic 바이너리 추가 (버전 고정)
-3. `USER turtle` 전환 후 `CMD ["supercronic", ...]`
-4. 환경변수 전달 방식 검증 (`TZ=Asia/Seoul` 등)
-5. 기존 crontab 동작 동등성 검증 테스트
+1. Dockerfile에서 `cron` 패키지 재설치, supercronic 설치 블록 제거
+2. `COPY crontab /etc/cron.d/turtle-cron` + `RUN crontab /etc/cron.d/turtle-cron`으로 복원
+3. `USER turtle` 제거, `CMD ["cron", "-f"]`로 복원
+4. `docker-compose build && docker-compose up -d`
 
 ### 관련 파일
 
-- `Dockerfile` — cron 설정 위치
-- `crontab` — 스케줄 정의 (프로젝트 루트, Docker 내 `/etc/cron.d/turtle-cron`으로 복사됨)
+- `Dockerfile` — supercronic 설치 및 non-root 실행 설정
+- `crontab` — 스케줄 정의 (프로젝트 루트, Docker 내 `/app/crontab`으로 복사됨)
+- `docker-compose.yaml` — `user: "turtle"` 명시
 - `scripts/` — cron이 호출하는 스크립트들
 
 ---

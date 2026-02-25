@@ -1,10 +1,11 @@
 version: '3.8'
 
 services:
-  # 시그널 체크 서비스 (Cron 기반)
+  # 시그널 체크 서비스 (supercronic 기반, non-root)
   turtle-cron:
     build: .
     container_name: turtle-cron
+    user: "turtle"
     env_file:
       - .env
     volumes:

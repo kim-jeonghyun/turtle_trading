@@ -92,6 +92,24 @@ python scripts/health_check.py  # Python Version 항목 확인
   2. 프록시에 인증 레이어 추가 (Basic Auth 또는 OAuth)
   3. `0.0.0.0`으로 직접 변경하지 말 것 — 인증 없이 포트폴리오 정보가 외부에 노출될 위험
 
+## Docker cron 스케줄러
+
+### supercronic 전환 (Docker cron)
+
+v3.4.0부터 Docker 컨테이너의 cron 스케줄러가 `apt cron`(root)에서 `supercronic`(non-root `turtle` 유저)로 전환되었습니다.
+
+**현재 구조:**
+- 스케줄러: supercronic v0.2.33 (`/usr/local/bin/supercronic`)
+- 크론탭: `/app/crontab`
+- 실행 유저: `turtle` (non-root)
+- 아키텍처: TARGETARCH 자동 감지 (amd64/arm64)
+
+**롤백 절차** (긴급 시):
+1. Dockerfile에서 `cron` 패키지 재설치, supercronic 설치 블록 제거
+2. `COPY crontab /etc/cron.d/turtle-cron` + `RUN crontab /etc/cron.d/turtle-cron`으로 복원
+3. `USER turtle` 제거, `CMD ["cron", "-f"]`로 복원
+4. `docker-compose build && docker-compose up -d`
+
 ## KIS API 로그 마스킹 정책
 
 `kis_api.py`의 `_sanitize_response_for_log()` 함수가 DEBUG 로그에 안전 필드만 출력한다.
