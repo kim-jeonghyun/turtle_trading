@@ -377,7 +377,7 @@ class TradeAnalytics:
 # ── 독립 함수 ──────────────────────────────────────────────────────────────
 
 
-def calculate_sharpe_ratio(returns: list, risk_free_rate: float = 0.03) -> float:
+def calculate_sharpe_ratio(returns: list[float], risk_free_rate: float = 0.03) -> float:
     """
     샤프 지수 계산 (연율화).
 
@@ -408,7 +408,7 @@ def calculate_sharpe_ratio(returns: list, risk_free_rate: float = 0.03) -> float
     return round(sharpe, 4)
 
 
-def calculate_sortino_ratio(returns: list, risk_free_rate: float = 0.03) -> float:
+def calculate_sortino_ratio(returns: list[float], risk_free_rate: float = 0.03) -> float:
     """
     소르티노 지수 계산 (연율화) - 하방 변동성만 사용.
 

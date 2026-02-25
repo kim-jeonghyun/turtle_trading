@@ -21,7 +21,7 @@ def _get_version() -> str:
         pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
         if pyproject.exists():
             with open(pyproject, "rb") as f:
-                return tomllib.load(f)["project"]["version"]
+                return str(tomllib.load(f)["project"]["version"])
     except (KeyError, FileNotFoundError, Exception):
         pass
     return "unknown"

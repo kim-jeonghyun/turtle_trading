@@ -88,7 +88,8 @@ class AutoTrader:
 
     def _load_order_log(self) -> List[dict]:
         """기존 주문 로그 로드"""
-        return safe_load_json(ORDER_LOG_PATH, default=[])
+        result: List[dict] = safe_load_json(ORDER_LOG_PATH, default=[])
+        return result
 
     def _save_order_log(self, orders: List[dict]):
         """주문 로그 저장 (atomic write)"""
@@ -304,7 +305,7 @@ class AutoTrader:
 
         return record
 
-    def _find_matching_fill(self, filled_orders: list, record: OrderRecord) -> Optional[dict]:
+    def _find_matching_fill(self, filled_orders: list[dict], record: OrderRecord) -> Optional[dict]:
         """당일 체결 내역에서 주문 파라미터와 일치하는 체결을 검색.
 
         피라미딩 등으로 동일 종목에 대해 같은 날 여러 주문이 발생할 수 있다.
@@ -418,7 +419,8 @@ class AutoTrader:
 
         try:
             logger.info(f"주문 상태 조회: {order_no}")
-            return await self.kis_client.get_order_status(order_no)
+            result: dict = await self.kis_client.get_order_status(order_no)
+            return result
         except Exception as e:
             logger.error(f"주문 상태 조회 실패: {order_no} - {e}")
             return {"order_no": order_no, "status": "error", "message": str(e)}

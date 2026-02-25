@@ -135,10 +135,10 @@ class TurtleBacktester:
             data[symbol] = add_turtle_indicators(df)
 
         # 날짜 인덱스 정렬
-        all_dates = set()
+        date_set: set[Any] = set()
         for df in data.values():
-            all_dates.update(df["date"].tolist())
-        all_dates = sorted(all_dates)
+            date_set.update(df["date"].tolist())
+        all_dates: list[Any] = sorted(date_set)
 
         logger.info(f"백테스트 시작: {len(data)}개 종목, {len(all_dates)}일")
 
@@ -245,7 +245,7 @@ class TurtleBacktester:
         self.pyramid_manager.close_position(symbol)
         logger.debug(f"청산: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({reason})")
 
-    def _record_equity(self, date: datetime, data: Dict[str, pd.DataFrame] = None):
+    def _record_equity(self, date: datetime, data: Optional[Dict[str, pd.DataFrame]] = None):
         unrealized = 0.0
         for symbol, position in self.pyramid_manager.positions.items():
             if data and symbol in data:
@@ -283,8 +283,8 @@ class TurtleBacktester:
 
         wins = [t.pnl for t in self.trades if t.pnl > 0]
         losses = [abs(t.pnl) for t in self.trades if t.pnl <= 0]
-        avg_win = np.mean(wins) if wins else 0
-        avg_loss = np.mean(losses) if losses else 0
+        avg_win = float(np.mean(wins)) if wins else 0.0
+        avg_loss = float(np.mean(losses)) if losses else 0.0
         profit_factor = sum(wins) / sum(losses) if losses and sum(losses) > 0 else 0
 
         # CAGR
