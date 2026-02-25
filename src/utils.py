@@ -19,9 +19,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, List, Optional, TypeVar
-
-from typing_extensions import ParamSpec
+from typing import Any, Awaitable, Callable, List, Optional, ParamSpec, TypeVar
 
 P = ParamSpec("P")
 T = TypeVar("T")
