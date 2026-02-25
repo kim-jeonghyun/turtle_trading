@@ -7,7 +7,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from src.types import AssetGroup, Direction
 
@@ -30,7 +30,7 @@ class PortfolioRiskState:
 
 
 class PortfolioRiskManager:
-    def __init__(self, limits: RiskLimits = None, symbol_groups: Dict[str, AssetGroup] = None):
+    def __init__(self, limits: Optional[RiskLimits] = None, symbol_groups: Optional[Dict[str, AssetGroup]] = None):
         self.limits = limits or RiskLimits()
         self.symbol_groups = symbol_groups or {}
         self.state = PortfolioRiskState()

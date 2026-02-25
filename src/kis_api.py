@@ -152,7 +152,7 @@ class KISAPIClient:
             await self._session.close()
             self._session = None
 
-    def _get_session(self) -> aiohttp.ClientSession:
+    def _get_session(self) -> Optional[aiohttp.ClientSession]:
         """관리 세션 반환, 없으면 임시 세션은 호출측에서 생성"""
         if self._session and not self._session.closed:
             return self._session
@@ -204,7 +204,8 @@ class KISAPIClient:
         """토큰 무효화 후 재발급 (401 응답 시 사용)"""
         logger.warning("토큰 만료 감지 — 재발급 시도")
         self.token = None
-        return await self._get_token()
+        result: str = await self._get_token()
+        return result
 
     def _classify_and_handle(self, status: int, data: dict) -> None:
         """응답 분류 + 401 시 캐시된 토큰 무효화 (retry_async가 재시도 시 새 토큰 사용)"""
@@ -592,7 +593,8 @@ class KISAPIClient:
                         raise RetryableError(f"JSON 파싱 실패 (status={resp.status}): {e}")
                     self._classify_and_handle(resp.status, data)
                     if data.get("rt_cd") == "0":
-                        return data.get("output1", [])
+                        fills: list[Any] = data.get("output1", [])
+                        return fills
                     else:
                         safe_msg = _sanitize_error(data)
                         raise KISAPIError(f"당일 체결 조회 실패: {safe_msg}")

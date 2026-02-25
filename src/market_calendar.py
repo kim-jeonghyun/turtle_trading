@@ -19,31 +19,28 @@ DST 는 미국 연방법(Energy Policy Act 2005)에 따라:
       표준시 기간: 23:30 KST (전날) ~ 06:00 KST
       일광절약시 기간: 22:30 KST (전날) ~ 05:00 KST
 
-pytz / zoneinfo 라이브러리가 DST 변환을 자동으로 처리합니다.
+zoneinfo 라이브러리가 DST 변환을 자동으로 처리합니다.
 수동으로 DST 날짜를 계산하려면 dst_start() / dst_end() 헬퍼 함수를 사용하세요.
 """
 
 import logging
 from datetime import date, datetime, time, timedelta
-from typing import Optional
+from typing import Dict, Optional, TypedDict
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-try:
-    import pytz
 
-    KST = pytz.timezone("Asia/Seoul")
-    EST = pytz.timezone("US/Eastern")
-    UTC = pytz.UTC
-except ImportError:
-    # Fallback: use zoneinfo (Python 3.9+)
-    from zoneinfo import ZoneInfo
+class MarketConfig(TypedDict):
+    open: time
+    close: time
+    tz: ZoneInfo
+    name: str
 
-    KST = ZoneInfo("Asia/Seoul")
-    EST = ZoneInfo("US/Eastern")
-    UTC = ZoneInfo("UTC")
-    # Shim for pytz-like localize
-    pytz = None
+
+KST: ZoneInfo = ZoneInfo("Asia/Seoul")
+EST: ZoneInfo = ZoneInfo("US/Eastern")
+UTC: ZoneInfo = ZoneInfo("UTC")
 
 
 def dst_start(year: int) -> date:
@@ -90,7 +87,7 @@ def is_dst(dt: date, year: Optional[int] = None) -> bool:
     return dst_start(y) <= dt < dst_end(y)
 
 
-MARKET_HOURS = {
+MARKET_HOURS: Dict[str, MarketConfig] = {
     "KR": {
         "open": time(9, 0),
         "close": time(15, 30),
@@ -387,7 +384,7 @@ def is_market_open(market: str = "KR") -> bool:
         return False
 
     # 장시간 체크
-    return config["open"] <= now.time() <= config["close"]
+    return bool(config["open"] <= now.time() <= config["close"])
 
 
 def get_market_status(market: str = "KR") -> str:
@@ -436,4 +433,4 @@ def should_check_signals(symbol: str) -> bool:
 
     # 장 마감 후 ~ 자정 사이에 일일 데이터 기반 시그널 체크 가능
     config = MARKET_HOURS[market]
-    return now.time() >= config["close"]
+    return bool(now.time() >= config["close"])

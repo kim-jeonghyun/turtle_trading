@@ -19,7 +19,12 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Awaitable, Callable, List, Optional, TypeVar
+
+from typing_extensions import ParamSpec
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -175,13 +180,13 @@ def retry_async(
     base_delay: float = 1.0,
     max_delay: float = 30.0,
     exceptions: tuple = (Exception,),
-):
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """비동기 함수용 지수 백오프 재시도 데코레이터"""
 
-    def decorator(func):
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            last_exception = None
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            last_exception: Optional[Exception] = None
             for attempt in range(max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
@@ -191,6 +196,7 @@ def retry_async(
                         delay = min(base_delay * (2**attempt), max_delay)
                         logger.warning(f"Retry {attempt + 1}/{max_retries}: {func.__name__} - {e}")
                         await asyncio.sleep(delay)
+            assert last_exception is not None  # loop always runs at least once
             raise last_exception
 
         return wrapper
