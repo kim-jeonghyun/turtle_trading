@@ -7,18 +7,18 @@ utils.py 단위 테스트
 - 심볼 입력 검증
 """
 
-import pytest
 import json
-import os
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+
+import pytest
 
 from src.utils import (
     atomic_write_json,
     backup_file,
-    validate_position_schema,
     safe_load_json,
+    validate_position_schema,
     validate_symbol,
 )
 
@@ -37,7 +37,7 @@ class TestAtomicWriteJson:
         atomic_write_json(filepath, data)
 
         assert filepath.exists()
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             loaded = json.load(f)
         assert loaded == data
 
@@ -46,7 +46,7 @@ class TestAtomicWriteJson:
         data = {"list": [1, 2, 3], "nested": {"a": "b"}}
         atomic_write_json(filepath, data)
 
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             loaded = json.load(f)
         assert loaded == data
 
@@ -60,7 +60,7 @@ class TestAtomicWriteJson:
         data = {"한국어": "테스트", "日本語": "テスト"}
         atomic_write_json(filepath, data)
 
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             loaded = json.load(f)
         assert loaded["한국어"] == "테스트"
 
@@ -69,7 +69,7 @@ class TestAtomicWriteJson:
         atomic_write_json(filepath, {"version": 1})
         atomic_write_json(filepath, {"version": 2})
 
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             loaded = json.load(f)
         assert loaded["version"] == 2
 
@@ -129,31 +129,31 @@ class TestBackupFile:
 class TestValidatePositionSchema:
     def test_valid_position(self):
         data = {
-            'position_id': 'SPY_1_LONG',
-            'symbol': 'SPY',
-            'entry_price': 100.0,
-            'status': 'open',
-            'direction': 'LONG',
-            'system': 1,
-            'entry_date': '2025-01-01',
-            'entry_n': 2.5,
-            'units': 1,
-            'total_shares': 40,
-            'stop_loss': 95.0,
+            "position_id": "SPY_1_LONG",
+            "symbol": "SPY",
+            "entry_price": 100.0,
+            "status": "open",
+            "direction": "LONG",
+            "system": 1,
+            "entry_date": "2025-01-01",
+            "entry_n": 2.5,
+            "units": 1,
+            "total_shares": 40,
+            "stop_loss": 95.0,
         }
         assert validate_position_schema(data) is True
 
     def test_missing_field(self):
         data = {
-            'symbol': 'SPY',
-            'entry_price': 100.0,
+            "symbol": "SPY",
+            "entry_price": 100.0,
         }
         assert validate_position_schema(data) is False
 
     def test_custom_required_fields(self):
-        data = {'a': 1, 'b': 2}
-        assert validate_position_schema(data, required_fields=['a', 'b']) is True
-        assert validate_position_schema(data, required_fields=['a', 'c']) is False
+        data = {"a": 1, "b": 2}
+        assert validate_position_schema(data, required_fields=["a", "b"]) is True
+        assert validate_position_schema(data, required_fields=["a", "c"]) is False
 
     def test_empty_data(self):
         assert validate_position_schema({}) is False

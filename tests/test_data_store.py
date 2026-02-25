@@ -6,8 +6,7 @@ data_store.py 단위 테스트
 """
 
 import pytest
-import pandas as pd
-from pathlib import Path
+
 from src.data_store import ParquetDataStore
 
 
@@ -37,12 +36,7 @@ class TestOHLCVCache:
 
 class TestSignalStorage:
     def test_save_signal(self, data_store):
-        signal = {
-            "symbol": "SPY",
-            "type": "ENTRY_LONG",
-            "price": 500.0,
-            "n": 5.0
-        }
+        signal = {"symbol": "SPY", "type": "ENTRY_LONG", "price": 500.0, "n": 5.0}
         data_store.save_signal(signal)
         loaded = data_store.load_signals()
         assert len(loaded) == 1
@@ -66,12 +60,7 @@ class TestSignalStorage:
 
 class TestTradeStorage:
     def test_save_trade(self, data_store):
-        trade = {
-            "symbol": "SPY",
-            "entry_price": 500.0,
-            "exit_price": 510.0,
-            "pnl": 100.0
-        }
+        trade = {"symbol": "SPY", "entry_price": 500.0, "exit_price": 510.0, "pnl": 100.0}
         data_store.save_trade(trade)
         loaded = data_store.load_trades()
         assert len(loaded) == 1
@@ -135,6 +124,7 @@ class TestLoadSignalsFiltered:
         signal = {"symbol": "SPY", "type": "ENTRY_LONG"}
         data_store.save_signal(signal)
         from datetime import datetime
+
         today = datetime.now().strftime("%Y-%m-%d")
         loaded = data_store.load_signals(date=today)
         assert len(loaded) >= 1
@@ -150,6 +140,7 @@ class TestCleanupOldCache:
     def test_cleanup_removes_old_files(self, data_store, sample_ohlcv_df):
         import os
         import time
+
         data_store.save_ohlcv("OLD_SYMBOL", sample_ohlcv_df)
         # Manually set file modification time to 30 days ago
         cache_path = data_store._get_cache_path("OLD_SYMBOL", "ohlcv")
@@ -170,14 +161,14 @@ class TestCleanupOldCache:
 class TestCacheStats:
     def test_empty_stats(self, data_store):
         stats = data_store.get_cache_stats()
-        assert stats['cache_files'] == 0
-        assert stats['total_size_mb'] == 0
+        assert stats["cache_files"] == 0
+        assert stats["total_size_mb"] == 0
 
     def test_stats_after_save(self, data_store, sample_ohlcv_df):
         data_store.save_ohlcv("SPY", sample_ohlcv_df)
         stats = data_store.get_cache_stats()
-        assert stats['cache_files'] == 1
-        assert stats['total_size_mb'] > 0
+        assert stats["cache_files"] == 1
+        assert stats["total_size_mb"] > 0
 
     def test_stats_counts_all_types(self, data_store, sample_ohlcv_df):
         data_store.save_ohlcv("SPY", sample_ohlcv_df)
@@ -185,15 +176,16 @@ class TestCacheStats:
         data_store.save_trade({"symbol": "SPY", "pnl": 100})
 
         stats = data_store.get_cache_stats()
-        assert stats['cache_files'] >= 1
-        assert stats['signal_files'] >= 1
-        assert stats['trade_files'] >= 1
+        assert stats["cache_files"] >= 1
+        assert stats["signal_files"] >= 1
+        assert stats["trade_files"] >= 1
 
 
 class TestOHLCVCacheValidity:
     def test_cache_expired(self, data_store, sample_ohlcv_df):
         import os
         import time
+
         data_store.save_ohlcv("EXPIRED", sample_ohlcv_df)
         # Set modification time to 48 hours ago
         cache_path = data_store._get_cache_path("EXPIRED", "ohlcv")

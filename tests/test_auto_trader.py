@@ -26,15 +26,12 @@ from src.types import OrderStatus
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_kis_config():
     """테스트용 KIS 설정 (모의 자격증명)"""
     return KISConfig(
-        app_key="TEST_APP_KEY",
-        app_secret="TEST_APP_SECRET",
-        account_no="12345678",
-        account_suffix="01",
-        is_real=False
+        app_key="TEST_APP_KEY", app_secret="TEST_APP_SECRET", account_no="12345678", account_suffix="01", is_real=False
     )
 
 
@@ -44,21 +41,15 @@ def mock_kis_client(mock_kis_config):
     client = MagicMock(spec=KISAPIClient)
     client.config = mock_kis_config
     # place_order를 AsyncMock으로 설정
-    client.place_order = AsyncMock(return_value={
-        "success": True,
-        "order_no": "KIS_ORDER_001",
-        "order_time": "120000"
-    })
-    client.get_balance = AsyncMock(return_value={
-        "total_equity": 10_000_000.0,
-        "cash": 5_000_000.0,
-        "positions": []
-    })
+    client.place_order = AsyncMock(return_value={"success": True, "order_no": "KIS_ORDER_001", "order_time": "120000"})
+    client.get_balance = AsyncMock(return_value={"total_equity": 10_000_000.0, "cash": 5_000_000.0, "positions": []})
     # get_order_status도 AsyncMock으로 설정 (check_order_status에서 사용)
-    client.get_order_status = AsyncMock(return_value={
-        "order_no": "",
-        "status": "not_found",
-    })
+    client.get_order_status = AsyncMock(
+        return_value={
+            "order_no": "",
+            "status": "not_found",
+        }
+    )
     # get_daily_fills는 당일 체결 내역 리스트 반환 (재확인 메커니즘에서 사용)
     client.get_daily_fills = AsyncMock(return_value=[])
     return client
@@ -67,13 +58,10 @@ def mock_kis_client(mock_kis_config):
 @pytest.fixture
 def dry_run_trader(mock_kis_client, temp_data_dir):
     """Dry-run AutoTrader (기본 모드)"""
-    trader = AutoTrader(
-        kis_client=mock_kis_client,
-        dry_run=True,
-        max_order_amount=5_000_000
-    )
+    trader = AutoTrader(kis_client=mock_kis_client, dry_run=True, max_order_amount=5_000_000)
     # 테스트용 임시 경로 패치
     import src.auto_trader as at_module
+
     original_path = at_module.ORDER_LOG_PATH
     at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
     yield trader
@@ -83,12 +71,9 @@ def dry_run_trader(mock_kis_client, temp_data_dir):
 @pytest.fixture
 def live_trader(mock_kis_client, temp_data_dir):
     """Live AutoTrader"""
-    trader = AutoTrader(
-        kis_client=mock_kis_client,
-        dry_run=False,
-        max_order_amount=5_000_000
-    )
+    trader = AutoTrader(kis_client=mock_kis_client, dry_run=False, max_order_amount=5_000_000)
     import src.auto_trader as at_module
+
     original_path = at_module.ORDER_LOG_PATH
     at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
     yield trader
@@ -99,8 +84,8 @@ def live_trader(mock_kis_client, temp_data_dir):
 # TestAutoTrader
 # ---------------------------------------------------------------------------
 
-class TestAutoTrader:
 
+class TestAutoTrader:
     def test_dry_run_does_not_call_api(self, dry_run_trader, mock_kis_client):
         """dry_run=True 시 KIS API가 절대 호출되지 않아야 한다"""
         record = asyncio.get_event_loop().run_until_complete(
@@ -110,7 +95,7 @@ class TestAutoTrader:
                 quantity=10,
                 price=500.0,
                 order_type=OrderType.LIMIT,
-                reason="Test dry-run"
+                reason="Test dry-run",
             )
         )
 
@@ -132,7 +117,7 @@ class TestAutoTrader:
                 quantity=10_000,
                 price=1_000.0,
                 order_type=OrderType.MARKET,
-                reason="금액 초과 테스트"
+                reason="금액 초과 테스트",
             )
         )
 
@@ -150,7 +135,7 @@ class TestAutoTrader:
                 quantity=100,
                 price=10_000.0,
                 order_type=OrderType.LIMIT,
-                reason="한도 내 주문"
+                reason="한도 내 주문",
             )
         )
 
@@ -166,7 +151,7 @@ class TestAutoTrader:
                 quantity=5,
                 price=180.0,
                 order_type=OrderType.MARKET,
-                reason="System 1 청산"
+                reason="System 1 청산",
             )
         )
 
@@ -185,12 +170,7 @@ class TestAutoTrader:
     def test_order_record_has_optional_fields(self, dry_run_trader):
         """OrderRecord의 선택적 필드가 올바른 타입이어야 한다"""
         record = asyncio.get_event_loop().run_until_complete(
-            dry_run_trader.place_order(
-                symbol="QQQ",
-                side=OrderSide.BUY,
-                quantity=20,
-                price=400.0
-            )
+            dry_run_trader.place_order(symbol="QQQ", side=OrderSide.BUY, quantity=20, price=400.0)
         )
 
         # Dry-run에서는 fill_price와 fill_time이 채워져야 함
@@ -202,24 +182,19 @@ class TestAutoTrader:
     def test_order_logging(self, dry_run_trader, temp_data_dir):
         """주문이 JSON 파일에 로깅되어야 한다"""
         import src.auto_trader as at_module
+
         log_path = at_module.ORDER_LOG_PATH
 
         # 주문 실행
         asyncio.get_event_loop().run_until_complete(
-            dry_run_trader.place_order(
-                symbol="SPY",
-                side=OrderSide.BUY,
-                quantity=10,
-                price=500.0,
-                reason="로깅 테스트"
-            )
+            dry_run_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=500.0, reason="로깅 테스트")
         )
 
         # 파일 존재 확인
         assert log_path.exists(), f"주문 로그 파일이 생성되지 않음: {log_path}"
 
         # JSON 파싱 가능한지 확인
-        with open(log_path, 'r', encoding='utf-8') as f:
+        with open(log_path, "r", encoding="utf-8") as f:
             orders = json.load(f)
 
         assert isinstance(orders, list)
@@ -232,12 +207,7 @@ class TestAutoTrader:
         symbols = ["SPY", "QQQ", "AAPL"]
         for symbol in symbols:
             asyncio.get_event_loop().run_until_complete(
-                dry_run_trader.place_order(
-                    symbol=symbol,
-                    side=OrderSide.BUY,
-                    quantity=10,
-                    price=100.0
-                )
+                dry_run_trader.place_order(symbol=symbol, side=OrderSide.BUY, quantity=10, price=100.0)
             )
 
         history = dry_run_trader.get_order_history()
@@ -254,7 +224,7 @@ class TestAutoTrader:
                 quantity=5,
                 price=70_000.0,
                 order_type=OrderType.LIMIT,
-                reason="Live 주문 테스트"
+                reason="Live 주문 테스트",
             )
         )
 
@@ -272,19 +242,10 @@ class TestAutoTrader:
     def test_live_order_handles_failure(self, live_trader, mock_kis_client):
         """Live 주문 실패 시 FAILED 상태를 반환해야 한다"""
         # mock에서 실패 응답 설정
-        mock_kis_client.place_order = AsyncMock(return_value={
-            "success": False,
-            "message": "잔고 부족"
-        })
+        mock_kis_client.place_order = AsyncMock(return_value={"success": False, "message": "잔고 부족"})
 
         record = asyncio.get_event_loop().run_until_complete(
-            live_trader.place_order(
-                symbol="SPY",
-                side=OrderSide.BUY,
-                quantity=10,
-                price=500.0,
-                reason="실패 테스트"
-            )
+            live_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=500.0, reason="실패 테스트")
         )
 
         assert record.status == OrderStatus.FAILED.value
@@ -295,12 +256,7 @@ class TestAutoTrader:
         mock_kis_client.place_order = AsyncMock(side_effect=ConnectionError("네트워크 오류"))
 
         record = asyncio.get_event_loop().run_until_complete(
-            live_trader.place_order(
-                symbol="SPY",
-                side=OrderSide.BUY,
-                quantity=10,
-                price=500.0
-            )
+            live_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=500.0)
         )
 
         assert record.status == OrderStatus.FAILED.value
@@ -311,22 +267,12 @@ class TestAutoTrader:
         # 3개 주문 실행
         for i in range(3):
             asyncio.get_event_loop().run_until_complete(
-                dry_run_trader.place_order(
-                    symbol="SPY",
-                    side=OrderSide.BUY,
-                    quantity=10,
-                    price=100.0
-                )
+                dry_run_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0)
             )
 
         # 1개 실패 주문 (금액 초과)
         asyncio.get_event_loop().run_until_complete(
-            dry_run_trader.place_order(
-                symbol="TEST",
-                side=OrderSide.BUY,
-                quantity=100_000,
-                price=1_000.0
-            )
+            dry_run_trader.place_order(symbol="TEST", side=OrderSide.BUY, quantity=100_000, price=1_000.0)
         )
 
         stats = dry_run_trader.get_daily_stats()
@@ -344,7 +290,7 @@ class TestAutoTrader:
                 symbol="SPY",
                 side=OrderSide.BUY,
                 quantity=100,
-                price=500.0  # 50,000원
+                price=500.0,  # 50,000원
             )
         )
         asyncio.get_event_loop().run_until_complete(
@@ -352,7 +298,7 @@ class TestAutoTrader:
                 symbol="QQQ",
                 side=OrderSide.BUY,
                 quantity=50,
-                price=400.0  # 20,000원
+                price=400.0,  # 20,000원
             )
         )
 
@@ -367,9 +313,7 @@ class TestAutoTrader:
 
     def test_get_account_summary_dry_run(self, dry_run_trader):
         """dry_run 모드에서 계좌 요약 시 더미 데이터 반환"""
-        account = asyncio.get_event_loop().run_until_complete(
-            dry_run_trader.get_account_summary()
-        )
+        account = asyncio.get_event_loop().run_until_complete(dry_run_trader.get_account_summary())
 
         assert account["dry_run"] is True
         assert "total_equity" in account
@@ -377,9 +321,7 @@ class TestAutoTrader:
 
     def test_get_account_summary_live(self, live_trader, mock_kis_client):
         """live 모드에서 계좌 요약 시 KIS API 호출"""
-        account = asyncio.get_event_loop().run_until_complete(
-            live_trader.get_account_summary()
-        )
+        account = asyncio.get_event_loop().run_until_complete(live_trader.get_account_summary())
 
         mock_kis_client.get_balance.assert_called_once()
         assert account["dry_run"] is False
@@ -390,12 +332,7 @@ class TestAutoTrader:
         records = []
         for _ in range(5):
             record = asyncio.get_event_loop().run_until_complete(
-                dry_run_trader.place_order(
-                    symbol="SPY",
-                    side=OrderSide.BUY,
-                    quantity=1,
-                    price=100.0
-                )
+                dry_run_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=1, price=100.0)
             )
             records.append(record)
 
@@ -404,9 +341,7 @@ class TestAutoTrader:
 
     def test_check_order_status_dry_run(self, dry_run_trader):
         """dry_run 모드에서 주문 상태 조회 시 dry_run 응답 반환"""
-        result = asyncio.get_event_loop().run_until_complete(
-            dry_run_trader.check_order_status("SOME_ORDER_NO")
-        )
+        result = asyncio.get_event_loop().run_until_complete(dry_run_trader.check_order_status("SOME_ORDER_NO"))
 
         assert result["status"] == "dry_run"
 
@@ -415,25 +350,28 @@ class TestAutoTrader:
 # TestOrderReconfirmation -- phantom fill 방지 재확인 메커니즘
 # ---------------------------------------------------------------------------
 
+
 class TestOrderReconfirmation:
     """주문 예외 후 재확인 로직 검증 (Issue #7)"""
 
     def test_exception_then_reconfirm_filled(self, mock_kis_client, temp_data_dir):
         """예외 발생 -> 재확인 -> 체결 확인(FILLED) 전이"""
         # place_order는 예외를 던진다 (네트워크 오류 시뮬레이션)
-        mock_kis_client.place_order = AsyncMock(
-            side_effect=ConnectionError("네트워크 타임아웃")
-        )
+        mock_kis_client.place_order = AsyncMock(side_effect=ConnectionError("네트워크 타임아웃"))
         # 재확인 시 get_daily_fills는 당일 체결 리스트 반환 (KIS 원시 형식)
         # ord_tmd를 하루 끝 시각으로 설정하여 시간 필터(Issue #29) 통과 보장
-        mock_kis_client.get_daily_fills = AsyncMock(return_value=[{
-            "pdno": "005930",
-            "sll_buy_dvsn_cd": "02",  # buy
-            "tot_ccld_qty": "10",
-            "avg_prvs": "70500",
-            "odno": "0012345678",
-            "ord_tmd": "235959",
-        }])
+        mock_kis_client.get_daily_fills = AsyncMock(
+            return_value=[
+                {
+                    "pdno": "005930",
+                    "sll_buy_dvsn_cd": "02",  # buy
+                    "tot_ccld_qty": "10",
+                    "avg_prvs": "70500",
+                    "odno": "0012345678",
+                    "ord_tmd": "235959",
+                }
+            ]
+        )
 
         trader = AutoTrader(
             kis_client=mock_kis_client,
@@ -442,6 +380,7 @@ class TestOrderReconfirmation:
             reconfirm_delay_sec=0,  # 테스트에서는 지연 없음
         )
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
@@ -468,9 +407,7 @@ class TestOrderReconfirmation:
 
     def test_exception_then_reconfirm_still_failed(self, mock_kis_client, temp_data_dir):
         """예외 발생 -> 재확인 -> 미체결(FAILED 유지) 시나리오"""
-        mock_kis_client.place_order = AsyncMock(
-            side_effect=ConnectionError("네트워크 타임아웃")
-        )
+        mock_kis_client.place_order = AsyncMock(side_effect=ConnectionError("네트워크 타임아웃"))
         # 재확인 시 get_daily_fills는 빈 리스트 반환 (일치하는 체결 없음)
         mock_kis_client.get_daily_fills = AsyncMock(return_value=[])
 
@@ -481,6 +418,7 @@ class TestOrderReconfirmation:
             reconfirm_delay_sec=0,
         )
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
@@ -505,13 +443,9 @@ class TestOrderReconfirmation:
 
     def test_reconfirm_failure_sends_notification(self, mock_kis_client, temp_data_dir):
         """재확인 자체가 실패하면 알림이 발송되어야 한다"""
-        mock_kis_client.place_order = AsyncMock(
-            side_effect=ConnectionError("네트워크 타임아웃")
-        )
+        mock_kis_client.place_order = AsyncMock(side_effect=ConnectionError("네트워크 타임아웃"))
         # 재확인 조회도 예외를 던진다
-        mock_kis_client.get_daily_fills = AsyncMock(
-            side_effect=ConnectionError("재확인 조회 실패")
-        )
+        mock_kis_client.get_daily_fills = AsyncMock(side_effect=ConnectionError("재확인 조회 실패"))
 
         mock_notifier = MagicMock(spec=NotificationManager)
         mock_notifier.send_all = AsyncMock(return_value={"TelegramChannel": True})
@@ -524,6 +458,7 @@ class TestOrderReconfirmation:
             reconfirm_delay_sec=0,
         )
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
@@ -561,6 +496,7 @@ class TestOrderReconfirmation:
             reconfirm_delay_sec=0,
         )
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
@@ -584,12 +520,8 @@ class TestOrderReconfirmation:
 
     def test_reconfirm_no_notifier_logs_warning(self, mock_kis_client, temp_data_dir):
         """notifier 미설정 시 재확인 실패해도 로그 경고만 남기고 예외 없이 진행"""
-        mock_kis_client.place_order = AsyncMock(
-            side_effect=ConnectionError("네트워크 타임아웃")
-        )
-        mock_kis_client.get_daily_fills = AsyncMock(
-            side_effect=ConnectionError("재확인 조회 실패")
-        )
+        mock_kis_client.place_order = AsyncMock(side_effect=ConnectionError("네트워크 타임아웃"))
+        mock_kis_client.get_daily_fills = AsyncMock(side_effect=ConnectionError("재확인 조회 실패"))
 
         # notifier 없이 생성
         trader = AutoTrader(
@@ -600,6 +532,7 @@ class TestOrderReconfirmation:
             reconfirm_delay_sec=0,
         )
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
@@ -624,6 +557,7 @@ class TestOrderReconfirmation:
 # ---------------------------------------------------------------------------
 # TestFindMatchingFill -- _find_matching_fill 직접 단위 테스트
 # ---------------------------------------------------------------------------
+
 
 class TestFindMatchingFill:
     """_find_matching_fill 메서드의 매칭 로직 직접 검증"""
@@ -767,15 +701,17 @@ class TestFindMatchingFill:
 # TestAutoTradeCLI
 # ---------------------------------------------------------------------------
 
-class TestAutoTradeCLI:
 
+class TestAutoTradeCLI:
     def test_default_is_dry_run(self):
         """--live 플래그 없이 실행 시 dry_run=True가 기본값이어야 한다"""
         import sys
+
         # 인수 없이 파싱
         sys.argv = ["auto_trade.py"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.live is False, "--live 미사용 시 dry-run이어야 함"
@@ -783,9 +719,11 @@ class TestAutoTradeCLI:
     def test_parse_args_live_flag(self):
         """--live 플래그 파싱 테스트"""
         import sys
+
         sys.argv = ["auto_trade.py", "--live"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.live is True
@@ -793,9 +731,11 @@ class TestAutoTradeCLI:
     def test_parse_args_symbols(self):
         """--symbols 인수 파싱 테스트"""
         import sys
+
         sys.argv = ["auto_trade.py", "--symbols", "SPY", "QQQ", "AAPL"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.symbols == ["SPY", "QQQ", "AAPL"]
@@ -803,9 +743,11 @@ class TestAutoTradeCLI:
     def test_parse_args_max_amount(self):
         """--max-amount 인수 파싱 테스트"""
         import sys
+
         sys.argv = ["auto_trade.py", "--max-amount", "1000000"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.max_amount == 1_000_000.0
@@ -813,9 +755,11 @@ class TestAutoTradeCLI:
     def test_parse_args_system(self):
         """--system 인수 파싱 테스트"""
         import sys
+
         sys.argv = ["auto_trade.py", "--system", "2"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.system == 2
@@ -823,9 +767,11 @@ class TestAutoTradeCLI:
     def test_parse_args_verbose(self):
         """--verbose 인수 파싱 테스트"""
         import sys
+
         sys.argv = ["auto_trade.py", "--verbose"]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.verbose is True
@@ -833,9 +779,11 @@ class TestAutoTradeCLI:
     def test_parse_args_defaults(self):
         """기본값 검증"""
         import sys
+
         sys.argv = ["auto_trade.py"]
 
         from scripts.auto_trade import DEFAULT_MAX_AMOUNT, parse_args
+
         args = parse_args()
 
         assert args.live is False
@@ -847,16 +795,21 @@ class TestAutoTradeCLI:
     def test_parse_args_combined(self):
         """복합 인수 파싱 테스트"""
         import sys
+
         sys.argv = [
             "auto_trade.py",
             "--live",
-            "--symbols", "005930.KS",
-            "--system", "1",
-            "--max-amount", "2000000",
-            "--verbose"
+            "--symbols",
+            "005930.KS",
+            "--system",
+            "1",
+            "--max-amount",
+            "2000000",
+            "--verbose",
         ]
 
         from scripts.auto_trade import parse_args
+
         args = parse_args()
 
         assert args.live is True
@@ -870,6 +823,7 @@ class TestAutoTradeCLI:
 # TestCalculateOrderQuantity
 # ---------------------------------------------------------------------------
 
+
 class TestCalculateOrderQuantity:
     """scripts/auto_trade.py calculate_order_quantity 기본값 및 계산 검증"""
 
@@ -881,9 +835,7 @@ class TestCalculateOrderQuantity:
 
         sig = inspect.signature(calculate_order_quantity)
         default = sig.parameters["risk_percent"].default
-        assert default == 0.01, (
-            f"calculate_order_quantity 기본 risk_percent가 {default}이지만 0.01이어야 한다"
-        )
+        assert default == 0.01, f"calculate_order_quantity 기본 risk_percent가 {default}이지만 0.01이어야 한다"
 
     def test_quantity_calculation(self):
         """주문 수량이 올바르게 계산되어야 한다"""
@@ -906,6 +858,7 @@ class TestCalculateOrderQuantity:
 # ---------------------------------------------------------------------------
 # TestExtractHhmmss -- _extract_hhmmss 정적 메서드 단위 테스트
 # ---------------------------------------------------------------------------
+
 
 class TestExtractHhmmss:
     """AutoTrader._extract_hhmmss 메서드 검증"""
@@ -942,6 +895,7 @@ class TestExtractHhmmss:
 # ---------------------------------------------------------------------------
 # TestFindMatchingFillTimeFilter -- Issue #29 시간 필터 테스트
 # ---------------------------------------------------------------------------
+
 
 class TestFindMatchingFillTimeFilter:
     """Issue #29: ord_tmd 시간 필터로 이전 체결 매칭 방지."""

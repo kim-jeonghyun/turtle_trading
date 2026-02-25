@@ -2,20 +2,19 @@
 scripts/run_backtest.py 테스트
 """
 
-import pytest
-import argparse
-from unittest.mock import Mock, patch
-import pandas as pd
 from datetime import datetime
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
 
 # 백테스트 스크립트 임포트
 from scripts.run_backtest import (
-    parse_args,
+    export_trades_csv,
     fetch_data,
-    run_backtest,
-    print_results,
+    parse_args,
     plot_equity_curve,
-    export_trades_csv
+    print_results,
 )
 from src.backtester import BacktestConfig, BacktestResult, Trade
 
@@ -25,10 +24,10 @@ class TestArgumentParsing:
 
     def test_minimal_args(self):
         """최소 필수 인자"""
-        with patch('sys.argv', ['run_backtest.py', '--symbols', 'SPY']):
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY"]):
             args = parse_args()
-            assert args.symbols == ['SPY']
-            assert args.period == '2y'
+            assert args.symbols == ["SPY"]
+            assert args.period == "2y"
             assert args.system == 1
             assert args.capital == 100000.0
             assert args.risk == 0.01
@@ -40,25 +39,34 @@ class TestArgumentParsing:
 
     def test_multiple_symbols(self):
         """여러 종목 지정"""
-        with patch('sys.argv', ['run_backtest.py', '--symbols', 'SPY', 'QQQ', 'IWM']):
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY", "QQQ", "IWM"]):
             args = parse_args()
-            assert args.symbols == ['SPY', 'QQQ', 'IWM']
+            assert args.symbols == ["SPY", "QQQ", "IWM"]
 
     def test_custom_config(self):
         """커스텀 설정"""
-        with patch('sys.argv', [
-            'run_backtest.py',
-            '--symbols', 'AAPL',
-            '--period', '5y',
-            '--system', '2',
-            '--capital', '50000',
-            '--risk', '0.02',
-            '--commission', '0.0005',
-            '--no-filter'
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest.py",
+                "--symbols",
+                "AAPL",
+                "--period",
+                "5y",
+                "--system",
+                "2",
+                "--capital",
+                "50000",
+                "--risk",
+                "0.02",
+                "--commission",
+                "0.0005",
+                "--no-filter",
+            ],
+        ):
             args = parse_args()
-            assert args.symbols == ['AAPL']
-            assert args.period == '5y'
+            assert args.symbols == ["AAPL"]
+            assert args.period == "5y"
             assert args.system == 2
             assert args.capital == 50000.0
             assert args.risk == 0.02
@@ -67,21 +75,15 @@ class TestArgumentParsing:
 
     def test_output_options(self):
         """출력 옵션"""
-        with patch('sys.argv', [
-            'run_backtest.py',
-            '--symbols', 'SPY',
-            '--plot',
-            '--csv', 'trades.csv',
-            '--verbose'
-        ]):
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY", "--plot", "--csv", "trades.csv", "--verbose"]):
             args = parse_args()
             assert args.plot is True
-            assert args.csv == 'trades.csv'
+            assert args.csv == "trades.csv"
             assert args.verbose is True
 
     def test_invalid_system(self):
         """잘못된 시스템 번호"""
-        with patch('sys.argv', ['run_backtest.py', '--symbols', 'SPY', '--system', '3']):
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY", "--system", "3"]):
             with pytest.raises(SystemExit):
                 parse_args()
 
@@ -91,14 +93,22 @@ class TestBacktestConfigCreation:
 
     def test_config_from_args_system1(self):
         """System 1 설정"""
-        with patch('sys.argv', [
-            'run_backtest.py',
-            '--symbols', 'SPY',
-            '--system', '1',
-            '--capital', '100000',
-            '--risk', '0.01',
-            '--commission', '0.001'
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "run_backtest.py",
+                "--symbols",
+                "SPY",
+                "--system",
+                "1",
+                "--capital",
+                "100000",
+                "--risk",
+                "0.01",
+                "--commission",
+                "0.001",
+            ],
+        ):
             args = parse_args()
             config = BacktestConfig(
                 initial_capital=args.capital,
@@ -108,7 +118,7 @@ class TestBacktestConfigCreation:
                 pyramid_interval_n=0.5,
                 stop_distance_n=2.0,
                 use_filter=not args.no_filter,
-                commission_pct=args.commission
+                commission_pct=args.commission,
             )
 
             assert config.initial_capital == 100000.0
@@ -122,19 +132,14 @@ class TestBacktestConfigCreation:
 
     def test_config_from_args_system2_no_filter(self):
         """System 2 필터 비활성화"""
-        with patch('sys.argv', [
-            'run_backtest.py',
-            '--symbols', 'SPY',
-            '--system', '2',
-            '--no-filter'
-        ]):
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY", "--system", "2", "--no-filter"]):
             args = parse_args()
             config = BacktestConfig(
                 initial_capital=args.capital,
                 risk_percent=args.risk,
                 system=args.system,
                 use_filter=not args.no_filter,
-                commission_pct=args.commission
+                commission_pct=args.commission,
             )
 
             assert config.system == 2
@@ -147,11 +152,7 @@ class TestOutputFormatting:
     @pytest.fixture
     def mock_result(self):
         """모의 백테스트 결과"""
-        config = BacktestConfig(
-            initial_capital=100000.0,
-            risk_percent=0.01,
-            system=1
-        )
+        config = BacktestConfig(initial_capital=100000.0, risk_percent=0.01, system=1)
 
         trades = [
             Trade(
@@ -164,7 +165,7 @@ class TestOutputFormatting:
                 quantity=100,
                 pnl=1000.0,
                 pnl_pct=0.022,
-                exit_reason="exit_long"
+                exit_reason="exit_long",
             ),
             Trade(
                 symbol="SPY",
@@ -176,14 +177,14 @@ class TestOutputFormatting:
                 quantity=100,
                 pnl=-500.0,
                 pnl_pct=-0.011,
-                exit_reason="stop_loss"
-            )
+                exit_reason="stop_loss",
+            ),
         ]
 
         equity_data = {
             "date": pd.date_range("2024-01-01", periods=100, freq="D"),
             "equity": [100000 + i * 100 for i in range(100)],
-            "cash": [50000 + i * 50 for i in range(100)]
+            "cash": [50000 + i * 50 for i in range(100)],
         }
         equity_df = pd.DataFrame(equity_data)
 
@@ -202,7 +203,7 @@ class TestOutputFormatting:
             winning_trades=1,
             losing_trades=1,
             avg_win=1000.0,
-            avg_loss=500.0
+            avg_loss=500.0,
         )
 
         return result
@@ -232,8 +233,16 @@ class TestOutputFormatting:
         df = pd.read_csv(csv_path)
         assert len(df) == 2
         assert list(df.columns) == [
-            "symbol", "direction", "entry_date", "entry_price",
-            "exit_date", "exit_price", "quantity", "pnl", "pnl_pct", "exit_reason"
+            "symbol",
+            "direction",
+            "entry_date",
+            "entry_price",
+            "exit_date",
+            "exit_price",
+            "quantity",
+            "pnl",
+            "pnl_pct",
+            "exit_reason",
         ]
 
         # 첫 거래 확인
@@ -245,38 +254,40 @@ class TestOutputFormatting:
     def test_plot_equity_curve(self, mock_result, tmp_path):
         """차트 생성 테스트"""
         # matplotlib.pyplot.savefig를 모킹하여 실제 파일 저장 방지
-        with patch('matplotlib.pyplot.savefig') as mock_savefig:
+        with patch("matplotlib.pyplot.savefig") as mock_savefig:
             plot_equity_curve(mock_result, ["SPY"])
             # savefig가 호출되었는지 확인
             assert mock_savefig.called
             # 첫 번째 인자가 파일 경로인지 확인
             args, kwargs = mock_savefig.call_args
-            assert str(args[0]).endswith('.png')
+            assert str(args[0]).endswith(".png")
 
 
 class TestDataFetching:
     """데이터 수집 테스트"""
 
-    @patch('src.data_fetcher.DataFetcher.fetch_multiple')
+    @patch("src.data_fetcher.DataFetcher.fetch_multiple")
     def test_fetch_data_success(self, mock_fetch):
         """데이터 수집 성공"""
-        mock_df = pd.DataFrame({
-            "date": pd.date_range("2024-01-01", periods=100, freq="D"),
-            "open": [100] * 100,
-            "high": [105] * 100,
-            "low": [95] * 100,
-            "close": [102] * 100,
-            "volume": [1000000] * 100
-        })
+        mock_df = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=100, freq="D"),
+                "open": [100] * 100,
+                "high": [105] * 100,
+                "low": [95] * 100,
+                "close": [102] * 100,
+                "volume": [1000000] * 100,
+            }
+        )
         mock_fetch.return_value = {"SPY": mock_df}
 
-        with patch('logging.Logger.info'):
+        with patch("logging.Logger.info"):
             data = fetch_data(["SPY"], "1y", verbose=False)
 
         assert "SPY" in data
         assert len(data["SPY"]) == 100
 
-    @patch('src.data_fetcher.DataFetcher.fetch_multiple')
+    @patch("src.data_fetcher.DataFetcher.fetch_multiple")
     def test_fetch_data_empty(self, mock_fetch):
         """데이터 수집 실패"""
         mock_fetch.return_value = {}

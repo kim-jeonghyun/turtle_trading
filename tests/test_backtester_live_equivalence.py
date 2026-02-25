@@ -40,13 +40,13 @@ DC_HIGH_55 = 110.0
 DC_LOW_55 = 90.0
 
 # 돌파/이탈 가격
-ABOVE_20_ONLY = DC_HIGH_20 + 1.0   # 106: 20일 돌파, 55일 미돌파
-ABOVE_55 = DC_HIGH_55 + 1.0        # 111: 20일 + 55일 모두 돌파
-BELOW_20_ONLY = DC_LOW_20 - 1.0    # 94: 20일 이탈, 55일 미이탈
-BELOW_55 = DC_LOW_55 - 1.0         # 89: 20일 + 55일 모두 이탈
+ABOVE_20_ONLY = DC_HIGH_20 + 1.0  # 106: 20일 돌파, 55일 미돌파
+ABOVE_55 = DC_HIGH_55 + 1.0  # 111: 20일 + 55일 모두 돌파
+BELOW_20_ONLY = DC_LOW_20 - 1.0  # 94: 20일 이탈, 55일 미이탈
+BELOW_55 = DC_LOW_55 - 1.0  # 89: 20일 + 55일 모두 이탈
 
 NEUTRAL_HIGH = 102.0  # 돌파 없음
-NEUTRAL_LOW = 97.0    # 이탈 없음
+NEUTRAL_LOW = 97.0  # 이탈 없음
 
 SYMBOL = "SPY"  # 미국 심볼 (롱/숏 모두 가능)
 
@@ -54,6 +54,7 @@ SYMBOL = "SPY"  # 미국 심볼 (롱/숏 모두 가능)
 # ---------------------------------------------------------------------------
 # 어댑터: backtester 인터페이스
 # ---------------------------------------------------------------------------
+
 
 def backtester_decision(
     *,
@@ -80,18 +81,22 @@ def backtester_decision(
         bt.last_trade_profitable[SYMBOL] = False
 
     # prev_row: yesterday (Donchian 채널 기준값)
-    prev_row = pd.Series({
-        "dc_high_20": DC_HIGH_20,
-        "dc_low_20": DC_LOW_20,
-        "dc_high_55": DC_HIGH_55,
-        "dc_low_55": DC_LOW_55,
-    })
+    prev_row = pd.Series(
+        {
+            "dc_high_20": DC_HIGH_20,
+            "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55,
+            "dc_low_55": DC_LOW_55,
+        }
+    )
 
     # row: today
-    row = pd.Series({
-        "high": today_high,
-        "low": today_low,
-    })
+    row = pd.Series(
+        {
+            "high": today_high,
+            "low": today_low,
+        }
+    )
 
     signal = bt._check_entry_signal(row, prev_row, SYMBOL)
 
@@ -104,6 +109,7 @@ def backtester_decision(
 # ---------------------------------------------------------------------------
 # 어댑터: live checker 인터페이스
 # ---------------------------------------------------------------------------
+
 
 def _make_closed_position(
     symbol: str,
@@ -202,10 +208,10 @@ EQUIVALENCE_SCENARIOS = [
     # Scenario 1: System 1, 수익 후 20일만 돌파 -> 둘 다 스킵
     # ---------------------------------------------------------------
     pytest.param(
-        1,      # system
-        True,   # last_trade_profitable
-        ABOVE_20_ONLY,   # today_high (106: 20일 돌파, 55일 미돌파)
-        NEUTRAL_LOW,     # today_low (97: 이탈 없음)
+        1,  # system
+        True,  # last_trade_profitable
+        ABOVE_20_ONLY,  # today_high (106: 20일 돌파, 55일 미돌파)
+        NEUTRAL_LOW,  # today_low (97: 이탈 없음)
         "LONG",
         False,  # expected: 스킵
         id="S1-profitable-20day_only-LONG-skip",
@@ -216,10 +222,10 @@ EQUIVALENCE_SCENARIOS = [
     pytest.param(
         1,
         True,
-        ABOVE_55,        # today_high (111: 55일 돌파)
+        ABOVE_55,  # today_high (111: 55일 돌파)
         NEUTRAL_LOW,
         "LONG",
-        True,   # expected: 진입 (55일 failsafe)
+        True,  # expected: 진입 (55일 failsafe)
         id="S1-profitable-55day-LONG-entry",
     ),
     # ---------------------------------------------------------------
@@ -231,7 +237,7 @@ EQUIVALENCE_SCENARIOS = [
         ABOVE_20_ONLY,
         NEUTRAL_LOW,
         "LONG",
-        True,   # expected: 진입 (손실 후 필터 미적용)
+        True,  # expected: 진입 (손실 후 필터 미적용)
         id="S1-losing-20day-LONG-entry",
     ),
     # ---------------------------------------------------------------
@@ -243,7 +249,7 @@ EQUIVALENCE_SCENARIOS = [
         ABOVE_55,
         NEUTRAL_LOW,
         "LONG",
-        True,   # expected: 진입 (System 2 필터 없음)
+        True,  # expected: 진입 (System 2 필터 없음)
         id="S2-profitable-55day-LONG-entry",
     ),
     # ---------------------------------------------------------------
@@ -253,7 +259,7 @@ EQUIVALENCE_SCENARIOS = [
         1,
         True,
         NEUTRAL_HIGH,
-        BELOW_20_ONLY,   # today_low (94: 20일 이탈, 55일 미이탈)
+        BELOW_20_ONLY,  # today_low (94: 20일 이탈, 55일 미이탈)
         "SHORT",
         False,  # expected: 스킵 (수익 후 20일만 이탈)
         id="S1-profitable-20day_only-SHORT-skip",
@@ -262,9 +268,9 @@ EQUIVALENCE_SCENARIOS = [
         1,
         True,
         NEUTRAL_HIGH,
-        BELOW_55,        # today_low (89: 55일 이탈)
+        BELOW_55,  # today_low (89: 55일 이탈)
         "SHORT",
-        True,   # expected: 진입 (55일 failsafe)
+        True,  # expected: 진입 (55일 failsafe)
         id="S1-profitable-55day-SHORT-entry",
     ),
     pytest.param(
@@ -273,7 +279,7 @@ EQUIVALENCE_SCENARIOS = [
         NEUTRAL_HIGH,
         BELOW_20_ONLY,
         "SHORT",
-        True,   # expected: 진입 (손실 후 필터 미적용)
+        True,  # expected: 진입 (손실 후 필터 미적용)
         id="S1-losing-20day-SHORT-entry",
     ),
     pytest.param(
@@ -282,7 +288,7 @@ EQUIVALENCE_SCENARIOS = [
         NEUTRAL_HIGH,
         BELOW_55,
         "SHORT",
-        True,   # expected: 진입 (System 2 필터 없음)
+        True,  # expected: 진입 (System 2 필터 없음)
         id="S2-profitable-55day-SHORT-entry",
     ),
 ]
@@ -338,14 +344,8 @@ class TestBacktesterLiveEquivalence:
         )
 
         # 추가 assertion: 기대 결과와도 일치해야 한다
-        assert bt_result == expected, (
-            f"backtester 결과가 기대와 다릅니다: "
-            f"got={bt_result}, expected={expected}"
-        )
-        assert live_result == expected, (
-            f"live_checker 결과가 기대와 다릅니다: "
-            f"got={live_result}, expected={expected}"
-        )
+        assert bt_result == expected, f"backtester 결과가 기대와 다릅니다: got={bt_result}, expected={expected}"
+        assert live_result == expected, f"live_checker 결과가 기대와 다릅니다: got={live_result}, expected={expected}"
 
 
 class TestShouldAllowEntryEquivalence:
@@ -453,10 +453,7 @@ class TestShouldAllowEntryEquivalence:
             today_low=NEUTRAL_LOW,
             direction="LONG",
         )
-        assert bt_result is True, (
-            f"System 2 backtester 는 55일 돌파 시 항상 진입해야 함 "
-            f"(profitable={is_profitable})"
-        )
+        assert bt_result is True, f"System 2 backtester 는 55일 돌파 시 항상 진입해야 함 (profitable={is_profitable})"
 
     def test_system2_with_profitable_true_behavior(self):
         """_should_allow_entry(2, True, ...) 동작 문서화.
@@ -485,9 +482,7 @@ class TestShouldAllowEntryEquivalence:
             today_low=NEUTRAL_LOW,
             direction="LONG",
         )
-        assert bt_result is True, (
-            "backtester System 2: 필터 분기를 건너뛰므로 profitable 과 무관하게 진입"
-        )
+        assert bt_result is True, "backtester System 2: 필터 분기를 건너뛰므로 profitable 과 무관하게 진입"
 
         # live checker: System 2 에서도 동일하게 진입
         live_result = live_decision(
@@ -497,9 +492,7 @@ class TestShouldAllowEntryEquivalence:
             today_low=NEUTRAL_LOW,
             direction="LONG",
         )
-        assert live_result is True, (
-            "live checker System 2: _was_last_trade_profitable 이 False 반환하므로 진입"
-        )
+        assert live_result is True, "live checker System 2: _was_last_trade_profitable 이 False 반환하므로 진입"
 
         assert bt_result == live_result, "System 2 필터 우회: 양쪽 동치"
 
@@ -514,7 +507,7 @@ class TestNoBreakoutBothAgree:
             use_filter=True,
             last_trade_profitable=False,
             today_high=NEUTRAL_HIGH,  # 102: 돌파 없음
-            today_low=NEUTRAL_LOW,    # 97: 이탈 없음
+            today_low=NEUTRAL_LOW,  # 97: 이탈 없음
             direction="LONG",
         )
         bt_short = backtester_decision(

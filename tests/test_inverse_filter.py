@@ -6,9 +6,11 @@ inverse_filter.py 단위 테스트
 - 비 Inverse ETF는 트리거 안됨
 """
 
-import pytest
 from datetime import datetime
-from src.inverse_filter import InverseETFFilter, InverseETFConfig, InverseHolding, ExitReason
+
+import pytest
+
+from src.inverse_filter import ExitReason, InverseETFConfig, InverseETFFilter, InverseHolding
 
 
 class TestInverseETFConfig:
@@ -190,7 +192,6 @@ class TestShouldForceExit:
         assert "최대 보유일" in msg
 
     def test_within_holding_limit(self):
-        from datetime import timedelta
         f = InverseETFFilter()
         # Use today's date so actual_holding_days = 0
         f.on_entry("SH", datetime.now(), 30.0, 500.0)

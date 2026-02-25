@@ -5,11 +5,11 @@ backtester.py 단위 테스트
 - 백테스트 기본 동작
 """
 
-import pytest
-import pandas as pd
 import numpy as np
-from src.backtester import TurtleBacktester, BacktestConfig, BacktestResult
-from src.indicators import add_turtle_indicators, calculate_unit_size
+import pandas as pd
+
+from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
+from src.indicators import calculate_unit_size
 
 
 class TestBugFixes:
@@ -36,10 +36,10 @@ class TestBugFixes:
             initial_capital=100000.0,
             risk_percent=0.01,
             system=2,  # System 2 (55일) - 필터 없음
-            use_filter=False
+            use_filter=False,
         )
         bt = TurtleBacktester(config)
-        data = {'TEST': trending_up_df.copy()}
+        data = {"TEST": trending_up_df.copy()}
         result = bt.run(data)
 
         # Equity curve가 있어야 함
@@ -48,7 +48,7 @@ class TestBugFixes:
         # 포지션이 오픈된 상태에서 equity가 cash와 달라야 함
         # (미실현 P&L이 반영되면 equity != cash)
         if len(result.equity_curve) > 0:
-            has_difference = (result.equity_curve['equity'] != result.equity_curve['cash']).any()
+            has_difference = (result.equity_curve["equity"] != result.equity_curve["cash"]).any()
             # 포지션이 있었다면 차이가 있어야 함
             if result.total_trades > 0 or len(bt.pyramid_manager.positions) > 0:
                 assert has_difference, "Equity should include unrealized P&L"
@@ -64,13 +64,9 @@ class TestBacktestBasic:
 
     def test_backtest_runs_without_error(self, trending_up_df):
         """백테스트가 에러 없이 실행"""
-        config = BacktestConfig(
-            initial_capital=100000.0,
-            system=2,
-            use_filter=False
-        )
+        config = BacktestConfig(initial_capital=100000.0, system=2, use_filter=False)
         bt = TurtleBacktester(config)
-        data = {'SPY': trending_up_df.copy()}
+        data = {"SPY": trending_up_df.copy()}
         result = bt.run(data)
 
         assert isinstance(result, BacktestResult)
@@ -113,14 +109,16 @@ class TestBacktestSystem1:
             close = price + change
             high = max(open_price, close) + abs(np.random.normal(0.3, 0.1))
             low = min(open_price, close) - abs(np.random.normal(0.3, 0.1))
-            rows.append({
-                "date": date,
-                "open": round(open_price, 2),
-                "high": round(high, 2),
-                "low": round(low, 2),
-                "close": round(close, 2),
-                "volume": int(np.random.uniform(1000000, 5000000)),
-            })
+            rows.append(
+                {
+                    "date": date,
+                    "open": round(open_price, 2),
+                    "high": round(high, 2),
+                    "low": round(low, 2),
+                    "close": round(close, 2),
+                    "volume": int(np.random.uniform(1000000, 5000000)),
+                }
+            )
             price = close
 
         return pd.DataFrame(rows)
@@ -186,6 +184,7 @@ class TestBacktestSystem1:
 class TestBacktestTradeDataclass:
     def test_trade_defaults(self):
         from src.backtester import Trade
+
         trade = Trade(symbol="SPY", entry_date=pd.Timestamp("2025-01-01"), entry_price=100.0)
         assert trade.exit_date is None
         assert trade.exit_price is None

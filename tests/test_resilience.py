@@ -7,25 +7,23 @@
 
 import asyncio
 import logging
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.utils import retry_async, retry_sync, setup_structured_logging
 from src.notifier import (
     NotificationChannel,
     NotificationLevel,
     NotificationManager,
     NotificationMessage,
 )
-
+from src.utils import retry_async, retry_sync, setup_structured_logging
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def run_async(coro):
     """동기 테스트에서 코루틴 실행 헬퍼"""
@@ -35,6 +33,7 @@ def run_async(coro):
 # ---------------------------------------------------------------------------
 # TestRetryAsync
 # ---------------------------------------------------------------------------
+
 
 class TestRetryAsync:
     def test_succeeds_first_try(self):
@@ -133,6 +132,7 @@ class TestRetryAsync:
 # Fake channel for testing
 # ---------------------------------------------------------------------------
 
+
 class FakeChannel(NotificationChannel):
     def __init__(self, name: str, should_succeed: bool = True):
         self._name = name
@@ -152,6 +152,7 @@ class FakeChannel(NotificationChannel):
 # ---------------------------------------------------------------------------
 # TestNotificationEscalation
 # ---------------------------------------------------------------------------
+
 
 class TestNotificationEscalation:
     def _make_manager(self, channels):
@@ -239,9 +240,7 @@ class TestNotificationEscalation:
         manager = NotificationManager()
         manager.add_channel(FailingChannel())
 
-        msg = NotificationMessage(
-            title="에러 알림", body="오류 발생", level=NotificationLevel.ERROR
-        )
+        msg = NotificationMessage(title="에러 알림", body="오류 발생", level=NotificationLevel.ERROR)
 
         with patch("src.notifier.logger") as mock_logger:
             run_async(manager.send_all(msg))
@@ -264,9 +263,7 @@ class TestNotificationEscalation:
         manager.add_channel(SucceedingChannel())
         manager.add_channel(FailingChannel())
 
-        msg = NotificationMessage(
-            title="부분 성공", body="body", level=NotificationLevel.ERROR
-        )
+        msg = NotificationMessage(title="부분 성공", body="body", level=NotificationLevel.ERROR)
 
         with patch("src.notifier.logger") as mock_logger:
             run_async(manager.send_all(msg))
@@ -303,6 +300,7 @@ class TestNotificationEscalation:
 # ---------------------------------------------------------------------------
 # TestRetrySync
 # ---------------------------------------------------------------------------
+
 
 class TestRetrySync:
     def test_succeeds_first_try(self):
@@ -349,6 +347,7 @@ class TestRetrySync:
 # ---------------------------------------------------------------------------
 # TestStructuredLogging
 # ---------------------------------------------------------------------------
+
 
 class TestStructuredLogging:
     def test_creates_log_directory(self, tmp_path):

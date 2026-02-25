@@ -18,40 +18,35 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Integration test imports
+import fcntl
+import os
+from unittest.mock import AsyncMock, patch
+
+import yaml
+from conftest import PatchManager
+
 from scripts.check_positions import (
+    _run_checks,
     _should_allow_entry,
+    acquire_lock,
     check_entry_signals,
     check_exit_signals,
     check_stop_loss,
-)
-from src.position_tracker import Position
-from src.types import SignalType
-
-# Integration test imports
-import asyncio
-import os
-import fcntl
-from unittest.mock import AsyncMock, mock_open, patch
-
-import yaml
-
-from scripts.check_positions import (
-    acquire_lock,
-    release_lock,
+    is_korean_market,
     load_config,
+    main,
+    release_lock,
     setup_notifier,
     setup_risk_manager,
-    main,
-    _run_checks,
-    is_korean_market,
-    LOCK_FILE,
 )
-from src.types import Direction, AssetGroup
-from conftest import PatchManager
+from src.position_tracker import Position
+from src.types import Direction, SignalType
 
 # ---------------------------------------------------------------------------
 # 헬퍼 함수
 # ---------------------------------------------------------------------------
+
 
 def _make_df(
     today_high: float,
@@ -135,7 +130,7 @@ def _make_tracker_mock(symbol: str, positions: list) -> MagicMock:
 # 테스트 상수
 # ---------------------------------------------------------------------------
 
-SYMBOL_US = "SPY"       # 미국 심볼 — 롱/숏 모두 허용
+SYMBOL_US = "SPY"  # 미국 심볼 — 롱/숏 모두 허용
 SYMBOL_KR = "005930.KS"  # 한국 심볼 — 롱만 허용
 
 # 기준 Donchian 값 (yesterday 행에 설정)
@@ -145,16 +140,17 @@ DC_HIGH_55 = 110.0
 DC_LOW_55 = 90.0
 
 # 돌파 가격 (today 행)
-ABOVE_20_ONLY = DC_HIGH_20 + 1.0   # 20일 돌파, 55일 미돌파
-ABOVE_BOTH = DC_HIGH_55 + 1.0      # 20일 + 55일 모두 돌파
+ABOVE_20_ONLY = DC_HIGH_20 + 1.0  # 20일 돌파, 55일 미돌파
+ABOVE_BOTH = DC_HIGH_55 + 1.0  # 20일 + 55일 모두 돌파
 
-BELOW_20_ONLY = DC_LOW_20 - 1.0    # 20일 이탈, 55일 미이탈
-BELOW_BOTH = DC_LOW_55 - 1.0       # 20일 + 55일 모두 이탈
+BELOW_20_ONLY = DC_LOW_20 - 1.0  # 20일 이탈, 55일 미이탈
+BELOW_BOTH = DC_LOW_55 - 1.0  # 20일 + 55일 모두 이탈
 
 
 # ---------------------------------------------------------------------------
 # 테스트 클래스
 # ---------------------------------------------------------------------------
+
 
 class TestSystem1FilterLong:
     """System 1 롱 진입 필터 테스트"""
@@ -176,9 +172,7 @@ class TestSystem1FilterLong:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 0, (
-            "직전 System 1 거래가 수익일 때 20일 돌파 롱 진입은 스킵되어야 한다"
-        )
+        assert len(long_signals) == 0, "직전 System 1 거래가 수익일 때 20일 돌파 롱 진입은 스킵되어야 한다"
 
     def test_system1_filter_failsafe_55day_breakout_after_profitable_trade(self):
         """직전 System 1 거래 수익 + 20일 & 55일 모두 돌파 → failsafe override로 진입 허용"""
@@ -197,9 +191,7 @@ class TestSystem1FilterLong:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "55일 failsafe breakout은 직전 수익 거래 필터를 무시하고 롱 진입을 허용해야 한다"
-        )
+        assert len(long_signals) == 1, "55일 failsafe breakout은 직전 수익 거래 필터를 무시하고 롱 진입을 허용해야 한다"
         assert long_signals[0]["type"] == SignalType.ENTRY_LONG.value
         assert long_signals[0]["system"] == 1
 
@@ -220,9 +212,7 @@ class TestSystem1FilterLong:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "직전 System 1 거래가 손실이면 20일 돌파 롱 진입이 허용되어야 한다"
-        )
+        assert len(long_signals) == 1, "직전 System 1 거래가 손실이면 20일 돌파 롱 진입이 허용되어야 한다"
         assert long_signals[0]["type"] == SignalType.ENTRY_LONG.value
 
     def test_system1_no_filter_when_no_history(self):
@@ -241,9 +231,7 @@ class TestSystem1FilterLong:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "System 1 거래 이력이 없으면 필터 없이 진입이 허용되어야 한다"
-        )
+        assert len(long_signals) == 1, "System 1 거래 이력이 없으면 필터 없이 진입이 허용되어야 한다"
 
 
 class TestSystem1FilterShort:
@@ -266,9 +254,7 @@ class TestSystem1FilterShort:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         short_signals = [s for s in signals if s["direction"] == "SHORT"]
-        assert len(short_signals) == 0, (
-            "직전 System 1 거래가 수익일 때 20일 이탈 숏 진입은 스킵되어야 한다"
-        )
+        assert len(short_signals) == 0, "직전 System 1 거래가 수익일 때 20일 이탈 숏 진입은 스킵되어야 한다"
 
     def test_system1_filter_short_failsafe_55day_after_profitable(self):
         """직전 System 1 거래 수익 + 20일 & 55일 모두 이탈 → failsafe override로 숏 진입 허용"""
@@ -310,9 +296,7 @@ class TestSystem1FilterShort:
         signals = check_entry_signals(df, SYMBOL_KR, system=1, tracker=tracker)
 
         short_signals = [s for s in signals if s["direction"] == "SHORT"]
-        assert len(short_signals) == 0, (
-            "한국 시장 종목은 공매도 제한이므로 숏 시그널이 생성되면 안 된다"
-        )
+        assert len(short_signals) == 0, "한국 시장 종목은 공매도 제한이므로 숏 시그널이 생성되면 안 된다"
 
 
 class TestSystem2NoFilter:
@@ -335,9 +319,7 @@ class TestSystem2NoFilter:
         signals = check_entry_signals(df, SYMBOL_US, system=2, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "System 2는 직전 거래 수익 여부와 무관하게 55일 돌파 롱 진입을 허용해야 한다"
-        )
+        assert len(long_signals) == 1, "System 2는 직전 거래 수익 여부와 무관하게 55일 돌파 롱 진입을 허용해야 한다"
         assert long_signals[0]["system"] == 2
 
     def test_system2_no_filter_with_profitable_system2_history(self):
@@ -358,9 +340,7 @@ class TestSystem2NoFilter:
         signals = check_entry_signals(df, SYMBOL_US, system=2, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "System 2는 이전 System 2 수익 거래가 있어도 진입 필터를 적용하지 않아야 한다"
-        )
+        assert len(long_signals) == 1, "System 2는 이전 System 2 수익 거래가 있어도 진입 필터를 적용하지 않아야 한다"
 
 
 class TestNoTrackerNoFilter:
@@ -381,9 +361,7 @@ class TestNoTrackerNoFilter:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "tracker 가 None 이면 필터를 적용하지 않고 롱 진입 시그널을 반환해야 한다"
-        )
+        assert len(long_signals) == 1, "tracker 가 None 이면 필터를 적용하지 않고 롱 진입 시그널을 반환해야 한다"
 
     def test_no_tracker_short_signal_returned(self):
         """tracker=None + 20일 이탈 → 숏 진입 시그널 반환 (미국 심볼)"""
@@ -400,9 +378,7 @@ class TestNoTrackerNoFilter:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
 
         short_signals = [s for s in signals if s["direction"] == "SHORT"]
-        assert len(short_signals) == 1, (
-            "tracker 가 None 이면 필터를 적용하지 않고 숏 진입 시그널을 반환해야 한다"
-        )
+        assert len(short_signals) == 1, "tracker 가 None 이면 필터를 적용하지 않고 숏 진입 시그널을 반환해야 한다"
 
 
 class TestSignalStructure:
@@ -427,12 +403,18 @@ class TestSignalStructure:
         sig = next(s for s in signals if s["direction"] == "LONG")
 
         required_keys = {
-            "symbol", "type", "system", "direction", "price",
-            "current", "n", "stop_loss", "date", "message",
+            "symbol",
+            "type",
+            "system",
+            "direction",
+            "price",
+            "current",
+            "n",
+            "stop_loss",
+            "date",
+            "message",
         }
-        assert required_keys.issubset(sig.keys()), (
-            f"시그널에 필수 키가 누락됨: {required_keys - sig.keys()}"
-        )
+        assert required_keys.issubset(sig.keys()), f"시그널에 필수 키가 누락됨: {required_keys - sig.keys()}"
 
         assert sig["symbol"] == SYMBOL_US
         assert sig["direction"] == "LONG"
@@ -462,8 +444,16 @@ class TestSignalStructure:
         sig = next(s for s in signals if s["direction"] == "SHORT")
 
         required_keys = {
-            "symbol", "type", "system", "direction", "price",
-            "current", "n", "stop_loss", "date", "message",
+            "symbol",
+            "type",
+            "system",
+            "direction",
+            "price",
+            "current",
+            "n",
+            "stop_loss",
+            "date",
+            "message",
         }
         assert required_keys.issubset(sig.keys())
 
@@ -477,8 +467,8 @@ class TestSignalStructure:
     def test_no_signal_when_no_breakout(self):
         """돌파/이탈 조건 미충족 → 시그널 없음"""
         df = _make_df(
-            today_high=DC_HIGH_20 - 0.5,   # 20일 고가 미달
-            today_low=DC_LOW_20 + 0.5,     # 20일 저가 미달
+            today_high=DC_HIGH_20 - 0.5,  # 20일 고가 미달
+            today_low=DC_LOW_20 + 0.5,  # 20일 저가 미달
             today_close=100.0,
             dc_high_20=DC_HIGH_20,
             dc_low_20=DC_LOW_20,
@@ -528,9 +518,7 @@ class TestBoundaryValues:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 0, (
-            "today high == dc_high_20 일 때 strict > 비교이므로 돌파가 아니어야 한다"
-        )
+        assert len(long_signals) == 0, "today high == dc_high_20 일 때 strict > 비교이므로 돌파가 아니어야 한다"
 
     def test_low_equals_dc_low_20_no_breakout(self):
         """today low == dc_low_20 → 이탈 아님 (strict <), 숏 시그널 없음"""
@@ -546,9 +534,7 @@ class TestBoundaryValues:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=None)
 
         short_signals = [s for s in signals if s["direction"] == "SHORT"]
-        assert len(short_signals) == 0, (
-            "today low == dc_low_20 일 때 strict < 비교이므로 이탈이 아니어야 한다"
-        )
+        assert len(short_signals) == 0, "today low == dc_low_20 일 때 strict < 비교이므로 이탈이 아니어야 한다"
 
     def test_high_equals_dc_high_55_no_failsafe(self):
         """수익 거래 후 today high == dc_high_55 → failsafe 비발동, 스킵"""
@@ -598,12 +584,8 @@ class TestSystem1FilterLastTradeSelection:
 
     def test_most_recent_system1_trade_is_used_for_filter(self):
         """이전 수익 + 가장 최근 손실 → 필터 미적용 (최근 거래 기준)"""
-        older_profitable = _make_closed_position(
-            SYMBOL_US, system=1, pnl=300.0, exit_date="2025-01-15"
-        )
-        recent_losing = _make_closed_position(
-            SYMBOL_US, system=1, pnl=-100.0, exit_date="2025-02-15"
-        )
+        older_profitable = _make_closed_position(SYMBOL_US, system=1, pnl=300.0, exit_date="2025-01-15")
+        recent_losing = _make_closed_position(SYMBOL_US, system=1, pnl=-100.0, exit_date="2025-02-15")
         tracker = _make_tracker_mock(SYMBOL_US, [older_profitable, recent_losing])
 
         df = _make_df(
@@ -625,12 +607,8 @@ class TestSystem1FilterLastTradeSelection:
 
     def test_most_recent_system1_trade_profitable_skips(self):
         """이전 손실 + 가장 최근 수익 → 필터 적용, 20일 돌파 스킵"""
-        older_losing = _make_closed_position(
-            SYMBOL_US, system=1, pnl=-200.0, exit_date="2025-01-10"
-        )
-        recent_profitable = _make_closed_position(
-            SYMBOL_US, system=1, pnl=400.0, exit_date="2025-02-20"
-        )
+        older_losing = _make_closed_position(SYMBOL_US, system=1, pnl=-200.0, exit_date="2025-01-10")
+        recent_profitable = _make_closed_position(SYMBOL_US, system=1, pnl=400.0, exit_date="2025-02-20")
         tracker = _make_tracker_mock(SYMBOL_US, [older_losing, recent_profitable])
 
         df = _make_df(
@@ -646,9 +624,7 @@ class TestSystem1FilterLastTradeSelection:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 0, (
-            "가장 최근 System 1 거래가 수익이면 20일 돌파 롱 진입은 스킵되어야 한다"
-        )
+        assert len(long_signals) == 0, "가장 최근 System 1 거래가 수익이면 20일 돌파 롱 진입은 스킵되어야 한다"
 
     def test_system2_history_does_not_affect_system1_filter(self):
         """System 2 수익 이력은 System 1 필터에 영향을 주지 않아야 한다."""
@@ -668,9 +644,7 @@ class TestSystem1FilterLastTradeSelection:
         signals = check_entry_signals(df, SYMBOL_US, system=1, tracker=tracker)
 
         long_signals = [s for s in signals if s["direction"] == "LONG"]
-        assert len(long_signals) == 1, (
-            "System 2 수익 이력은 System 1 필터에 영향을 주지 않아야 한다"
-        )
+        assert len(long_signals) == 1, "System 2 수익 이력은 System 1 필터에 영향을 주지 않아야 한다"
 
 
 class TestShouldAllowEntry:
@@ -699,9 +673,9 @@ class TestShouldAllowEntry:
 
 # 청산용 Donchian 채널 값
 DC_HIGH_10 = 103.0  # System 1 숏 청산 기준
-DC_LOW_10 = 97.0    # System 1 롱 청산 기준
+DC_LOW_10 = 97.0  # System 1 롱 청산 기준
 DC_HIGH_20_EXIT = 107.0  # System 2 숏 청산 기준
-DC_LOW_20_EXIT = 93.0    # System 2 롱 청산 기준
+DC_LOW_20_EXIT = 93.0  # System 2 롱 청산 기준
 
 
 def _make_exit_df(
@@ -947,8 +921,12 @@ class TestStopLoss:
             ("SHORT", 100.0, 95.0, 99.99, False),
         ],
         ids=[
-            "long-below", "long-equal", "long-above",
-            "short-above", "short-equal", "short-below",
+            "long-below",
+            "long-equal",
+            "long-above",
+            "short-above",
+            "short-equal",
+            "short-below",
         ],
     )
     def test_stop_loss_parametrized(self, direction, stop_loss, low, high, expected):
@@ -992,7 +970,10 @@ class TestRiskManagerIntegration:
         for sig in signals:
             direction = Direction(sig["direction"])
             can_add, _ = risk_mgr.can_add_position(
-                symbol=sig["symbol"], units=1, n_value=sig["n"], direction=direction,
+                symbol=sig["symbol"],
+                units=1,
+                n_value=sig["n"],
+                direction=direction,
             )
             if can_add:
                 accepted.append(sig)
@@ -1025,7 +1006,10 @@ class TestRiskManagerIntegration:
         assert len(long_signals) >= 1, "시그널 자체는 생성되어야 한다"
 
         can_add, reason = risk_mgr.can_add_position(
-            symbol=SYMBOL_US, units=1, n_value=long_signals[0]["n"], direction=Direction.LONG,
+            symbol=SYMBOL_US,
+            units=1,
+            n_value=long_signals[0]["n"],
+            direction=Direction.LONG,
         )
         assert can_add is False, f"단일 방향 12 Units 초과 시 거부되어야 한다. reason={reason}"
 
@@ -1245,12 +1229,16 @@ class TestSetupRiskManager:
     def test_valid_groups_parsed(self, tmp_path):
         """정상 그룹 설정이 파싱되어 심볼이 매핑됨."""
         fake_config = tmp_path / "correlation_groups.yaml"
-        fake_config.write_text(yaml.dump({
-            "groups": {
-                "us_equity": ["SPY", "QQQ"],
-                "crypto": ["BTC-USD"],
-            }
-        }))
+        fake_config.write_text(
+            yaml.dump(
+                {
+                    "groups": {
+                        "us_equity": ["SPY", "QQQ"],
+                        "crypto": ["BTC-USD"],
+                    }
+                }
+            )
+        )
         with patch("scripts.check_positions.Path") as MockPath:
             mock_file_path = MagicMock()
             MockPath.return_value = mock_file_path
@@ -1269,24 +1257,30 @@ class TestMain:
 
     async def test_acquires_and_releases_lock(self):
         mock_fd = MagicMock()
-        with patch("scripts.check_positions.acquire_lock", return_value=mock_fd), \
-             patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run, \
-             patch("scripts.check_positions.release_lock") as mock_release:
+        with (
+            patch("scripts.check_positions.acquire_lock", return_value=mock_fd),
+            patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run,
+            patch("scripts.check_positions.release_lock") as mock_release,
+        ):
             await main()
         mock_run.assert_awaited_once()
         mock_release.assert_called_once_with(mock_fd)
 
     async def test_skips_when_already_locked(self):
-        with patch("scripts.check_positions.acquire_lock", return_value=None), \
-             patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run:
+        with (
+            patch("scripts.check_positions.acquire_lock", return_value=None),
+            patch("scripts.check_positions._run_checks", new_callable=AsyncMock) as mock_run,
+        ):
             await main()
         mock_run.assert_not_awaited()
 
     async def test_releases_lock_on_exception(self):
         mock_fd = MagicMock()
-        with patch("scripts.check_positions.acquire_lock", return_value=mock_fd), \
-             patch("scripts.check_positions._run_checks", new_callable=AsyncMock, side_effect=RuntimeError("boom")), \
-             patch("scripts.check_positions.release_lock") as mock_release:
+        with (
+            patch("scripts.check_positions.acquire_lock", return_value=mock_fd),
+            patch("scripts.check_positions._run_checks", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
+            patch("scripts.check_positions.release_lock") as mock_release,
+        ):
             with pytest.raises(RuntimeError):
                 await main()
         mock_release.assert_called_once_with(mock_fd)
@@ -1307,17 +1301,50 @@ class TestRunChecks:
         클래스 내부에서 self._make_mock_df 호출이 30+건이라 당장 마이그레이션하지 않음.
         신규 테스트 클래스에서는 make_turtle_df fixture 사용 권장.
         """
-        return pd.DataFrame([
-            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97, "dc_low_20": 95, "dc_high_20": 105},
-            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97, "dc_low_20": 95, "dc_high_20": 105},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2025-03-01"),
+                    "high": 100,
+                    "low": 98,
+                    "close": 99,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                    "dc_low_20": 95,
+                    "dc_high_20": 105,
+                },
+                {
+                    "date": pd.Timestamp("2025-03-02"),
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                    "dc_low_20": 95,
+                    "dc_high_20": 105,
+                },
+            ]
+        )
 
-    def _build_patches(self, open_positions=None, symbols=None, fetch_df=None,
-                       should_check=True, can_add=(True, ""), should_pyramid=False):
+    def _build_patches(
+        self,
+        open_positions=None,
+        symbols=None,
+        fetch_df=None,
+        should_check=True,
+        can_add=(True, ""),
+        should_pyramid=False,
+    ):
         """_run_checks()의 모든 의존성을 패치하는 딕셔너리를 반환."""
         if open_positions is None:
             open_positions = []
@@ -1338,20 +1365,23 @@ class TestRunChecks:
         mock_notifier = MagicMock()
         mock_notifier.send_signal = AsyncMock()
         patches["setup_notifier"] = patch(
-            "scripts.check_positions.setup_notifier", return_value=mock_notifier,
+            "scripts.check_positions.setup_notifier",
+            return_value=mock_notifier,
         )
 
         # DataFetcher
         mock_fetcher = MagicMock()
         mock_fetcher.fetch.return_value = fetch_df
         patches["DataFetcher"] = patch(
-            "scripts.check_positions.DataFetcher", return_value=mock_fetcher,
+            "scripts.check_positions.DataFetcher",
+            return_value=mock_fetcher,
         )
 
         # ParquetDataStore
         mock_data_store = MagicMock()
         patches["ParquetDataStore"] = patch(
-            "scripts.check_positions.ParquetDataStore", return_value=mock_data_store,
+            "scripts.check_positions.ParquetDataStore",
+            return_value=mock_data_store,
         )
 
         # PositionTracker
@@ -1363,7 +1393,8 @@ class TestRunChecks:
         mock_tracker.should_pyramid.return_value = should_pyramid
         mock_tracker.get_position_history.return_value = []
         patches["PositionTracker"] = patch(
-            "scripts.check_positions.PositionTracker", return_value=mock_tracker,
+            "scripts.check_positions.PositionTracker",
+            return_value=mock_tracker,
         )
 
         # setup_risk_manager
@@ -1371,7 +1402,8 @@ class TestRunChecks:
         mock_rm.can_add_position.return_value = can_add
         mock_rm.get_risk_summary.return_value = {}
         patches["setup_risk_manager"] = patch(
-            "scripts.check_positions.setup_risk_manager", return_value=mock_rm,
+            "scripts.check_positions.setup_risk_manager",
+            return_value=mock_rm,
         )
 
         # UniverseManager
@@ -1379,34 +1411,40 @@ class TestRunChecks:
         mock_universe.get_enabled_symbols.return_value = symbols
         mock_universe.assets = {}
         patches["UniverseManager"] = patch(
-            "scripts.check_positions.UniverseManager", return_value=mock_universe,
+            "scripts.check_positions.UniverseManager",
+            return_value=mock_universe,
         )
 
         # InverseETFFilter
         mock_inverse = MagicMock()
         mock_inverse.is_inverse_etf.return_value = False
         patches["InverseETFFilter"] = patch(
-            "scripts.check_positions.InverseETFFilter", return_value=mock_inverse,
+            "scripts.check_positions.InverseETFFilter",
+            return_value=mock_inverse,
         )
 
         # add_turtle_indicators (pass-through)
         patches["add_turtle_indicators"] = patch(
-            "scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df,
+            "scripts.check_positions.add_turtle_indicators",
+            side_effect=lambda df: df,
         )
 
         # get_market_status
         patches["get_market_status"] = patch(
-            "scripts.check_positions.get_market_status", return_value="Market Open",
+            "scripts.check_positions.get_market_status",
+            return_value="Market Open",
         )
 
         # should_check_signals
         patches["should_check_signals"] = patch(
-            "scripts.check_positions.should_check_signals", return_value=should_check,
+            "scripts.check_positions.should_check_signals",
+            return_value=should_check,
         )
 
         # infer_market (used in logging)
         patches["infer_market"] = patch(
-            "scripts.check_positions.infer_market", return_value="US",
+            "scripts.check_positions.infer_market",
+            return_value="US",
         )
 
         # Path for universe.yaml — need to keep real Path for other uses
@@ -1414,7 +1452,8 @@ class TestRunChecks:
         mock_yaml_path = MagicMock()
         mock_yaml_path.exists.return_value = False  # Use default universe
         patches["universe_yaml_path"] = patch(
-            "scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            "scripts.check_positions.Path",
+            side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
         )
 
         return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store
@@ -1430,7 +1469,8 @@ class TestRunChecks:
     async def test_run_checks_no_positions_no_signals(self):
         """오픈 포지션 없음, 돌파 없음 -> 깨끗한 실행."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=101, low=97),
         )
         self._start_patches(patches)
@@ -1494,7 +1534,8 @@ class TestRunChecks:
         """새 진입 시그널 생성 + 리스크 통과 -> save + notify."""
         # high=106 > dc_high_20=105 -> long entry signal
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
         )
         self._start_patches(patches)
@@ -1507,7 +1548,8 @@ class TestRunChecks:
     async def test_run_checks_signal_blocked_by_risk(self):
         """진입 시그널 리스크 차단 -> 알림 없음."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
             can_add=(False, "Direction limit exceeded"),
         )
@@ -1521,7 +1563,8 @@ class TestRunChecks:
     async def test_run_checks_empty_fetch_skipped(self):
         """빈 DataFrame -> 에러 없이 스킵."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=pd.DataFrame(),
         )
         self._start_patches(patches)
@@ -1534,7 +1577,8 @@ class TestRunChecks:
     async def test_run_checks_market_inactive_skipped(self):
         """마켓 비활동 -> 시그널 체크 스킵."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
             should_check=False,
         )
@@ -1564,7 +1608,8 @@ class TestRunChecks:
     async def test_run_checks_signal_error_handled(self):
         """시그널 처리 중 예외 -> 로깅 후 계속."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY", "QQQ"],
+            open_positions=[],
+            symbols=["SPY", "QQQ"],
         )
         # Make fetcher raise for everything (use instance mock, not class mock)
         fetcher.fetch.side_effect = RuntimeError("API error")
@@ -1579,7 +1624,8 @@ class TestRunChecks:
     async def test_run_checks_symbol_tuple_handling(self):
         """(symbol, name) 튜플 심볼 처리."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
         )
         # Override UniverseManager to provide asset with name
@@ -1590,7 +1636,8 @@ class TestRunChecks:
         asset_mock.name = "S&P 500 ETF"
         universe_mock.assets = {"SPY": asset_mock}
         patches["UniverseManager"] = patch(
-            "scripts.check_positions.UniverseManager", return_value=universe_mock,
+            "scripts.check_positions.UniverseManager",
+            return_value=universe_mock,
         )
         patches["UniverseManager"].start()
         try:
@@ -1602,7 +1649,8 @@ class TestRunChecks:
         """기존 시스템 포지션 보유 중 -> 해당 시스템 시그널 스킵."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[pos], symbols=["SPY"],
+            open_positions=[pos],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
         )
         self._start_patches(patches)
@@ -1614,7 +1662,8 @@ class TestRunChecks:
     async def test_run_checks_save_signal_called(self):
         """시그널 저장이 data_store.save_signal()로 호출되는지 검증."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=["SPY"],
+            open_positions=[],
+            symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
         )
         self._start_patches(patches)
@@ -1627,7 +1676,8 @@ class TestRunChecks:
     async def test_run_checks_risk_summary_logged(self):
         """리스크 요약이 호출되는지 검증."""
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[], symbols=[],
+            open_positions=[],
+            symbols=[],
         )
         self._start_patches(patches)
         try:
@@ -1655,7 +1705,8 @@ class TestRunChecks:
         pos1 = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
         pos2 = _make_open_position(symbol="QQQ", direction="SHORT", system=2, stop_loss=120.0)
         patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
-            open_positions=[pos1, pos2], symbols=["SPY", "QQQ"],
+            open_positions=[pos1, pos2],
+            symbols=["SPY", "QQQ"],
             fetch_df=self._make_mock_df(high=100, low=99, close=100),
         )
         self._start_patches(patches)
@@ -1680,14 +1731,36 @@ class TestRunChecksInverseETF:
         클래스 내부에서 self._make_mock_df 호출이 30+건이라 당장 마이그레이션하지 않음.
         신규 테스트 클래스에서는 make_turtle_df fixture 사용 권장.
         """
-        return pd.DataFrame([
-            {"date": pd.Timestamp("2025-03-01"), "high": 100, "low": 98, "close": 99, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97},
-            {"date": pd.Timestamp("2025-03-02"), "high": high, "low": low, "close": close, "N": n,
-             "dc_high_20": 105, "dc_low_20": 95, "dc_high_55": 110, "dc_low_55": 90,
-             "dc_high_10": 103, "dc_low_10": 97},
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2025-03-01"),
+                    "high": 100,
+                    "low": 98,
+                    "close": 99,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+                {
+                    "date": pd.Timestamp("2025-03-02"),
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+            ]
+        )
 
     async def test_inverse_etf_force_exit(self):
         """Inverse ETF 괴리/보유일 초과 -> 강제 청산."""
@@ -1700,9 +1773,7 @@ class TestRunChecksInverseETF:
         mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
 
         mock_tracker = MagicMock()
-        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
-            [pos] if sym is None or sym == "SH" else []
-        )
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: [pos] if sym is None or sym == "SH" else []
         mock_tracker.get_summary.return_value = {"open": 1}
         mock_tracker.should_pyramid.return_value = False
         mock_tracker.get_position_history.return_value = []
@@ -1724,19 +1795,26 @@ class TestRunChecksInverseETF:
         mock_yaml_path = MagicMock()
         mock_yaml_path.exists.return_value = False
 
-        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
-             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
-             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
-             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
-             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
-             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
-             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
-             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
-             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
-             patch("scripts.check_positions.get_market_status", return_value="Open"), \
-             patch("scripts.check_positions.should_check_signals", return_value=True), \
-             patch("scripts.check_positions.infer_market", return_value="US"), \
-             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+        with (
+            patch(
+                "scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}
+            ),
+            patch("scripts.check_positions.setup_notifier", return_value=mock_notifier),
+            patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher),
+            patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()),
+            patch("scripts.check_positions.PositionTracker", return_value=mock_tracker),
+            patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm),
+            patch("scripts.check_positions.UniverseManager", return_value=mock_universe),
+            patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse),
+            patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df),
+            patch("scripts.check_positions.get_market_status", return_value="Open"),
+            patch("scripts.check_positions.should_check_signals", return_value=True),
+            patch("scripts.check_positions.infer_market", return_value="US"),
+            patch(
+                "scripts.check_positions.Path",
+                side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+        ):
             await _run_checks()
 
         mock_tracker.close_position.assert_called_once()
@@ -1754,9 +1832,7 @@ class TestRunChecksInverseETF:
         mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
 
         mock_tracker = MagicMock()
-        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
-            [pos] if sym is None or sym == "SH" else []
-        )
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: [pos] if sym is None or sym == "SH" else []
         mock_tracker.get_summary.return_value = {"open": 1}
         mock_tracker.should_pyramid.return_value = False
         mock_tracker.get_position_history.return_value = []
@@ -1777,19 +1853,26 @@ class TestRunChecksInverseETF:
         mock_yaml_path = MagicMock()
         mock_yaml_path.exists.return_value = False
 
-        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
-             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
-             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
-             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
-             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
-             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
-             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
-             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
-             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
-             patch("scripts.check_positions.get_market_status", return_value="Open"), \
-             patch("scripts.check_positions.should_check_signals", return_value=True), \
-             patch("scripts.check_positions.infer_market", return_value="US"), \
-             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+        with (
+            patch(
+                "scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}
+            ),
+            patch("scripts.check_positions.setup_notifier", return_value=mock_notifier),
+            patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher),
+            patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()),
+            patch("scripts.check_positions.PositionTracker", return_value=mock_tracker),
+            patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm),
+            patch("scripts.check_positions.UniverseManager", return_value=mock_universe),
+            patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse),
+            patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df),
+            patch("scripts.check_positions.get_market_status", return_value="Open"),
+            patch("scripts.check_positions.should_check_signals", return_value=True),
+            patch("scripts.check_positions.infer_market", return_value="US"),
+            patch(
+                "scripts.check_positions.Path",
+                side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+        ):
             await _run_checks()
 
         # No force exit, so check_exit_signals should run next (no exit signal either, no pyramid)
@@ -1804,17 +1887,17 @@ class TestRunChecksInverseETF:
 
         main_df = self._make_mock_df(high=100, low=99, close=100)
         mock_fetcher = MagicMock()
+
         # Return main_df for SH, empty for SPY (underlying)
         def fetch_side_effect(symbol, **kwargs):
             if symbol == "SH":
                 return main_df
             return pd.DataFrame()
+
         mock_fetcher.fetch.side_effect = fetch_side_effect
 
         mock_tracker = MagicMock()
-        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
-            [pos] if sym is None or sym == "SH" else []
-        )
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: [pos] if sym is None or sym == "SH" else []
         mock_tracker.get_summary.return_value = {"open": 1}
         mock_tracker.should_pyramid.return_value = False
         mock_tracker.get_position_history.return_value = []
@@ -1834,19 +1917,26 @@ class TestRunChecksInverseETF:
         mock_yaml_path = MagicMock()
         mock_yaml_path.exists.return_value = False
 
-        with patch("scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}), \
-             patch("scripts.check_positions.setup_notifier", return_value=mock_notifier), \
-             patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher), \
-             patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()), \
-             patch("scripts.check_positions.PositionTracker", return_value=mock_tracker), \
-             patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm), \
-             patch("scripts.check_positions.UniverseManager", return_value=mock_universe), \
-             patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse), \
-             patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df), \
-             patch("scripts.check_positions.get_market_status", return_value="Open"), \
-             patch("scripts.check_positions.should_check_signals", return_value=True), \
-             patch("scripts.check_positions.infer_market", return_value="US"), \
-             patch("scripts.check_positions.Path", side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p)):
+        with (
+            patch(
+                "scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}
+            ),
+            patch("scripts.check_positions.setup_notifier", return_value=mock_notifier),
+            patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher),
+            patch("scripts.check_positions.ParquetDataStore", return_value=MagicMock()),
+            patch("scripts.check_positions.PositionTracker", return_value=mock_tracker),
+            patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm),
+            patch("scripts.check_positions.UniverseManager", return_value=mock_universe),
+            patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse),
+            patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df),
+            patch("scripts.check_positions.get_market_status", return_value="Open"),
+            patch("scripts.check_positions.should_check_signals", return_value=True),
+            patch("scripts.check_positions.infer_market", return_value="US"),
+            patch(
+                "scripts.check_positions.Path",
+                side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+        ):
             await _run_checks()
 
         # should_force_exit should NOT have been called (underlying df is empty)

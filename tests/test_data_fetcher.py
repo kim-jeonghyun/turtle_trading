@@ -6,10 +6,9 @@ data_fetcher.py 단위 테스트
 - 에러 처리
 """
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
-from datetime import datetime
 
 from src.data_fetcher import DataFetcher, DataSource, MarketType, get_market_type
 
@@ -74,14 +73,16 @@ class TestFetchYFinance:
     def _mock_yf_data(self):
         """yfinance가 반환할 mock DataFrame"""
         dates = pd.date_range("2025-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
-            "Open": [100.0, 101.0, 102.0, 103.0, 104.0],
-            "High": [101.0, 102.0, 103.0, 104.0, 105.0],
-            "Low": [99.0, 100.0, 101.0, 102.0, 103.0],
-            "Close": [100.5, 101.5, 102.5, 103.5, 104.5],
-            "Volume": [1000000, 1100000, 1200000, 1300000, 1400000],
-        })
+        df = pd.DataFrame(
+            {
+                "Date": dates,
+                "Open": [100.0, 101.0, 102.0, 103.0, 104.0],
+                "High": [101.0, 102.0, 103.0, 104.0, 105.0],
+                "Low": [99.0, 100.0, 101.0, 102.0, 103.0],
+                "Close": [100.5, 101.5, 102.5, 103.5, 104.5],
+                "Volume": [1000000, 1100000, 1200000, 1300000, 1400000],
+            }
+        )
         df = df.set_index("Date")
         return df
 
@@ -150,14 +151,16 @@ class TestFetchYFinance:
 class TestFetchIntegrated:
     def _mock_yf_data(self):
         dates = pd.date_range("2025-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
-            "Open": [100.0, 101.0, 102.0, 103.0, 104.0],
-            "High": [101.0, 102.0, 103.0, 104.0, 105.0],
-            "Low": [99.0, 100.0, 101.0, 102.0, 103.0],
-            "Close": [100.5, 101.5, 102.5, 103.5, 104.5],
-            "Volume": [1000000, 1100000, 1200000, 1300000, 1400000],
-        })
+        df = pd.DataFrame(
+            {
+                "Date": dates,
+                "Open": [100.0, 101.0, 102.0, 103.0, 104.0],
+                "High": [101.0, 102.0, 103.0, 104.0, 105.0],
+                "Low": [99.0, 100.0, 101.0, 102.0, 103.0],
+                "Close": [100.5, 101.5, 102.5, 103.5, 104.5],
+                "Volume": [1000000, 1100000, 1200000, 1300000, 1400000],
+            }
+        )
         df = df.set_index("Date")
         return df
 
@@ -257,14 +260,16 @@ class TestFetchCrypto:
     def test_crypto_fallback_to_yfinance(self, mock_ticker_cls):
         """ccxt가 없을 때 yfinance로 fallback"""
         dates = pd.date_range("2025-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
-            "Open": [50000.0] * 5,
-            "High": [51000.0] * 5,
-            "Low": [49000.0] * 5,
-            "Close": [50500.0] * 5,
-            "Volume": [1000] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "Date": dates,
+                "Open": [50000.0] * 5,
+                "High": [51000.0] * 5,
+                "Low": [49000.0] * 5,
+                "Close": [50500.0] * 5,
+                "Volume": [1000] * 5,
+            }
+        )
         df = df.set_index("Date")
 
         mock_ticker = MagicMock()
@@ -273,7 +278,7 @@ class TestFetchCrypto:
 
         fetcher = DataFetcher()
         # Force _get_ccxt_exchange to return None (simulate ccxt not available)
-        with patch.object(fetcher, '_get_ccxt_exchange', return_value=None):
+        with patch.object(fetcher, "_get_ccxt_exchange", return_value=None):
             result = fetcher.fetch_crypto("BTC/USDT")
 
         # Should fall back to yfinance with BTC-USD
@@ -285,14 +290,16 @@ class TestFetchFDR:
     def test_fdr_import_error_fallback(self, mock_ticker_cls):
         """FinanceDataReader가 없을 때 yfinance로 fallback"""
         dates = pd.date_range("2025-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
-            "Open": [80000.0] * 5,
-            "High": [81000.0] * 5,
-            "Low": [79000.0] * 5,
-            "Close": [80500.0] * 5,
-            "Volume": [500000] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "Date": dates,
+                "Open": [80000.0] * 5,
+                "High": [81000.0] * 5,
+                "Low": [79000.0] * 5,
+                "Close": [80500.0] * 5,
+                "Volume": [500000] * 5,
+            }
+        )
         df = df.set_index("Date")
 
         mock_ticker = MagicMock()
@@ -313,14 +320,16 @@ class TestFetchRouting:
 
     def _mock_yf_data(self):
         dates = pd.date_range("2025-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "Date": dates,
-            "Open": [100.0] * 5,
-            "High": [101.0] * 5,
-            "Low": [99.0] * 5,
-            "Close": [100.5] * 5,
-            "Volume": [1000000] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "Date": dates,
+                "Open": [100.0] * 5,
+                "High": [101.0] * 5,
+                "Low": [99.0] * 5,
+                "Close": [100.5] * 5,
+                "Volume": [1000000] * 5,
+            }
+        )
         df = df.set_index("Date")
         return df
 
@@ -363,7 +372,7 @@ class TestFetchRouting:
         mock_ticker_cls.return_value = mock_ticker
 
         fetcher = DataFetcher()
-        with patch.object(fetcher, '_get_ccxt_exchange', return_value=None):
+        with patch.object(fetcher, "_get_ccxt_exchange", return_value=None):
             df = fetcher.fetch("BTC/USDT", source=DataSource.CCXT)
         assert isinstance(df, pd.DataFrame)
 
@@ -386,6 +395,6 @@ class TestFetchRouting:
         mock_ticker_cls.return_value = mock_ticker
 
         fetcher = DataFetcher()
-        with patch.object(fetcher, '_get_ccxt_exchange', return_value=None):
+        with patch.object(fetcher, "_get_ccxt_exchange", return_value=None):
             df = fetcher.fetch("BTC/USDT")
         assert isinstance(df, pd.DataFrame)
