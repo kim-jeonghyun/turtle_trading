@@ -7,6 +7,7 @@ health_check.py 외부 API 연결 확인 단위 테스트
 """
 
 import json
+import sys
 import urllib.error
 from io import BytesIO
 from unittest.mock import MagicMock, patch
@@ -18,6 +19,7 @@ from scripts.health_check import (
     EXTERNAL_API_TIMEOUT_SECONDS,
     _load_env_vars,
     check_kis_api_connection,
+    check_python_version,
     check_telegram_connection,
     check_yfinance_connection,
 )
@@ -45,6 +47,37 @@ class FakeHTTPResponse:
 
 
 # ---------------------------------------------------------------------------
+# check_python_version
+# ---------------------------------------------------------------------------
+
+
+class TestCheckPythonVersion:
+    def test_matches(self, tmp_path, monkeypatch):
+        """실행 버전과 .python-version이 일치"""
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        (tmp_path / ".python-version").write_text(version)
+        monkeypatch.chdir(tmp_path)
+        ok, msg = check_python_version()
+        assert ok is True
+        assert "matches" in msg
+
+    def test_mismatch(self, tmp_path, monkeypatch):
+        """실행 버전과 .python-version 불일치"""
+        (tmp_path / ".python-version").write_text("3.99")
+        monkeypatch.chdir(tmp_path)
+        ok, msg = check_python_version()
+        assert ok is False
+        assert "declares 3.99" in msg
+
+    def test_no_file(self, tmp_path, monkeypatch):
+        """.python-version 파일 없으면 스킵"""
+        monkeypatch.chdir(tmp_path)
+        ok, msg = check_python_version()
+        assert ok is True
+        assert "skipped" in msg
+
+
+# ---------------------------------------------------------------------------
 # _load_env_vars
 # ---------------------------------------------------------------------------
 
@@ -53,8 +86,7 @@ class TestLoadEnvVars:
     @pytest.fixture(autouse=True)
     def _isolate_known_keys(self, monkeypatch):
         """_load_env_vars()의 _KNOWN_KEYS가 호스트 환경에서 누출되지 않도록 격리."""
-        for key in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_IS_REAL",
-                    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        for key in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_IS_REAL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
             monkeypatch.delenv(key, raising=False)
 
     def test_reads_env_file(self, tmp_path, monkeypatch):
@@ -239,9 +271,7 @@ class TestCheckKisApiConnection:
     def test_uses_real_url_when_is_real(self, mock_urlopen, tmp_path, monkeypatch):
         """KIS_IS_REAL=True 시 실전투자 URL 사용"""
         env_file = tmp_path / ".env"
-        env_file.write_text(
-            "KIS_APP_KEY=test_key\nKIS_APP_SECRET=test_secret\nKIS_IS_REAL=True\n"
-        )
+        env_file.write_text("KIS_APP_KEY=test_key\nKIS_APP_SECRET=test_secret\nKIS_IS_REAL=True\n")
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("KIS_APP_KEY", raising=False)
         monkeypatch.delenv("KIS_APP_SECRET", raising=False)
@@ -303,10 +333,12 @@ class TestCheckTelegramConnection:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
 
-        mock_urlopen.return_value = FakeHTTPResponse({
-            "ok": True,
-            "result": {"username": "test_bot"},
-        })
+        mock_urlopen.return_value = FakeHTTPResponse(
+            {
+                "ok": True,
+                "result": {"username": "test_bot"},
+            }
+        )
 
         ok, msg = check_telegram_connection()
         assert ok is True
@@ -507,6 +539,7 @@ class TestMainExitCode:
     @patch("scripts.health_check.check_kis_api_connection", return_value=(False, "KIS API: failed"))
     @patch("scripts.health_check.check_telegram_connection", return_value=(False, "Telegram: failed"))
     @patch("scripts.health_check.check_yfinance_connection", return_value=(False, "yfinance: failed"))
+    @patch("scripts.health_check.check_python_version", return_value=(True, "OK"))
     @patch("scripts.health_check.check_data_directory", return_value=(True, "OK"))
     @patch("scripts.health_check.check_python_packages", return_value=(True, "OK"))
     @patch("scripts.health_check.check_position_files", return_value=(True, "OK"))
@@ -524,6 +557,7 @@ class TestMainExitCode:
     @patch("scripts.health_check.check_kis_api_connection", return_value=(True, "OK"))
     @patch("scripts.health_check.check_telegram_connection", return_value=(True, "OK"))
     @patch("scripts.health_check.check_yfinance_connection", return_value=(True, "OK"))
+    @patch("scripts.health_check.check_python_version", return_value=(True, "OK"))
     @patch("scripts.health_check.check_data_directory", return_value=(False, "FAIL"))
     @patch("scripts.health_check.check_python_packages", return_value=(True, "OK"))
     @patch("scripts.health_check.check_position_files", return_value=(True, "OK"))
@@ -541,6 +575,7 @@ class TestMainExitCode:
     @patch("scripts.health_check.check_kis_api_connection", return_value=(True, "OK"))
     @patch("scripts.health_check.check_telegram_connection", return_value=(True, "OK"))
     @patch("scripts.health_check.check_yfinance_connection", return_value=(True, "OK"))
+    @patch("scripts.health_check.check_python_version", return_value=(True, "OK"))
     @patch("scripts.health_check.check_data_directory", return_value=(True, "OK"))
     @patch("scripts.health_check.check_python_packages", return_value=(True, "OK"))
     @patch("scripts.health_check.check_position_files", return_value=(True, "OK"))
