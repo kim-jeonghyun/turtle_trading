@@ -22,7 +22,7 @@ def format_currency(value: float, symbol: str) -> str:
         return f"${value:,.2f}"
 
 
-def format_pnl(pnl: float, pnl_pct: float = None) -> str:
+def format_pnl(pnl: float, pnl_pct: float | None = None) -> str:
     """손익 형식 변환 (색상 코드 포함)"""
     sign = "+" if pnl >= 0 else ""
     pnl_str = f"{sign}${pnl:,.2f}"

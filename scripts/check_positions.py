@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
@@ -62,7 +62,7 @@ def release_lock(fd):
 def setup_risk_manager() -> PortfolioRiskManager:
     """리스크 매니저 설정"""
     config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
-    symbol_groups = {}
+    symbol_groups: dict[str, AssetGroup] = {}
 
     if not config_path.exists():
         logger.warning(f"상관그룹 설정 파일 없음: {config_path}. 기본 그룹으로 운영합니다.")
@@ -107,9 +107,9 @@ def check_stop_loss(position, today_data) -> bool:
     SHORT: 장중 고가(high)가 stop_loss 이상이면 발동
     """
     if position.direction == Direction.LONG:
-        return today_data["low"] <= position.stop_loss
+        return bool(today_data["low"] <= position.stop_loss)
     else:  # SHORT
-        return today_data["high"] >= position.stop_loss
+        return bool(today_data["high"] >= position.stop_loss)
 
 
 def is_korean_market(symbol: str) -> bool:
@@ -134,9 +134,9 @@ def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: boo
     return False
 
 
-def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker" = None) -> list:
+def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker | None" = None) -> list:
     """진입 시그널 확인"""
-    signals = []
+    signals: list[dict] = []
     if len(df) < 2:
         return signals
 

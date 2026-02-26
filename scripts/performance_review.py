@@ -17,7 +17,7 @@ try:
     from tabulate import tabulate
 except ImportError:
 
-    def tabulate(data, headers=None, tablefmt=None):
+    def tabulate(data, headers=None, tablefmt=None):  # type: ignore[misc]
         lines = []
         if headers:
             lines.append(" | ".join(str(h) for h in headers))

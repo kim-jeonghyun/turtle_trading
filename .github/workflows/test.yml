@@ -20,7 +20,7 @@ jobs:
       - name: Ruff format
         run: ruff format src/ scripts/ --check
       - name: MyPy
-        run: mypy src/
+        run: mypy src/ scripts/
 
   test:
     runs-on: ubuntu-latest
@@ -32,7 +32,7 @@ jobs:
           python-version: "3.12"
       - run: pip install ".[dev]"
       - name: pytest
-        run: pytest tests/ --cov=src --cov-report=term-missing --cov-report=xml -v
+        run: pytest tests/ --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-report

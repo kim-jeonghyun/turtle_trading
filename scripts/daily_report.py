@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 def generate_report(
     data_store: ParquetDataStore,
-    tracker: PositionTracker = None,
-    risk_manager: PortfolioRiskManager = None,
-    universe: UniverseManager = None,
+    tracker: PositionTracker | None = None,
+    risk_manager: PortfolioRiskManager | None = None,
+    universe: UniverseManager | None = None,
 ) -> dict:
     """Enhanced 일일 리포트 데이터 생성"""
     today = datetime.now().strftime("%Y-%m-%d")

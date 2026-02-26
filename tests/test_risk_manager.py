@@ -149,6 +149,14 @@ class TestRemovePosition:
         ok, msg = risk_manager.can_add_position("SPY", 4, 2.0, Direction.LONG)
         assert ok is True
 
+    def test_remove_short_position(self, risk_manager):
+        """SHORT 포지션 제거 시 short_units 및 N 노출이 감소해야 한다 (line 101)"""
+        risk_manager.add_position("BTC-USD", 2, 3.0, Direction.SHORT)
+        assert risk_manager.state.short_units == 2
+        risk_manager.remove_position("BTC-USD", 2, Direction.SHORT, n_value=3.0)
+        assert risk_manager.state.short_units == 0
+        assert risk_manager.state.total_n_exposure == 0.0
+
     def test_risk_summary(self, risk_manager):
         # SPY: 3 units * 2.0 N = 6.0 N exposure
         # BTC-USD: 2 units * 3.0 N = 6.0 N exposure
@@ -160,3 +168,73 @@ class TestRemovePosition:
         assert summary["short_units"] == 2
         assert summary["positions_count"] == 2
         assert summary["total_n_exposure"] == 12.0
+
+
+class TestInputValidation:
+    """유효하지 않은 입력에 대한 검증 (lines 43, 45, 76, 78)"""
+
+    def test_can_add_position_negative_n_value(self, risk_manager):
+        """can_add_position: n_value가 음수이면 False 반환 (line 43)"""
+        ok, msg = risk_manager.can_add_position("SPY", 1, -1.0, Direction.LONG)
+        assert ok is False
+        assert "음수" in msg
+
+    def test_can_add_position_zero_units(self, risk_manager):
+        """can_add_position: units가 0이면 False 반환 (line 45)"""
+        ok, msg = risk_manager.can_add_position("SPY", 0, 2.0, Direction.LONG)
+        assert ok is False
+        assert "0 이하" in msg
+
+    def test_can_add_position_negative_units(self, risk_manager):
+        """can_add_position: units가 음수이면 False 반환 (line 45)"""
+        ok, msg = risk_manager.can_add_position("SPY", -1, 2.0, Direction.LONG)
+        assert ok is False
+        assert "0 이하" in msg
+
+    def test_add_position_negative_n_value_raises(self, risk_manager):
+        """add_position: n_value가 음수이면 ValueError 발생 (line 76)"""
+        with pytest.raises(ValueError, match="n_value must be non-negative"):
+            risk_manager.add_position("SPY", 1, -0.5, Direction.LONG)
+
+    def test_add_position_zero_units_raises(self, risk_manager):
+        """add_position: units가 0이면 ValueError 발생 (line 78)"""
+        with pytest.raises(ValueError, match="units must be positive"):
+            risk_manager.add_position("SPY", 0, 2.0, Direction.LONG)
+
+    def test_add_position_negative_units_raises(self, risk_manager):
+        """add_position: units가 음수이면 ValueError 발생 (line 78)"""
+        with pytest.raises(ValueError, match="units must be positive"):
+            risk_manager.add_position("SPY", -2, 2.0, Direction.LONG)
+
+
+class TestShortDirectionLimit:
+    """숏 방향 한도: 12 Units (lines 64-65)"""
+
+    def test_exceeds_short_direction_limit(self):
+        """숏 방향 한도 초과 시 False 반환 (lines 64-65)"""
+        symbol_groups = {
+            "SPY": AssetGroup.US_EQUITY,
+            "005930.KS": AssetGroup.KR_EQUITY,
+            "BTC-USD": AssetGroup.CRYPTO,
+            "AAPL": AssetGroup.US_EQUITY,
+        }
+        limits = RiskLimits(
+            max_units_per_market=4,
+            max_units_correlated=6,
+            max_units_direction=12,
+            max_total_n_exposure=50.0,
+        )
+        rm = PortfolioRiskManager(limits=limits, symbol_groups=symbol_groups)
+        # 12 units short 추가 (각 그룹 4 units = 그룹 한도 내)
+        rm.add_position("SPY", 4, 1.0, Direction.SHORT)
+        rm.add_position("005930.KS", 4, 1.0, Direction.SHORT)
+        rm.add_position("BTC-USD", 4, 1.0, Direction.SHORT)
+        ok, msg = rm.can_add_position("AAPL", 1, 1.0, Direction.SHORT)
+        assert ok is False
+        assert "숏" in msg
+
+    def test_within_short_direction_limit(self, risk_manager):
+        """숏 방향 한도 내에서 포지션 추가 허용"""
+        risk_manager.add_position("BTC-USD", 2, 1.0, Direction.SHORT)
+        ok, msg = risk_manager.can_add_position("005930.KS", 2, 1.0, Direction.SHORT)
+        assert ok is True
