@@ -157,6 +157,39 @@ class TestRemovePosition:
         assert risk_manager.state.short_units == 0
         assert risk_manager.state.total_n_exposure == 0.0
 
+    def test_remove_position_verifies_all_state_fields(self, risk_manager):
+        """remove_position 후 모든 상태 필드가 올바르게 감소해야 한다"""
+        group = AssetGroup.US_EQUITY  # SPY의 그룹
+        risk_manager.add_position("SPY", 3, 2.0, Direction.LONG)
+
+        # 사전 상태 확인
+        assert risk_manager.state.units_by_symbol["SPY"] == 3
+        assert risk_manager.state.units_by_group[group] == 3
+        assert risk_manager.state.long_units == 3
+        assert risk_manager.state.total_n_exposure == 6.0
+
+        risk_manager.remove_position("SPY", 2, Direction.LONG, n_value=2.0)
+
+        # 모든 필드가 올바르게 감소했는지 검증
+        assert risk_manager.state.units_by_symbol["SPY"] == 1
+        assert risk_manager.state.units_by_group[group] == 1
+        assert risk_manager.state.long_units == 1
+        assert risk_manager.state.total_n_exposure == pytest.approx(2.0)
+
+    def test_remove_position_underflow_guard(self, risk_manager):
+        """추가한 수량보다 많은 수량을 제거해도 모든 상태 필드가 0으로 바닥 처리된다"""
+        group = AssetGroup.US_EQUITY  # SPY의 그룹
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+
+        # 추가한 2 units보다 더 많은 5 units 제거 시도
+        risk_manager.remove_position("SPY", 5, Direction.LONG, n_value=1.5)
+
+        # 음수가 아닌 0으로 바닥 처리되어야 한다
+        assert risk_manager.state.units_by_symbol["SPY"] == 0
+        assert risk_manager.state.units_by_group[group] == 0
+        assert risk_manager.state.long_units == 0
+        assert risk_manager.state.total_n_exposure == 0.0
+
     def test_risk_summary(self, risk_manager):
         # SPY: 3 units * 2.0 N = 6.0 N exposure
         # BTC-USD: 2 units * 3.0 N = 6.0 N exposure
@@ -205,6 +238,31 @@ class TestInputValidation:
         """add_position: units가 음수이면 ValueError 발생 (line 78)"""
         with pytest.raises(ValueError, match="units must be positive"):
             risk_manager.add_position("SPY", -2, 2.0, Direction.LONG)
+
+    def test_add_position_raises_no_state_mutation(self, risk_manager):
+        """add_position이 ValueError를 발생시킨 후 상태가 전혀 변경되지 않아야 한다 (원자성 보장)"""
+        group = AssetGroup.US_EQUITY  # SPY의 그룹
+
+        # 사전에 유효한 포지션 하나 추가해 초기 상태를 비어있지 않게 설정
+        risk_manager.add_position("SPY", 1, 1.0, Direction.LONG)
+
+        # 변경 전 상태 스냅샷
+        prev_symbol_units = risk_manager.state.units_by_symbol.get("SPY", 0)
+        prev_group_units = risk_manager.state.units_by_group.get(group, 0)
+        prev_long_units = risk_manager.state.long_units
+        prev_short_units = risk_manager.state.short_units
+        prev_n_exposure = risk_manager.state.total_n_exposure
+
+        # 음수 n_value로 ValueError 유발
+        with pytest.raises(ValueError):
+            risk_manager.add_position("SPY", 1, -0.5, Direction.LONG)
+
+        # 예외 발생 후 상태가 변경되지 않았는지 검증
+        assert risk_manager.state.units_by_symbol.get("SPY", 0) == prev_symbol_units
+        assert risk_manager.state.units_by_group.get(group, 0) == prev_group_units
+        assert risk_manager.state.long_units == prev_long_units
+        assert risk_manager.state.short_units == prev_short_units
+        assert risk_manager.state.total_n_exposure == pytest.approx(prev_n_exposure)
 
 
 class TestShortDirectionLimit:
