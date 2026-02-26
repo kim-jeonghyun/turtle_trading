@@ -90,17 +90,26 @@ class PortfolioRiskManager:
         self.state.total_n_exposure += n_value * units
 
     def remove_position(self, symbol: str, units: int, direction: Direction, n_value: float):
+        """포지션 제거 시 리스크 상태 갱신.
+
+        NOTE: n_value는 add_position 시점과 동일한 값을 전달해야 한다.
+        불일치 시 total_n_exposure에 누적 오차가 발생할 수 있다.
+        """
         group = self.get_group(symbol)
 
-        self.state.units_by_symbol[symbol] = max(0, self.state.units_by_symbol.get(symbol, 0) - units)
-        self.state.units_by_group[group] = max(0, self.state.units_by_group.get(group, 0) - units)
+        # 실제 보유 수량으로 제거량 클램핑 (공유 필드 과다 차감 방지)
+        current_units = self.state.units_by_symbol.get(symbol, 0)
+        actual_units = min(units, current_units)
+
+        self.state.units_by_symbol[symbol] = current_units - actual_units
+        self.state.units_by_group[group] = max(0, self.state.units_by_group.get(group, 0) - actual_units)
 
         if direction == Direction.LONG:
-            self.state.long_units = max(0, self.state.long_units - units)
+            self.state.long_units = max(0, self.state.long_units - actual_units)
         else:
-            self.state.short_units = max(0, self.state.short_units - units)
+            self.state.short_units = max(0, self.state.short_units - actual_units)
 
-        self.state.total_n_exposure = max(0, self.state.total_n_exposure - n_value * units)
+        self.state.total_n_exposure = max(0.0, self.state.total_n_exposure - n_value * actual_units)
 
     def get_risk_summary(self) -> Dict:
         return {

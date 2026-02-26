@@ -190,6 +190,56 @@ class TestRemovePosition:
         assert risk_manager.state.long_units == 0
         assert risk_manager.state.total_n_exposure == 0.0
 
+    def test_remove_overremoval_preserves_other_symbols(self, risk_manager):
+        """한 종목을 과다 제거해도 다른 종목의 공유 상태 기여분이 보존된다"""
+        group = AssetGroup.US_EQUITY
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+        risk_manager.add_position("QQQ", 2, 1.5, Direction.LONG)
+
+        risk_manager.remove_position("SPY", 5, Direction.LONG, n_value=1.5)
+
+        assert risk_manager.state.units_by_symbol["SPY"] == 0
+        assert risk_manager.state.units_by_symbol["QQQ"] == 2
+        assert risk_manager.state.units_by_group[group] == 2
+        assert risk_manager.state.long_units == 2
+        assert risk_manager.state.total_n_exposure == pytest.approx(3.0)
+
+    def test_remove_overremoval_cross_group_isolation(self, risk_manager):
+        """과다 제거 시 다른 그룹의 units_by_group은 영향 없음"""
+        risk_manager.add_position("SPY", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("005930.KS", 2, 1.0, Direction.LONG)
+
+        risk_manager.remove_position("SPY", 5, Direction.LONG, n_value=1.0)
+
+        assert risk_manager.state.units_by_group[AssetGroup.US_EQUITY] == 0
+        assert risk_manager.state.units_by_group[AssetGroup.KR_EQUITY] == 2
+        assert risk_manager.state.long_units == 2
+        assert risk_manager.state.total_n_exposure == pytest.approx(2.0)
+
+    def test_remove_nonexistent_symbol_is_noop(self, risk_manager):
+        """보유하지 않은 종목을 제거해도 상태가 변하지 않는다"""
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+
+        risk_manager.remove_position("AAPL", 3, Direction.LONG, n_value=1.5)
+
+        assert risk_manager.state.units_by_symbol.get("AAPL", 0) == 0
+        assert risk_manager.state.units_by_symbol["SPY"] == 2
+        assert risk_manager.state.long_units == 2
+        assert risk_manager.state.total_n_exposure == pytest.approx(3.0)
+
+    def test_remove_double_removal_second_is_noop(self, risk_manager):
+        """이미 제거된 포지션을 다시 제거해도 상태가 변하지 않는다"""
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+
+        risk_manager.remove_position("SPY", 2, Direction.LONG, n_value=1.5)
+        assert risk_manager.state.units_by_symbol["SPY"] == 0
+        assert risk_manager.state.total_n_exposure == pytest.approx(0.0)
+
+        risk_manager.remove_position("SPY", 2, Direction.LONG, n_value=1.5)
+        assert risk_manager.state.units_by_symbol["SPY"] == 0
+        assert risk_manager.state.long_units == 0
+        assert risk_manager.state.total_n_exposure == pytest.approx(0.0)
+
     def test_risk_summary(self, risk_manager):
         # SPY: 3 units * 2.0 N = 6.0 N exposure
         # BTC-USD: 2 units * 3.0 N = 6.0 N exposure
