@@ -18,7 +18,7 @@ from typing import Dict, List
 try:
     import yaml
 except ImportError:
-    yaml = None
+    yaml = None  # type: ignore[assignment]
     logging.getLogger(__name__).warning("pyyaml 미설치. YAML 설정 파일을 사용할 수 없습니다.")
 
 from src.data_store import ParquetDataStore
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def setup_risk_manager() -> PortfolioRiskManager:
     """리스크 매니저 설정"""
     config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
-    symbol_groups = {}
+    symbol_groups: dict[str, AssetGroup] = {}
 
     if not config_path.exists() or yaml is None:
         logger.warning(f"상관그룹 설정 파일 없음 또는 yaml 미설치: {config_path}")

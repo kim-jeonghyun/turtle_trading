@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 시그널 체크 서비스 (supercronic 기반, non-root)
   turtle-cron:

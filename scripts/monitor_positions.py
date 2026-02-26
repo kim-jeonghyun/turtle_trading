@@ -39,7 +39,7 @@ def calculate_unrealized_pnl(position: Position, current_price: float) -> tuple:
     return pnl_dollar, pnl_percent
 
 
-def format_position_status(position: Position, current_price: float, display_name: str = None) -> str:
+def format_position_status(position: Position, current_price: float, display_name: str | None = None) -> str:
     """포지션 상태를 포맷된 문자열로 반환"""
     pnl_dollar, pnl_percent = calculate_unrealized_pnl(position, current_price)
 
@@ -65,7 +65,7 @@ async def monitor_single_position(
     notifier: NotificationManager,
     threshold: float,
     verbose: bool = False,
-    display_name: str = None,
+    display_name: str | None = None,
 ) -> bool:
     """
     개별 포지션 모니터링

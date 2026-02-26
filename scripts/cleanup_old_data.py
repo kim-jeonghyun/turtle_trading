@@ -23,7 +23,9 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent
 
 
-def find_old_files(directory: Path, pattern: str, days_old: int, exclude_patterns: List[str] = None) -> List[Path]:
+def find_old_files(
+    directory: Path, pattern: str, days_old: int, exclude_patterns: List[str] | None = None
+) -> List[Path]:
     """
     지정된 패턴과 나이 조건에 맞는 파일 찾기
 
@@ -62,7 +64,7 @@ def find_old_files(directory: Path, pattern: str, days_old: int, exclude_pattern
     return sorted(old_files)
 
 
-def cleanup_cache_files(dry_run: bool = True, cache_days: int = 30) -> Tuple[int, int]:
+def cleanup_cache_files(dry_run: bool = True, cache_days: int = 30) -> Tuple[int, float]:
     """
     Parquet 캐시 파일 정리
 
@@ -87,7 +89,7 @@ def cleanup_cache_files(dry_run: bool = True, cache_days: int = 30) -> Tuple[int
         logger.info(f"정리할 오래된 캐시 파일 없음 ({cache_days}일 이상)")
         return 0, 0
 
-    total_size_mb = 0
+    total_size_mb = 0.0
 
     for filepath in old_files:
         size_bytes = filepath.stat().st_size
@@ -111,7 +113,7 @@ def cleanup_cache_files(dry_run: bool = True, cache_days: int = 30) -> Tuple[int
     return len(old_files), total_size_mb
 
 
-def cleanup_log_files(dry_run: bool = True, log_days: int = 90) -> Tuple[int, int]:
+def cleanup_log_files(dry_run: bool = True, log_days: int = 90) -> Tuple[int, float]:
     """
     로그 파일 정리
 
@@ -141,7 +143,7 @@ def cleanup_log_files(dry_run: bool = True, log_days: int = 90) -> Tuple[int, in
         logger.info(f"정리할 오래된 로그 파일 없음 ({log_days}일 이상)")
         return 0, 0
 
-    total_size_mb = 0
+    total_size_mb = 0.0
 
     for filepath in old_files:
         size_bytes = filepath.stat().st_size
@@ -165,7 +167,7 @@ def cleanup_log_files(dry_run: bool = True, log_days: int = 90) -> Tuple[int, in
     return len(old_files), total_size_mb
 
 
-def cleanup_backup_archives(dry_run: bool = True, keep_count: int = 30) -> Tuple[int, int]:
+def cleanup_backup_archives(dry_run: bool = True, keep_count: int = 30) -> Tuple[int, float]:
     """
     백업 아카이브 정리 (최신 N개만 유지)
 
@@ -192,7 +194,7 @@ def cleanup_backup_archives(dry_run: bool = True, keep_count: int = 30) -> Tuple
         return 0, 0
 
     old_backups = all_backups[keep_count:]
-    total_size_mb = 0
+    total_size_mb = 0.0
 
     for filepath in old_backups:
         size_bytes = filepath.stat().st_size

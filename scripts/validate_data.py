@@ -20,8 +20,8 @@ class DataValidator:
 
     def __init__(self, base_dir: str = "data"):
         self.base_dir = Path(base_dir)
-        self.errors = []
-        self.warnings = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def validate_position_json(self, fix: bool = False) -> Tuple[bool, str]:
         """포지션 JSON 검증"""
@@ -158,7 +158,7 @@ class DataValidator:
             if fix:
                 # 가장 최근 업데이트만 유지
                 seen = {}
-                unique_data = []
+                unique_data: list[dict] = []
                 for p in reversed(data):  # 역순으로 처리하여 최신 것 우선
                     pid = p.get("position_id")
                     if pid and pid not in seen:
