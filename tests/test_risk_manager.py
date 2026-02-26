@@ -326,6 +326,27 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="n_value must be non-negative"):
             risk_manager.remove_position("SPY", 1, Direction.LONG, n_value=-1.0)
 
+    def test_remove_position_zero_units_raises(self, risk_manager):
+        """remove_position: units가 0이면 ValueError 발생 (add_position 대칭)"""
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+        with pytest.raises(ValueError, match="units must be positive"):
+            risk_manager.remove_position("SPY", 0, Direction.LONG, n_value=1.5)
+
+    def test_remove_position_raises_no_state_mutation(self, risk_manager):
+        """remove_position이 ValueError 발생 시 상태가 변경되지 않아야 한다 (원자성 보장)"""
+        risk_manager.add_position("SPY", 2, 1.5, Direction.LONG)
+
+        prev_symbol = risk_manager.state.units_by_symbol.get("SPY", 0)
+        prev_long = risk_manager.state.long_units
+        prev_n = risk_manager.state.total_n_exposure
+
+        with pytest.raises(ValueError):
+            risk_manager.remove_position("SPY", -1, Direction.LONG, n_value=1.5)
+
+        assert risk_manager.state.units_by_symbol.get("SPY", 0) == prev_symbol
+        assert risk_manager.state.long_units == prev_long
+        assert risk_manager.state.total_n_exposure == pytest.approx(prev_n)
+
 
 class TestShortDirectionLimit:
     """숏 방향 한도: 12 Units (lines 64-65)"""
