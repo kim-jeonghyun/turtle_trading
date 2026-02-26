@@ -95,6 +95,11 @@ class PortfolioRiskManager:
         NOTE: n_value는 add_position 시점과 동일한 값을 전달해야 한다.
         불일치 시 total_n_exposure에 누적 오차가 발생할 수 있다.
         """
+        if n_value < 0:
+            raise ValueError(f"n_value must be non-negative, got {n_value}")
+        if units <= 0:
+            raise ValueError(f"units must be positive, got {units}")
+
         group = self.get_group(symbol)
 
         # 실제 보유 수량으로 제거량 클램핑 (공유 필드 과다 차감 방지)
