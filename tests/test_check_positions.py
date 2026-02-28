@@ -21,12 +21,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Integration test imports
 import fcntl
 import os
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import yaml
 from conftest import PatchManager
 
 from scripts.check_positions import (
+    _build_trade_record,
     _run_checks,
     _should_allow_entry,
     acquire_lock,
@@ -1941,3 +1943,433 @@ class TestRunChecksInverseETF:
 
         # should_force_exit should NOT have been called (underlying df is empty)
         mock_inverse.should_force_exit.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# save_trade() 파이프라인 통합 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestSaveTradeIntegration:
+    """_build_trade_record() 헬퍼 + 3개 청산 경로 save_trade() 호출 검증."""
+
+    # -- _build_trade_record() 단위 테스트 --
+
+    def test_build_trade_record_long_position(self):
+        """LONG 포지션 청산 후 거래 기록 dict 검증."""
+        pos = Position(
+            position_id="SPY_1_LONG_20250301_120000",
+            symbol="SPY",
+            system=1,
+            direction="LONG",
+            entry_date="2025-03-01",
+            entry_price=100.0,
+            entry_n=2.0,
+            units=1,
+            max_units=4,
+            shares_per_unit=40,
+            total_shares=40,
+            stop_loss=96.0,
+            pyramid_level=0,
+            exit_period=10,
+            status="closed",
+            last_update="2025-03-10T12:00:00",
+            exit_date="2025-03-10",
+            exit_price=110.0,
+            exit_reason="Exit Signal",
+            pnl=400.0,
+            pnl_pct=10.0,
+            r_multiple=2.5,
+        )
+
+        record = _build_trade_record(pos)
+
+        assert record["position_id"] == "SPY_1_LONG_20250301_120000"
+        assert record["symbol"] == "SPY"
+        assert record["system"] == 1
+        assert record["direction"] == "LONG"
+        assert record["entry_date"] == "2025-03-01"
+        assert record["entry_price"] == 100.0
+        assert record["exit_date"] == "2025-03-10"
+        assert record["exit_price"] == 110.0
+        assert record["exit_reason"] == "Exit Signal"
+        assert record["units"] == 1
+        assert record["total_shares"] == 40
+        assert record["pnl"] == 400.0
+        assert record["pnl_pct"] == 10.0
+        assert record["r_multiple"] == 2.5
+        assert record["entry_n"] == 2.0
+
+    def test_build_trade_record_short_position(self):
+        """SHORT 포지션 청산 후 거래 기록 dict 검증."""
+        pos = Position(
+            position_id="AAPL_2_SHORT_20250301_120000",
+            symbol="AAPL",
+            system=2,
+            direction="SHORT",
+            entry_date="2025-03-01",
+            entry_price=150.0,
+            entry_n=3.0,
+            units=2,
+            max_units=4,
+            shares_per_unit=20,
+            total_shares=40,
+            stop_loss=156.0,
+            pyramid_level=1,
+            exit_period=20,
+            status="closed",
+            last_update="2025-03-15T12:00:00",
+            exit_date="2025-03-15",
+            exit_price=140.0,
+            exit_reason="Stop Loss",
+            pnl=400.0,
+            pnl_pct=6.67,
+            r_multiple=1.67,
+        )
+
+        record = _build_trade_record(pos)
+
+        assert record["direction"] == "SHORT"
+        assert record["symbol"] == "AAPL"
+        assert record["system"] == 2
+        assert record["exit_price"] == 140.0
+        assert record["units"] == 2
+        assert record["total_shares"] == 40
+
+    def test_build_trade_record_includes_position_id_and_recorded_at(self):
+        """position_id와 recorded_at 필드 존재 검증."""
+        pos = Position(
+            position_id="QQQ_1_LONG_20250301_120000",
+            symbol="QQQ",
+            system=1,
+            direction="LONG",
+            entry_date="2025-03-01",
+            entry_price=400.0,
+            entry_n=5.0,
+            units=1,
+            max_units=4,
+            shares_per_unit=10,
+            total_shares=10,
+            stop_loss=390.0,
+            pyramid_level=0,
+            exit_period=10,
+            status="closed",
+            last_update="2025-03-10T12:00:00",
+            exit_date="2025-03-10",
+            exit_price=420.0,
+            exit_reason="Exit Signal",
+            pnl=200.0,
+            pnl_pct=5.0,
+            r_multiple=2.0,
+        )
+
+        record = _build_trade_record(pos)
+
+        assert "position_id" in record
+        assert record["position_id"] == "QQQ_1_LONG_20250301_120000"
+        assert "recorded_at" in record
+        # recorded_at은 ISO format이어야 함
+        datetime.fromisoformat(record["recorded_at"])  # 파싱 실패 시 예외
+
+    # -- 통합 테스트: 3개 청산 경로에서 save_trade() 호출 검증 --
+
+    def _make_mock_df(self, high=101.0, low=97.0, close=100.0, n=2.0):
+        """터틀 지표가 포함된 2행 DataFrame 생성."""
+        return pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2025-03-01"),
+                    "high": 100,
+                    "low": 98,
+                    "close": 99,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+                {
+                    "date": pd.Timestamp("2025-03-02"),
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "N": n,
+                    "dc_high_20": 105,
+                    "dc_low_20": 95,
+                    "dc_high_55": 110,
+                    "dc_low_55": 90,
+                    "dc_high_10": 103,
+                    "dc_low_10": 97,
+                },
+            ]
+        )
+
+    def _build_patches(
+        self,
+        open_positions=None,
+        symbols=None,
+        fetch_df=None,
+        should_check=True,
+        can_add=(True, ""),
+        should_pyramid=False,
+    ):
+        """_run_checks()의 모든 의존성을 패치하는 딕셔너리를 반환."""
+        if open_positions is None:
+            open_positions = []
+        if symbols is None:
+            symbols = ["SPY"]
+        if fetch_df is None:
+            fetch_df = self._make_mock_df()
+
+        patches = {}
+
+        patches["load_config"] = patch(
+            "scripts.check_positions.load_config",
+            return_value={"telegram_token": None, "telegram_chat_id": None},
+        )
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+        patches["setup_notifier"] = patch(
+            "scripts.check_positions.setup_notifier",
+            return_value=mock_notifier,
+        )
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch.return_value = fetch_df
+        patches["DataFetcher"] = patch(
+            "scripts.check_positions.DataFetcher",
+            return_value=mock_fetcher,
+        )
+
+        mock_data_store = MagicMock()
+        patches["ParquetDataStore"] = patch(
+            "scripts.check_positions.ParquetDataStore",
+            return_value=mock_data_store,
+        )
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [p for p in open_positions if p.symbol == sym] if sym else open_positions
+        )
+        mock_tracker.get_summary.return_value = {"open": len(open_positions)}
+        mock_tracker.should_pyramid.return_value = should_pyramid
+        mock_tracker.get_position_history.return_value = []
+        # close_position 기본 반환: 청산된 Position mock
+        mock_closed = MagicMock()
+        mock_closed.position_id = "test_pos_id"
+        mock_closed.symbol = "SPY"
+        mock_closed.system = 1
+        mock_closed.direction = Direction.LONG
+        mock_closed.entry_date = "2025-03-01"
+        mock_closed.entry_price = 100.0
+        mock_closed.exit_date = "2025-03-10"
+        mock_closed.exit_price = 96.0
+        mock_closed.exit_reason = "Stop Loss"
+        mock_closed.units = 1
+        mock_closed.total_shares = 40
+        mock_closed.pnl = -160.0
+        mock_closed.pnl_pct = -4.0
+        mock_closed.r_multiple = -1.0
+        mock_closed.entry_n = 2.0
+        mock_tracker.close_position.return_value = mock_closed
+        patches["PositionTracker"] = patch(
+            "scripts.check_positions.PositionTracker",
+            return_value=mock_tracker,
+        )
+
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = can_add
+        mock_rm.get_risk_summary.return_value = {}
+        patches["setup_risk_manager"] = patch(
+            "scripts.check_positions.setup_risk_manager",
+            return_value=mock_rm,
+        )
+
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = symbols
+        mock_universe.assets = {}
+        patches["UniverseManager"] = patch(
+            "scripts.check_positions.UniverseManager",
+            return_value=mock_universe,
+        )
+
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = False
+        patches["InverseETFFilter"] = patch(
+            "scripts.check_positions.InverseETFFilter",
+            return_value=mock_inverse,
+        )
+
+        patches["add_turtle_indicators"] = patch(
+            "scripts.check_positions.add_turtle_indicators",
+            side_effect=lambda df: df,
+        )
+
+        patches["get_market_status"] = patch(
+            "scripts.check_positions.get_market_status",
+            return_value="Market Open",
+        )
+
+        patches["should_check_signals"] = patch(
+            "scripts.check_positions.should_check_signals",
+            return_value=should_check,
+        )
+
+        patches["infer_market"] = patch(
+            "scripts.check_positions.infer_market",
+            return_value="US",
+        )
+
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False
+        patches["universe_yaml_path"] = patch(
+            "scripts.check_positions.Path",
+            side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+        )
+
+        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store
+
+    async def test_stop_loss_saves_trade_record(self):
+        """스톱로스 청산 시 save_trade() 호출 검증."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=95, close=96),
+        )
+        PatchManager.start_all(patches)
+        try:
+            await _run_checks()
+        finally:
+            PatchManager.stop_all(patches)
+
+        tracker.close_position.assert_called_once()
+        ds.save_trade.assert_called_once()
+        trade_record = ds.save_trade.call_args[0][0]
+        assert trade_record["position_id"] == "test_pos_id"
+        assert "recorded_at" in trade_record
+
+    async def test_exit_signal_saves_trade_record(self):
+        """청산 시그널 경로에서 save_trade() 호출 검증."""
+        pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
+        # low=96 < dc_low_10=97 -> exit signal, stop_loss=80 not hit
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=96, close=97),
+        )
+        PatchManager.start_all(patches)
+        try:
+            await _run_checks()
+        finally:
+            PatchManager.stop_all(patches)
+
+        tracker.close_position.assert_called_once()
+        ds.save_trade.assert_called_once()
+        trade_record = ds.save_trade.call_args[0][0]
+        assert trade_record["position_id"] == "test_pos_id"
+
+    async def test_inverse_exit_saves_trade_record(self):
+        """Inverse ETF 강제 청산 시 save_trade() 호출 검증."""
+        pos = _make_open_position(symbol="SH", direction="LONG", system=1, stop_loss=50.0)
+
+        mock_notifier = MagicMock()
+        mock_notifier.send_signal = AsyncMock()
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
+            [pos] if sym is None or sym == "SH" else []
+        )
+        mock_tracker.get_summary.return_value = {"open": 1}
+        mock_tracker.should_pyramid.return_value = False
+        mock_tracker.get_position_history.return_value = []
+        # close_position 반환값 설정
+        mock_closed = MagicMock()
+        mock_closed.position_id = "SH_1_LONG_test"
+        mock_closed.symbol = "SH"
+        mock_closed.system = 1
+        mock_closed.direction = Direction.LONG
+        mock_closed.entry_date = "2025-03-01"
+        mock_closed.entry_price = 100.0
+        mock_closed.exit_date = "2025-03-10"
+        mock_closed.exit_price = 100.0
+        mock_closed.exit_reason = "Inverse Filter: Decay > 5%"
+        mock_closed.units = 1
+        mock_closed.total_shares = 40
+        mock_closed.pnl = 0.0
+        mock_closed.pnl_pct = 0.0
+        mock_closed.r_multiple = 0.0
+        mock_closed.entry_n = 2.0
+        mock_tracker.close_position.return_value = mock_closed
+
+        mock_rm = MagicMock()
+        mock_rm.can_add_position.return_value = (True, "")
+        mock_rm.get_risk_summary.return_value = {}
+
+        mock_universe = MagicMock()
+        mock_universe.get_enabled_symbols.return_value = []
+        mock_universe.assets = {}
+
+        mock_inverse = MagicMock()
+        mock_inverse.is_inverse_etf.return_value = True
+        mock_inverse.get_config.return_value = MagicMock(underlying="SPY")
+        mock_inverse.should_force_exit.return_value = (True, "DECAY_THRESHOLD", "Decay > 5%")
+
+        mock_data_store = MagicMock()
+
+        mock_yaml_path = MagicMock()
+        mock_yaml_path.exists.return_value = False
+
+        with (
+            patch(
+                "scripts.check_positions.load_config",
+                return_value={"telegram_token": None, "telegram_chat_id": None},
+            ),
+            patch("scripts.check_positions.setup_notifier", return_value=mock_notifier),
+            patch("scripts.check_positions.DataFetcher", return_value=mock_fetcher),
+            patch("scripts.check_positions.ParquetDataStore", return_value=mock_data_store),
+            patch("scripts.check_positions.PositionTracker", return_value=mock_tracker),
+            patch("scripts.check_positions.setup_risk_manager", return_value=mock_rm),
+            patch("scripts.check_positions.UniverseManager", return_value=mock_universe),
+            patch("scripts.check_positions.InverseETFFilter", return_value=mock_inverse),
+            patch("scripts.check_positions.add_turtle_indicators", side_effect=lambda df: df),
+            patch("scripts.check_positions.get_market_status", return_value="Open"),
+            patch("scripts.check_positions.should_check_signals", return_value=True),
+            patch("scripts.check_positions.infer_market", return_value="US"),
+            patch(
+                "scripts.check_positions.Path",
+                side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+        ):
+            await _run_checks()
+
+        mock_tracker.close_position.assert_called_once()
+        mock_data_store.save_trade.assert_called_once()
+        trade_record = mock_data_store.save_trade.call_args[0][0]
+        assert trade_record["position_id"] == "SH_1_LONG_test"
+        assert trade_record["exit_reason"] == "Inverse Filter: Decay > 5%"
+
+    async def test_save_trade_failure_does_not_halt_processing(self):
+        """save_trade() 실패 시 루프가 중단되지 않고 계속 진행되는지 검증."""
+        pos1 = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
+        pos2 = _make_open_position(symbol="QQQ", direction="LONG", system=1, stop_loss=98.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos1, pos2],
+            fetch_df=self._make_mock_df(high=100, low=95, close=96),
+        )
+        # save_trade가 항상 예외를 발생시키도록 설정
+        ds.save_trade.side_effect = RuntimeError("Disk full")
+        PatchManager.start_all(patches)
+        try:
+            await _run_checks()  # 예외로 중단되지 않아야 함
+        finally:
+            PatchManager.stop_all(patches)
+
+        # 두 포지션 모두 close_position이 호출되어야 함 (루프가 중단되지 않음)
+        assert tracker.close_position.call_count == 2
+        # save_trade도 두 번 시도되어야 함
+        assert ds.save_trade.call_count == 2
