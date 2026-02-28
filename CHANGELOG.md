@@ -11,6 +11,35 @@
 
 ---
 
+## [3.5.0] — 2026-02-28
+
+데이터 파이프라인 복원 & Docker 배포 준비 — 거래 기록 파이프라인 연결, 리스크 매니저 통합, Docker/cron 보강.
+
+### Added
+- PR #89: 3개 청산 경로(stop-loss/inverse-filter/exit-signal)에 `save_trade()` 파이프라인 연결
+- PR #89: `_build_trade_record()` 헬퍼 — 16개 필드 포함 거래 기록 dict 생성
+- PR #89: `save_trade()` 실패 시 try/except 에러 처리 (루프 중단 방지)
+- PR #91: `src/script_helpers.py`에 통합 `setup_risk_manager()` 함수
+- PR #91: `_GROUP_MAPPING` — `correlation_groups.yaml` 7개 그룹 명시적 매핑
+- PR #91: regression guard 테스트 — YAML 그룹 ↔ 매핑 완전성 검증
+- PR #92: Docker healthcheck (turtle-cron: 로그 수정시간, turtle-dashboard: Streamlit health)
+- PR #92: Docker logging 제한 (max-size: 10m, max-file: 3)
+- PR #92: cron 작업 8개 추가 (health_check, risk_limits, weekly_report, backup, 정리)
+- 테스트 14개 추가 (save_trade 7개 + setup_risk_manager 7개)
+
+### Fixed
+- PR #89: `data/trades/`가 영원히 비어있는 문제 — `daily_report.py` 거래 통계 0건 해결
+- PR #91: `us_tech`/`inverse` 그룹 누락으로 인한 리스크 그룹 오분류 해결
+- PR #92: Dockerfile에 `app.py` COPY 누락 — dashboard 서비스 시작 실패 해결
+- PR #92: `docker-compose.yaml` 미사용 named volumes 선언 제거
+
+### Changed
+- PR #91: `check_positions.py`, `check_risk_limits.py`, `weekly_report.py`의 로컬 `setup_risk_manager()` 제거 → `script_helpers` import로 교체
+- PR #90: `config/notifications.yaml` → `config/notifications.yaml.example`로 이동 (코드 미사용 파일 정리)
+- PR #90: `.env.example` 알림 환경변수 설명 보강
+
+---
+
 ## [3.4.2] — 2026-02-26
 
 `remove_position` 입력 검증 및 공유 상태 보호 패치.
