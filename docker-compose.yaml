@@ -11,11 +11,11 @@ services:
       - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import pathlib, time; logs=sorted(pathlib.Path('/app/logs').glob('*.log'), key=lambda f: f.stat().st_mtime, reverse=True); exit(0 if logs and time.time() - logs[0].stat().st_mtime < 86400 else 1)"]
+      test: ["CMD", "pgrep", "-x", "supercronic"]
       interval: 5m
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 6m
     logging:
       driver: json-file
       options:

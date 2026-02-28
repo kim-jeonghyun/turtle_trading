@@ -2,6 +2,7 @@
 # 시간대: Asia/Seoul (KST)
 
 # 환경 변수
+TZ=Asia/Seoul
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 PYTHONPATH=/app
@@ -24,6 +25,22 @@ PYTHONPATH=/app
 
 # 시스템 건강 점검 (매 4시간)
 0 */4 * * * cd /app && python scripts/health_check.py >> /app/logs/health_check.log 2>&1
+
+# === 장중 모니터링 (5분 간격) ===
+# 내부 is_market_open() 게이트가 마켓 시간/공휴일/DST 보정
+# cron은 최대 범위로 설정, 불필요 호출은 스크립트가 즉시 종료
+# 로그는 Python TimedRotatingFileHandler가 관리 (>> 리디렉션 불필요)
+
+# KR 장중: 09:00-15:25 KST, 월-금
+*/5 9-14 * * 1-5 cd /app && python scripts/monitor_positions.py
+0,5,10,15,20,25 15 * * 1-5 cd /app && python scripts/monitor_positions.py
+
+# US 장중: DST 양방향 커버 22:00-06:25 KST
+# - 표준시(EST): US 장 KST 23:30-06:00 → 22:00 시작으로 여유
+# - 서머타임(EDT): US 장 KST 22:30-05:00 → 22:00 시작 정확
+*/5 22-23 * * 1-5 cd /app && python scripts/monitor_positions.py
+*/5 0-5 * * 2-6 cd /app && python scripts/monitor_positions.py
+0,5,10,15,20,25 6 * * 2-6 cd /app && python scripts/monitor_positions.py
 
 # 리스크 한도 점검 (KR장중 09-15시)
 0 9-15 * * 1-5 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
