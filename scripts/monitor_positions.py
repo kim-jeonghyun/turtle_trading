@@ -13,6 +13,7 @@ import asyncio
 import fcntl
 import logging
 import logging.handlers
+import os
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -22,11 +23,15 @@ from src.market_calendar import infer_market, is_market_open
 from src.monitor_state import MonitorState
 from src.notifier import NotificationLevel, NotificationMessage
 from src.position_tracker import PositionTracker
-from src.script_helpers import create_kis_client, load_config, setup_notifier, setup_risk_manager
-from src.spot_price import SpotPriceFetcher
+from src.script_helpers import create_kis_client, load_config, setup_notifier
+from src.spot_price import SpotData, SpotPriceFetcher
 from src.types import Direction
 
 LOCK_FILE = Path(__file__).parent.parent / "data" / ".monitor_positions.lock"
+# NOTE: check_positions.py(.check_positions.lock)와 별도 lock 사용.
+# 동시 실행 가능하나 무해: monitor는 PositionTracker read-only,
+# MonitorState는 별도 파일. check_positions가 포지션 청산 시
+# 다음 폴링에서 자동 반영됨.
 SCRIPT_TIMEOUT = 240  # 4분 (5분 폴링 간격 내 완료 보장)
 
 logger = logging.getLogger(__name__)
@@ -65,6 +70,8 @@ def acquire_lock():
     fd = open(LOCK_FILE, "w")
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd.write(str(os.getpid()))
+        fd.flush()
     except OSError:
         logger.warning("다른 모니터링 인스턴스 실행 중 -- 종료")
         fd.close()
@@ -72,7 +79,7 @@ def acquire_lock():
     return fd
 
 
-def check_stop_loss_intraday(position, spot: dict) -> bool:
+def check_stop_loss_intraday(position, spot: SpotData) -> bool:
     """장중 스톱로스 체크 -- check_positions.py:92-94 동일 의미론.
 
     - LONG: 장중 저가(low) <= stop_loss
@@ -104,7 +111,7 @@ def calculate_unrealized_pnl(position, current_price: float) -> tuple[float, flo
     return pnl_dollar, pnl_pct
 
 
-def _build_stop_loss_alert(position, spot: dict) -> NotificationMessage:
+def _build_stop_loss_alert(position, spot: SpotData) -> NotificationMessage:
     """스톱로스 알림 메시지 생성."""
     pnl_dollar, pnl_pct = calculate_unrealized_pnl(position, spot["price"])
     return NotificationMessage(
@@ -125,7 +132,7 @@ def _build_stop_loss_alert(position, spot: dict) -> NotificationMessage:
     )
 
 
-def _build_pnl_warning(position, spot: dict, pnl_dollar: float, pnl_pct: float) -> NotificationMessage:
+def _build_pnl_warning(position, spot: SpotData, pnl_dollar: float, pnl_pct: float) -> NotificationMessage:
     """P&L 경고 알림 메시지 생성."""
     return NotificationMessage(
         title="UNREALIZED LOSS WARNING (Intraday)",
@@ -151,7 +158,6 @@ async def monitor_positions(args):
             config = load_config()
             notifier = setup_notifier(config)
             tracker = PositionTracker()
-            _risk_manager = setup_risk_manager()  # noqa: F841 — 향후 한도 검증 통합용
             monitor_state = MonitorState.load()
 
             # KIS 세션 관리: async with로 1회 생성, 전 종목 공유
@@ -206,6 +212,17 @@ async def monitor_positions(args):
 
     except asyncio.TimeoutError:
         logger.error(f"모니터링 타임아웃 ({SCRIPT_TIMEOUT}초)")
+        try:
+            await notifier.send_message(
+                NotificationMessage(
+                    title="MONITOR TIMEOUT",
+                    body=f"장중 모니터링 타임아웃 ({SCRIPT_TIMEOUT}초). 확인 필요.",
+                    level=NotificationLevel.ERROR,
+                    data={"action": "CHECK_MONITOR"},
+                )
+            )
+        except Exception:
+            pass  # notifier 미초기화(NameError) 또는 전송 실패
     except Exception as e:
         logger.error(f"모니터링 오류: {e}", exc_info=True)
     finally:

@@ -2,7 +2,9 @@
 monitor_positions.py 리팩토링 통합 테스트
 """
 
+import asyncio
 import fcntl
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,20 +34,20 @@ def _make_position(
     total_shares=10,
     **kwargs,
 ):
-    """테스트용 Position mock 생성."""
-    pos = MagicMock()
-    pos.position_id = position_id
-    pos.symbol = symbol
-    pos.direction = direction
-    pos.entry_price = entry_price
-    pos.stop_loss = stop_loss
-    pos.total_shares = total_shares
-    pos.system = kwargs.get("system", 1)
-    pos.units = kwargs.get("units", 1)
-    pos.max_units = kwargs.get("max_units", 4)
-    pos.entry_date = kwargs.get("entry_date", "2026-01-01")
-    pos.entry_n = kwargs.get("entry_n", 5.0)
-    return pos
+    """테스트용 Position mock 생성 (SimpleNamespace — 속성 오타 시 AttributeError)."""
+    return SimpleNamespace(
+        position_id=position_id,
+        symbol=symbol,
+        direction=direction,
+        entry_price=entry_price,
+        stop_loss=stop_loss,
+        total_shares=total_shares,
+        system=kwargs.get("system", 1),
+        units=kwargs.get("units", 1),
+        max_units=kwargs.get("max_units", 4),
+        entry_date=kwargs.get("entry_date", "2026-01-01"),
+        entry_n=kwargs.get("entry_n", 5.0),
+    )
 
 
 class TestStopLossCheck:
@@ -79,6 +81,11 @@ class TestStopLossCheck:
         pos = _make_position(direction=Direction.LONG, stop_loss=90.0)
         assert check_stop_loss_intraday(pos, {"low": 90.0, "high": 95.0}) is True
 
+    def test_stop_loss_short_at_boundary(self):
+        """SHORT: high == stop_loss (경계값 동등) -> 발동"""
+        pos = _make_position(direction=Direction.SHORT, stop_loss=110.0)
+        assert check_stop_loss_intraday(pos, {"low": 105.0, "high": 110.0}) is True
+
     async def test_stop_loss_triggers_notification(self):
         """스톱로스 이탈 → notifier.send_message 호출 (ERROR 레벨)"""
         from src.notifier import NotificationLevel
@@ -107,7 +114,6 @@ class TestStopLossCheck:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -134,6 +140,59 @@ class TestStopLossCheck:
             assert "STOP LOSS" in msg.title
             # MonitorState에 알림 기록 확인
             state.mark_stop_loss_alerted.assert_called_once_with("pos_1")
+
+    async def test_stop_loss_recovery_reset_integration(self):
+        """스톱로스 알림 → 가격 회복 → reset 확인 (메인 루프)"""
+        pos = _make_position(
+            direction=Direction.LONG,
+            entry_price=100.0,
+            stop_loss=90.0,
+            total_shares=10,
+        )
+        tracker = MagicMock()
+        tracker.get_open_positions.return_value = [pos]
+
+        notifier = AsyncMock()
+        spot_fetcher = AsyncMock()
+        # 가격 회복: low=95 > stop=90 → 스톱로스 미이탈
+        spot_fetcher.fetch_spot_price.return_value = {
+            "price": 100.0,
+            "high": 105.0,
+            "low": 95.0,
+        }
+        state = MagicMock()
+        # 이전에 스톱로스 알림 발송됨
+        state.is_stop_loss_alerted.return_value = True
+        state.can_send_warning.return_value = False
+
+        with (
+            patch("scripts.monitor_positions.fcntl"),
+            patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
+            patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
+            patch("scripts.monitor_positions.load_config", return_value={}),
+            patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
+            patch("scripts.monitor_positions.create_kis_client", return_value=None),
+            patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
+            patch("scripts.monitor_positions.is_market_open", return_value=True),
+            patch("scripts.monitor_positions.infer_market", return_value="US"),
+            patch("scripts.monitor_positions.acquire_lock") as mock_lock,
+        ):
+            mock_lock.return_value = MagicMock()
+            mock_lock.return_value.fileno.return_value = 999
+            mock_state_cls.load.return_value = state
+            state.cleanup_closed_positions = MagicMock()
+            state.save = MagicMock()
+
+            args = MagicMock()
+            args.threshold = 0.05
+            args.warning_cooldown = 60
+
+            await monitor_positions(args)
+
+            # 가격 회복 → reset 호출
+            state.reset_stop_loss_alert.assert_called_once_with("pos_1")
+            # 알림 미발송 (회복이므로)
+            notifier.send_message.assert_not_called()
 
 
 class TestPnlWarning:
@@ -174,6 +233,63 @@ class TestPnlWarning:
         pnl_dollar, pnl_pct = calculate_unrealized_pnl(pos, 95.0)
         assert pnl_pct <= -0.05
 
+    async def test_pnl_warning_triggers_notification(self):
+        """PnL 경고 → notifier.send_message 호출 (WARNING 레벨)"""
+        from src.notifier import NotificationLevel
+
+        pos = _make_position(
+            direction=Direction.LONG,
+            entry_price=100.0,
+            stop_loss=80.0,
+            total_shares=10,
+        )
+        tracker = MagicMock()
+        tracker.get_open_positions.return_value = [pos]
+
+        notifier = AsyncMock()
+        spot_fetcher = AsyncMock()
+        spot_fetcher.fetch_spot_price.return_value = {
+            "price": 90.0,  # -10% → threshold 5% 초과
+            "high": 101.0,
+            "low": 89.0,
+        }
+        state = MagicMock()
+        state.is_stop_loss_alerted.return_value = False
+        state.can_send_warning.return_value = True
+
+        with (
+            patch("scripts.monitor_positions.fcntl"),
+            patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
+            patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
+            patch("scripts.monitor_positions.load_config", return_value={}),
+            patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
+            patch("scripts.monitor_positions.create_kis_client", return_value=None),
+            patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
+            patch("scripts.monitor_positions.is_market_open", return_value=True),
+            patch("scripts.monitor_positions.infer_market", return_value="US"),
+            patch("scripts.monitor_positions.acquire_lock") as mock_lock,
+        ):
+            mock_lock.return_value = MagicMock()
+            mock_lock.return_value.fileno.return_value = 999
+            mock_state_cls.load.return_value = state
+            state.cleanup_closed_positions = MagicMock()
+            state.save = MagicMock()
+
+            args = MagicMock()
+            args.threshold = 0.05
+            args.warning_cooldown = 60
+
+            await monitor_positions(args)
+
+            # 알림 발송 확인: stop_loss 미이탈 + PnL 경고
+            # stop_loss=80이고 low=89이므로 스톱로스 미발동
+            # PnL = -10% > -5% threshold → 경고
+            assert notifier.send_message.call_count == 1
+            msg = notifier.send_message.call_args[0][0]
+            assert msg.level == NotificationLevel.WARNING
+            assert "UNREALIZED LOSS" in msg.title
+            state.update_warning.assert_called_once_with("pos_1")
+
 
 class TestMarketGate:
     """마켓 시간 게이트 테스트"""
@@ -193,7 +309,6 @@ class TestMarketGate:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -235,7 +350,6 @@ class TestMarketGate:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -269,7 +383,6 @@ class TestMarketGate:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=AsyncMock()),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -306,7 +419,6 @@ class TestSafety:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -355,7 +467,6 @@ class TestSafety:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=AsyncMock()),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.acquire_lock") as mock_lock,
@@ -393,7 +504,6 @@ class TestSafety:
             patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
             patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
             patch("scripts.monitor_positions.load_config", return_value={}),
-            patch("scripts.monitor_positions.setup_risk_manager"),
             patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
             patch("scripts.monitor_positions.create_kis_client", return_value=None),
             patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
@@ -412,3 +522,22 @@ class TestSafety:
             await monitor_positions(args)
 
             state.save.assert_called_once()
+
+    async def test_timeout_releases_lock(self):
+        """asyncio.timeout → finally에서 lock 해제"""
+        lock_fd = MagicMock()
+        lock_fd.fileno.return_value = 999
+
+        with (
+            patch("scripts.monitor_positions.fcntl"),
+            patch("scripts.monitor_positions.acquire_lock", return_value=lock_fd),
+            patch("scripts.monitor_positions.load_config", side_effect=asyncio.TimeoutError),
+        ):
+            args = MagicMock()
+            args.threshold = 0.05
+            args.warning_cooldown = 60
+
+            await monitor_positions(args)
+
+            # finally 블록에서 lock 해제 확인
+            lock_fd.close.assert_called_once()

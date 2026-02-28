@@ -8,7 +8,7 @@
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -108,14 +108,19 @@ class MonitorState:
 
         try:
             last_time = datetime.fromisoformat(alert.last_warning_time)
-            return datetime.now() - last_time >= timedelta(minutes=cooldown_minutes)
+            if last_time.tzinfo is None:
+                # 레거시 naive 저장값 — 로컬 타임 기준으로 비교
+                now = datetime.now()
+            else:
+                now = datetime.now(tz=timezone.utc)
+            return now - last_time >= timedelta(minutes=cooldown_minutes)
         except (ValueError, TypeError):
             return True
 
     def update_warning(self, position_id: str) -> None:
         """P&L 경고 발송 시간 기록."""
         alert = self._get_or_create(position_id)
-        alert.last_warning_time = datetime.now().isoformat()
+        alert.last_warning_time = datetime.now(tz=timezone.utc).isoformat()
         alert.warning_count += 1
 
     def cleanup_closed_positions(self, open_position_ids: set[str]) -> None:

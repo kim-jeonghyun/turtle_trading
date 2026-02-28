@@ -84,6 +84,14 @@ class TestUSSpotPrice:
         await fetcher.fetch_spot_price("AAPL")
         kis.get_overseas_price.assert_called_once_with("AAPL", KISMarket.USA)
 
+    async def test_us_kis_empty_dict(self):
+        """US KIS 실패 -> {} 반환 -> None"""
+        kis = AsyncMock()
+        kis.get_overseas_price.return_value = {}
+        fetcher = SpotPriceFetcher(kis_client=kis)
+        result = await fetcher.fetch_spot_price("AAPL")
+        assert result is None
+
 
 class TestCryptoSpotPrice:
     """Crypto CCXT 조회 테스트"""
