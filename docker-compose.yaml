@@ -10,6 +10,17 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib, time; logs=sorted(pathlib.Path('/app/logs').glob('*.log'), key=lambda f: f.stat().st_mtime, reverse=True); exit(0 if logs and time.time() - logs[0].stat().st_mtime < 86400 else 1)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - turtle-network
 
@@ -27,6 +38,17 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - turtle-network
     depends_on:
@@ -35,7 +57,3 @@ services:
 networks:
   turtle-network:
     driver: bridge
-
-volumes:
-  data:
-  logs:

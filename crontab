@@ -19,4 +19,26 @@ PYTHONPATH=/app
 # 캐시 정리 (매주 일요일 03:00)
 0 3 * * 0 find /app/data/cache -type f -mtime +7 -delete >> /app/logs/cleanup.log 2>&1
 
+# 데이터 백업 (매일 02:00)
+0 2 * * * cd /app && bash scripts/backup_data.sh >> /app/logs/backup.log 2>&1
+
+# 시스템 건강 점검 (매 4시간)
+0 */4 * * * cd /app && python scripts/health_check.py >> /app/logs/health_check.log 2>&1
+
+# 리스크 한도 점검 (KR장중 09-15시)
+0 9-15 * * 1-5 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
+
+# 리스크 한도 점검 (US장중 KST 23-06시)
+0 23 * * 1-5 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
+0 0-6 * * 2-6 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
+
+# 주간 리포트 (매주 토요일 09:00)
+0 9 * * 6 cd /app && python scripts/weekly_report.py --send >> /app/logs/weekly_report.log 2>&1
+
+# 로그 정리 (매주 일요일 04:00, 14일 이상 된 로그 삭제)
+0 4 * * 0 find /app/logs -name "*.log" -mtime +14 -delete >> /app/logs/cleanup.log 2>&1
+
+# 시그널/거래 파일 정리 (매월 1일 03:30, 90일 이상 된 parquet 삭제)
+30 3 1 * * find /app/data/signals -name "*.parquet" -mtime +90 -delete && find /app/data/trades -name "*.parquet" -mtime +90 -delete >> /app/logs/cleanup.log 2>&1
+
 # 빈 줄 필수
