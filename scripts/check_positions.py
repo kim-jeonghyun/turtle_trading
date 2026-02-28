@@ -34,6 +34,32 @@ logger = logging.getLogger(__name__)
 LOCK_FILE = Path(__file__).parent.parent / "data" / ".check_positions.lock"
 
 
+def _build_trade_record(pos) -> dict:
+    """청산된 포지션에서 거래 기록 dict 생성.
+
+    Args:
+        pos: close_position()이 반환한 Position (exit 필드가 채워진 상태)
+    """
+    return {
+        "position_id": pos.position_id,
+        "recorded_at": datetime.now().isoformat(),
+        "symbol": pos.symbol,
+        "system": pos.system,
+        "direction": pos.direction.value if hasattr(pos.direction, "value") else pos.direction,
+        "entry_date": pos.entry_date,
+        "entry_price": pos.entry_price,
+        "exit_date": pos.exit_date,
+        "exit_price": pos.exit_price,
+        "exit_reason": pos.exit_reason,
+        "units": pos.units,
+        "total_shares": pos.total_shares,
+        "pnl": pos.pnl,
+        "pnl_pct": pos.pnl_pct,
+        "r_multiple": pos.r_multiple,
+        "entry_n": pos.entry_n,
+    }
+
+
 def acquire_lock():
     """중복 실행 방지를 위한 파일 잠금"""
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -360,7 +386,12 @@ async def _run_checks():
             # 스톱로스 체크
             if check_stop_loss(pos, today):
                 logger.warning(f"스톱로스 발동: {pos.symbol} ({pos.direction.value}) @ {today['close']}")
-                tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
+                closed_pos = tracker.close_position(pos.position_id, pos.stop_loss, "Stop Loss")
+                if closed_pos:
+                    try:
+                        data_store.save_trade(_build_trade_record(closed_pos))
+                    except Exception as e:
+                        logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=universe.get_display_name(pos.symbol),
@@ -386,7 +417,13 @@ async def _run_checks():
                         )
                         if should_exit:
                             logger.warning(f"Inverse ETF 강제 청산: {pos.symbol} - {reason}")
-                            tracker.close_position(pos.position_id, today["close"], f"Inverse Filter: {msg}")
+                            exit_msg = f"Inverse Filter: {msg}"
+                            closed_pos = tracker.close_position(pos.position_id, today["close"], exit_msg)
+                            if closed_pos:
+                                try:
+                                    data_store.save_trade(_build_trade_record(closed_pos))
+                                except Exception as e:
+                                    logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
                             risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                             await notifier.send_signal(
                                 symbol=universe.get_display_name(pos.symbol),
@@ -401,7 +438,12 @@ async def _run_checks():
             exit_signal = check_exit_signals(df, pos, pos.system)
             if exit_signal:
                 logger.info(f"청산 시그널: {pos.symbol}")
-                tracker.close_position(pos.position_id, exit_signal["price"], exit_signal["message"])
+                closed_pos = tracker.close_position(pos.position_id, exit_signal["price"], exit_signal["message"])
+                if closed_pos:
+                    try:
+                        data_store.save_trade(_build_trade_record(closed_pos))
+                    except Exception as e:
+                        logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=universe.get_display_name(pos.symbol),
