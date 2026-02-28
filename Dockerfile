@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir .
 COPY scripts/ scripts/
 COPY config/ config/
 COPY crontab /app/crontab
+COPY app.py .
 
 # 디렉토리 생성
 RUN mkdir -p /app/data/cache /app/data/trades /app/data/signals /app/logs
