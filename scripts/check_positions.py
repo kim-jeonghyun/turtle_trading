@@ -15,17 +15,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import yaml  # type: ignore[import-untyped]
-
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
 from src.inverse_filter import InverseETFFilter
 from src.market_calendar import get_market_status, infer_market, should_check_signals
 from src.position_tracker import PositionTracker
-from src.risk_manager import PortfolioRiskManager
-from src.script_helpers import load_config, setup_notifier
-from src.types import AssetGroup, Direction, SignalType
+from src.script_helpers import load_config, setup_notifier, setup_risk_manager
+from src.types import Direction, SignalType
 from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -83,47 +80,6 @@ def release_lock(fd):
             fd.close()
         except Exception:
             pass
-
-
-def setup_risk_manager() -> PortfolioRiskManager:
-    """리스크 매니저 설정"""
-    config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
-    symbol_groups: dict[str, AssetGroup] = {}
-
-    if not config_path.exists():
-        logger.warning(f"상관그룹 설정 파일 없음: {config_path}. 기본 그룹으로 운영합니다.")
-        return PortfolioRiskManager(symbol_groups=symbol_groups)
-
-    try:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-
-        if not config or "groups" not in config:
-            logger.warning("상관그룹 설정이 비어있습니다.")
-            return PortfolioRiskManager(symbol_groups=symbol_groups)
-
-        group_mapping = {
-            "kr_equity": AssetGroup.KR_EQUITY,
-            "us_equity": AssetGroup.US_EQUITY,
-            "us_etf": AssetGroup.US_EQUITY,
-            "us_tech": AssetGroup.US_EQUITY,
-            "crypto": AssetGroup.CRYPTO,
-            "commodity": AssetGroup.COMMODITY,
-            "bond": AssetGroup.BOND,
-            "inverse": AssetGroup.INVERSE,
-        }
-
-        for group_name, symbols in config.get("groups", {}).items():
-            asset_group = group_mapping.get(group_name, AssetGroup.US_EQUITY)
-            for symbol in symbols:
-                symbol_groups[symbol] = asset_group
-
-        logger.info(f"상관그룹 설정 로드: {len(symbol_groups)}개 심볼")
-
-    except yaml.YAMLError as e:
-        logger.error(f"상관그룹 YAML 파싱 오류: {e}. 기본 그룹으로 운영합니다.")
-
-    return PortfolioRiskManager(symbol_groups=symbol_groups)
 
 
 def check_stop_loss(position, today_data) -> bool:

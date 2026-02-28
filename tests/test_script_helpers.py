@@ -2,9 +2,13 @@
 script_helpers.py 단위 테스트
 """
 
+import logging
+from pathlib import Path
 from unittest.mock import patch
 
-from src.script_helpers import load_config, setup_notifier
+import yaml
+
+from src.script_helpers import _GROUP_MAPPING, load_config, setup_notifier, setup_risk_manager
 
 _NO_DOTENV = patch("dotenv.load_dotenv", lambda *a, **kw: None)
 
@@ -138,3 +142,83 @@ class TestSetupNotifier:
         }
         notifier = setup_notifier(config)
         assert len(notifier.channels) == 1
+
+
+class TestSetupRiskManager:
+    """setup_risk_manager() 통합 버전 테스트"""
+
+    def test_setup_risk_manager_loads_all_groups(self, tmp_path):
+        """YAML에서 모든 그룹이 로드되는지 검증"""
+        yaml_content = {
+            "groups": {
+                "us_equity": ["SPY", "QQQ"],
+                "kr_equity": ["005930.KS"],
+            }
+        }
+        config_path = tmp_path / "test_groups.yaml"
+        config_path.write_text(yaml.dump(yaml_content))
+        rm = setup_risk_manager(config_path=config_path)
+        assert rm is not None
+
+    def test_setup_risk_manager_unknown_group_warns(self, tmp_path, caplog):
+        """미지 그룹명에 warning 로그 발생"""
+        yaml_content = {
+            "groups": {
+                "unknown_group": ["XYZ"],
+            }
+        }
+        config_path = tmp_path / "test_groups.yaml"
+        config_path.write_text(yaml.dump(yaml_content))
+        with caplog.at_level(logging.WARNING):
+            rm = setup_risk_manager(config_path=config_path)
+        assert "Unknown correlation group" in caplog.text
+        assert rm is not None
+
+    def test_all_yaml_groups_have_explicit_mapping(self):
+        """correlation_groups.yaml의 모든 그룹명이 _GROUP_MAPPING에 존재하는지 검증 (regression guard)"""
+        config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        for group_name in config.get("groups", {}).keys():
+            assert group_name in _GROUP_MAPPING, f"Unmapped group in YAML: {group_name}"
+
+    def test_setup_risk_manager_returns_valid_instance(self):
+        """실제 YAML로 유효한 PortfolioRiskManager 반환 검증"""
+        rm = setup_risk_manager()
+        assert rm is not None
+        assert hasattr(rm, "check_position_limit") or hasattr(rm, "can_add_position")
+
+    def test_setup_risk_manager_missing_file(self, tmp_path, caplog):
+        """존재하지 않는 파일에 대해 빈 매니저 반환"""
+        config_path = tmp_path / "nonexistent.yaml"
+        with caplog.at_level(logging.WARNING):
+            rm = setup_risk_manager(config_path=config_path)
+        assert rm is not None
+        assert "상관그룹 설정 파일 없음" in caplog.text
+
+    def test_setup_risk_manager_empty_config(self, tmp_path, caplog):
+        """groups 키가 없는 YAML에 대해 빈 매니저 반환"""
+        config_path = tmp_path / "empty.yaml"
+        config_path.write_text(yaml.dump({"other_key": "value"}))
+        with caplog.at_level(logging.WARNING):
+            rm = setup_risk_manager(config_path=config_path)
+        assert rm is not None
+        assert "상관그룹 설정이 비어있습니다" in caplog.text
+
+    def test_symbol_group_assignment(self, tmp_path):
+        """심볼별 그룹 할당이 올바른지 검증"""
+        from src.types import AssetGroup
+
+        yaml_content = {
+            "groups": {
+                "us_equity": ["SPY"],
+                "crypto": ["BTC"],
+                "inverse": ["SH"],
+            }
+        }
+        config_path = tmp_path / "test_groups.yaml"
+        config_path.write_text(yaml.dump(yaml_content))
+        rm = setup_risk_manager(config_path=config_path)
+        assert rm.get_group("SPY") == AssetGroup.US_EQUITY
+        assert rm.get_group("BTC") == AssetGroup.CRYPTO
+        assert rm.get_group("SH") == AssetGroup.INVERSE

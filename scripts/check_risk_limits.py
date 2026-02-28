@@ -14,12 +14,6 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    import yaml
-except ImportError:
-    yaml = None  # type: ignore[assignment]
-    logging.getLogger(__name__).warning("pyyaml 미설치. YAML 설정 파일을 사용할 수 없습니다.")
-
-try:
     from tabulate import tabulate
 except ImportError:
 
@@ -34,50 +28,10 @@ except ImportError:
 
 from src.position_tracker import Position, PositionTracker
 from src.risk_manager import PortfolioRiskManager, RiskLimits
-from src.script_helpers import load_config
-from src.types import AssetGroup
+from src.script_helpers import load_config, setup_risk_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def setup_risk_manager() -> PortfolioRiskManager:
-    """리스크 매니저 설정"""
-    config_path = Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
-    symbol_groups: dict[str, AssetGroup] = {}
-
-    if not config_path.exists() or yaml is None:
-        logger.warning(f"상관그룹 설정 파일 없음 또는 yaml 미설치: {config_path}. 기본 그룹으로 운영합니다.")
-        return PortfolioRiskManager(symbol_groups=symbol_groups)
-
-    try:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-
-        if not config or "groups" not in config:
-            logger.warning("상관그룹 설정이 비어있습니다.")
-            return PortfolioRiskManager(symbol_groups=symbol_groups)
-
-        group_mapping = {
-            "kr_equity": AssetGroup.KR_EQUITY,
-            "us_equity": AssetGroup.US_EQUITY,
-            "us_etf": AssetGroup.US_EQUITY,
-            "crypto": AssetGroup.CRYPTO,
-            "commodity": AssetGroup.COMMODITY,
-            "bond": AssetGroup.BOND,
-        }
-
-        for group_name, symbols in config.get("groups", {}).items():
-            asset_group = group_mapping.get(group_name, AssetGroup.US_EQUITY)
-            for symbol in symbols:
-                symbol_groups[symbol] = asset_group
-
-        logger.info(f"상관그룹 설정 로드: {len(symbol_groups)}개 심볼")
-
-    except yaml.YAMLError as e:
-        logger.error(f"상관그룹 YAML 파싱 오류: {e}. 기본 그룹으로 운영합니다.")
-
-    return PortfolioRiskManager(symbol_groups=symbol_groups)
 
 
 def build_risk_state(positions: List[Position], risk_manager: PortfolioRiskManager) -> Dict:
