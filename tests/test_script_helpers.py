@@ -222,3 +222,12 @@ class TestSetupRiskManager:
         assert rm.get_group("SPY") == AssetGroup.US_EQUITY
         assert rm.get_group("BTC") == AssetGroup.CRYPTO
         assert rm.get_group("SH") == AssetGroup.INVERSE
+
+    def test_setup_risk_manager_malformed_yaml(self, tmp_path, caplog):
+        """YAML 파싱 오류 시 에러 로그 + 빈 매니저 반환"""
+        config_path = tmp_path / "malformed.yaml"
+        config_path.write_text("invalid: yaml: [\n")
+        with caplog.at_level(logging.ERROR):
+            rm = setup_risk_manager(config_path=config_path)
+        assert rm is not None
+        assert "YAML 파싱 오류" in caplog.text

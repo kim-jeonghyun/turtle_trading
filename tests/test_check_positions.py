@@ -24,7 +24,6 @@ import os
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
-import yaml
 from conftest import PatchManager
 
 from scripts.check_positions import (
@@ -1177,75 +1176,14 @@ class TestSetupNotifier:
 
 
 class TestSetupRiskManager:
-    """setup_risk_manager() 리스크 매니저 설정 테스트."""
+    """setup_risk_manager() 리스크 매니저 설정 테스트.
+
+    에러 핸들링/엣지 케이스 테스트는 test_script_helpers.py::TestSetupRiskManager 참조.
+    """
 
     def test_loads_real_config(self):
         """실제 config/correlation_groups.yaml 로 정상 로드."""
         rm = setup_risk_manager()
-        assert rm is not None
-
-    def test_missing_file(self, tmp_path):
-        """설정 파일 없음 -> 기본 그룹 운영."""
-        fake_config = tmp_path / "correlation_groups.yaml"
-        with patch("scripts.check_positions.Path") as MockPath:
-            # __file__ 경로 체인: Path(__file__).parent.parent / "config" / "correlation_groups.yaml"
-            mock_file_path = MagicMock()
-            MockPath.return_value = mock_file_path
-            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
-            rm = setup_risk_manager()
-        assert rm is not None
-
-    def test_empty_config(self, tmp_path):
-        """YAML이 비어 있으면 기본 그룹 운영."""
-        fake_config = tmp_path / "correlation_groups.yaml"
-        fake_config.write_text("")
-        with patch("scripts.check_positions.Path") as MockPath:
-            mock_file_path = MagicMock()
-            MockPath.return_value = mock_file_path
-            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
-            rm = setup_risk_manager()
-        assert rm is not None
-
-    def test_config_no_groups_key(self, tmp_path):
-        """YAML에 groups 키 없으면 기본 그룹 운영."""
-        fake_config = tmp_path / "correlation_groups.yaml"
-        fake_config.write_text("other_key: value\n")
-        with patch("scripts.check_positions.Path") as MockPath:
-            mock_file_path = MagicMock()
-            MockPath.return_value = mock_file_path
-            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
-            rm = setup_risk_manager()
-        assert rm is not None
-
-    def test_yaml_error(self, tmp_path):
-        """YAML 파싱 오류 -> 기본 그룹 운영."""
-        fake_config = tmp_path / "correlation_groups.yaml"
-        fake_config.write_text("invalid: yaml: [\n")
-        with patch("scripts.check_positions.Path") as MockPath:
-            mock_file_path = MagicMock()
-            MockPath.return_value = mock_file_path
-            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
-            rm = setup_risk_manager()
-        assert rm is not None
-
-    def test_valid_groups_parsed(self, tmp_path):
-        """정상 그룹 설정이 파싱되어 심볼이 매핑됨."""
-        fake_config = tmp_path / "correlation_groups.yaml"
-        fake_config.write_text(
-            yaml.dump(
-                {
-                    "groups": {
-                        "us_equity": ["SPY", "QQQ"],
-                        "crypto": ["BTC-USD"],
-                    }
-                }
-            )
-        )
-        with patch("scripts.check_positions.Path") as MockPath:
-            mock_file_path = MagicMock()
-            MockPath.return_value = mock_file_path
-            mock_file_path.parent.parent.__truediv__.return_value.__truediv__.return_value = fake_config
-            rm = setup_risk_manager()
         assert rm is not None
 
 
@@ -2373,3 +2311,18 @@ class TestSaveTradeIntegration:
         assert tracker.close_position.call_count == 2
         # save_trade도 두 번 시도되어야 함
         assert ds.save_trade.call_count == 2
+
+    async def test_close_position_none_skips_save_trade(self):
+        """close_position()이 None 반환 시 save_trade 호출 안 됨."""
+        pos = _make_open_position(symbol="SPY", stop_loss=98.0)
+        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+            open_positions=[pos],
+            fetch_df=self._make_mock_df(high=100, low=95, close=96),
+        )
+        tracker.close_position.return_value = None
+        PatchManager.start_all(patches)
+        try:
+            await _run_checks()
+        finally:
+            PatchManager.stop_all(patches)
+        ds.save_trade.assert_not_called()
