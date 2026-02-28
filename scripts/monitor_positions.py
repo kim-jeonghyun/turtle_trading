@@ -93,6 +93,8 @@ def calculate_unrealized_pnl(position, current_price: float) -> tuple[float, flo
     Returns:
         (pnl_dollar, pnl_percent)
     """
+    if not position.entry_price:
+        return 0.0, 0.0
     if position.direction == Direction.LONG:
         pnl_dollar = (current_price - position.entry_price) * position.total_shares
         pnl_pct = (current_price - position.entry_price) / position.entry_price

@@ -79,6 +79,62 @@ class TestStopLossCheck:
         pos = _make_position(direction=Direction.LONG, stop_loss=90.0)
         assert check_stop_loss_intraday(pos, {"low": 90.0, "high": 95.0}) is True
 
+    async def test_stop_loss_triggers_notification(self):
+        """스톱로스 이탈 → notifier.send_message 호출 (ERROR 레벨)"""
+        from src.notifier import NotificationLevel
+
+        pos = _make_position(
+            direction=Direction.LONG,
+            entry_price=100.0,
+            stop_loss=90.0,
+            total_shares=10,
+        )
+        tracker = MagicMock()
+        tracker.get_open_positions.return_value = [pos]
+
+        notifier = AsyncMock()
+        spot_fetcher = AsyncMock()
+        spot_fetcher.fetch_spot_price.return_value = {
+            "price": 88.0,
+            "high": 95.0,
+            "low": 85.0,  # 85 <= 90 (stop_loss) → 발동
+        }
+        state = MagicMock()
+        state.is_stop_loss_alerted.return_value = False
+
+        with (
+            patch("scripts.monitor_positions.fcntl"),
+            patch("scripts.monitor_positions.PositionTracker", return_value=tracker),
+            patch("scripts.monitor_positions.setup_notifier", return_value=notifier),
+            patch("scripts.monitor_positions.load_config", return_value={}),
+            patch("scripts.monitor_positions.setup_risk_manager"),
+            patch("scripts.monitor_positions.MonitorState") as mock_state_cls,
+            patch("scripts.monitor_positions.create_kis_client", return_value=None),
+            patch("scripts.monitor_positions.SpotPriceFetcher", return_value=spot_fetcher),
+            patch("scripts.monitor_positions.is_market_open", return_value=True),
+            patch("scripts.monitor_positions.infer_market", return_value="US"),
+            patch("scripts.monitor_positions.acquire_lock") as mock_lock,
+        ):
+            mock_lock.return_value = _make_lock_fd()
+            mock_state_cls.load.return_value = state
+            state.cleanup_closed_positions = MagicMock()
+            state.save = MagicMock()
+            state.can_send_warning.return_value = False
+
+            args = MagicMock()
+            args.threshold = 0.05
+            args.warning_cooldown = 60
+
+            await monitor_positions(args)
+
+            # 알림 발송 확인: 정확히 1회, ERROR 레벨
+            notifier.send_message.assert_called_once()
+            msg = notifier.send_message.call_args[0][0]
+            assert msg.level == NotificationLevel.ERROR
+            assert "STOP LOSS" in msg.title
+            # MonitorState에 알림 기록 확인
+            state.mark_stop_loss_alerted.assert_called_once_with("pos_1")
+
 
 class TestPnlWarning:
     """P&L 경고 테스트"""
@@ -96,6 +152,20 @@ class TestPnlWarning:
         state = MonitorState(state_file=tmp_path / "state.json")
         state.update_warning("pos_1")
         assert state.can_send_warning("pos_1", cooldown_minutes=60) is False
+
+    def test_pnl_short_direction(self):
+        """SHORT: entry=100, current=110 -> pnl_dollar=-100, pnl_pct=-10%"""
+        pos = _make_position(direction=Direction.SHORT, entry_price=100.0, total_shares=10)
+        pnl_dollar, pnl_pct = calculate_unrealized_pnl(pos, 110.0)
+        assert pnl_dollar == pytest.approx(-100.0)
+        assert pnl_pct == pytest.approx(-0.10)
+
+    def test_pnl_zero_entry_price_guard(self):
+        """entry_price=0 -> (0.0, 0.0) 반환, ZeroDivisionError 방지"""
+        pos = _make_position(entry_price=0.0, total_shares=10)
+        pnl_dollar, pnl_pct = calculate_unrealized_pnl(pos, 100.0)
+        assert pnl_dollar == 0.0
+        assert pnl_pct == 0.0
 
     def test_pnl_threshold_boundary(self):
         """pnl_pct == -threshold -> 경고 발송 (<=)"""
