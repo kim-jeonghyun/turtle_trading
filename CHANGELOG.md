@@ -11,6 +11,25 @@
 
 ---
 
+## [3.6.0] — 2026-02-28
+
+장중 실시간 포지션 모니터링 — KIS API 기반 실시간 가격 조회, 스톱로스 장중 감지, P&L 알림 중복 방지.
+
+### Added
+- `src/spot_price.py`: `SpotPriceFetcher` — KIS API 실시간 가격 조회 (KR/US), CCXT (Crypto), yfinance fallback
+- `src/monitor_state.py`: `MonitorState` — 알림 중복 방지 상태 관리 (스톱로스 1회 알림 + 가격 회복 리셋, P&L 쿨다운)
+- `src/script_helpers.py`: `create_kis_client()` — KIS API 설정 팩토리 함수
+- `scripts/monitor_positions.py`: 프로덕션 장중 모니터링 스크립트 (5분 cron, 파일 잠금, 타임아웃 보호)
+- crontab: KR 장중 (09:00-15:25 KST) + US 장중 (22:00-06:25 KST, DST 양방향 커버) 5분 폴링
+- 테스트 39개 추가 (test_spot_price 12개, test_monitor_state 12개, test_monitor_positions 15개)
+
+### Changed
+- `scripts/monitor_positions.py`: 프로토타입에서 프로덕션 리팩토링 — DataFetcher 일봉 → SpotPriceFetcher 실시간, 현재가 → 고/저가 스톱로스, 파일 잠금 추가
+- `docker-compose.yaml`: healthcheck를 `pgrep -x supercronic`으로 변경, start_period 30s → 6m
+- crontab: `TZ=Asia/Seoul` 명시 추가
+
+---
+
 ## [3.5.0] — 2026-02-28
 
 데이터 파이프라인 복원 & Docker 배포 준비 — 거래 기록 파이프라인 연결, 리스크 매니저 통합, Docker/cron 보강.

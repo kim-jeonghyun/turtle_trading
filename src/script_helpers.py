@@ -5,10 +5,15 @@
 - 리스크 매니저 통합 설정
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from src.kis_api import KISConfig
 
 import yaml  # type: ignore[import-untyped]
 
@@ -59,6 +64,9 @@ def load_config() -> Dict[str, Any]:
         "email_user": os.getenv("EMAIL_USER"),
         "email_pass": os.getenv("EMAIL_PASSWORD"),
         "email_to": [addr for addr in os.getenv("EMAIL_TO", "").split(",") if addr],
+        "kis_app_key": os.getenv("KIS_APP_KEY"),
+        "kis_app_secret": os.getenv("KIS_APP_SECRET"),
+        "kis_account_no": os.getenv("KIS_ACCOUNT_NO"),
     }
 
 
@@ -129,3 +137,24 @@ def setup_risk_manager(config_path: Optional[Path] = None) -> PortfolioRiskManag
         logger.error(f"상관그룹 YAML 파싱 오류: {e}. 기본 그룹으로 운영합니다.")
 
     return PortfolioRiskManager(symbol_groups=symbol_groups)
+
+
+def create_kis_client(config: Dict[str, Any]) -> Optional[KISConfig]:
+    """환경변수에서 KIS API 설정 조립. 미설정 시 None 반환."""
+    from src.kis_api import KISConfig
+
+    app_key = config.get("kis_app_key") or os.getenv("KIS_APP_KEY")
+    app_secret = config.get("kis_app_secret") or os.getenv("KIS_APP_SECRET")
+    account_no = config.get("kis_account_no") or os.getenv("KIS_ACCOUNT_NO")
+    if not all([app_key, app_secret, account_no]):
+        logger.warning("KIS API 미설정 — yfinance fallback 사용")
+        return None
+    assert isinstance(app_key, str)  # guaranteed by all() check above
+    assert isinstance(app_secret, str)
+    assert isinstance(account_no, str)
+    return KISConfig(
+        app_key=app_key,
+        app_secret=app_secret,
+        account_no=account_no,
+        is_real=os.getenv("KIS_IS_REAL", "false").lower() == "true",
+    )
