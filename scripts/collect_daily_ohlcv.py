@@ -76,7 +76,8 @@ def load_collection_config(config_path: Path = CONFIG_PATH) -> dict:
     if not config:
         raise ValueError(f"수집 설정이 비어있습니다: {config_path}")
 
-    return config
+    result: dict = config
+    return result
 
 
 def get_collection_symbols(

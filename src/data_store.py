@@ -157,7 +157,8 @@ class ParquetDataStore:
         df = self.load_ohlcv_accumulated(symbol)
         if df is None or df.empty:
             return None
-        return pd.to_datetime(df["date"]).max().to_pydatetime()
+        result: datetime = pd.to_datetime(df["date"]).max().to_pydatetime()
+        return result
 
     def save_indicators(self, symbol: str, df: pd.DataFrame):
         symbol = validate_symbol(symbol)
