@@ -17,11 +17,11 @@ from pathlib import Path
 # 기존 test_check_positions.py와 동일한 패턴
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
+import pytest
 import yaml
 
 from scripts.collect_daily_ohlcv import (
@@ -37,7 +37,6 @@ from scripts.collect_daily_ohlcv import (
 )
 from src.data_store import ParquetDataStore
 from src.notifier import NotificationLevel
-
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 

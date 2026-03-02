@@ -205,7 +205,7 @@ class TestOHLCVAccumulation:
 
     def test_ohlcv_dir_created(self, temp_data_dir):
         """ParquetDataStore 초기화 시 ohlcv 디렉토리 생성"""
-        store = ParquetDataStore(base_dir=str(temp_data_dir))
+        ParquetDataStore(base_dir=str(temp_data_dir))
         assert (temp_data_dir / "ohlcv").is_dir()
 
     def test_initial_save(self, data_store):

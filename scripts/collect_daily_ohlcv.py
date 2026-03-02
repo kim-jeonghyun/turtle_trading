@@ -265,7 +265,8 @@ async def run_collection(
         target_dt = datetime.strptime(target_date, "%Y-%m-%d")
         end_date = (target_dt + timedelta(days=1)).strftime("%Y-%m-%d")
     else:
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        # FDR/yfinance의 end_date는 exclusive이므로 +1일 필요
+        end_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
     logger.info(f"=== OHLCV 수집 시작: {len(symbols)}개 종목 ===")
     if dry_run:
