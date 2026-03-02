@@ -80,9 +80,7 @@ def load_collection_config(config_path: Path = CONFIG_PATH) -> dict:
     return result
 
 
-def get_collection_symbols(
-    config: dict, override_symbols: Optional[List[str]] = None
-) -> list[tuple[str, str]]:
+def get_collection_symbols(config: dict, override_symbols: Optional[List[str]] = None) -> list[tuple[str, str]]:
     """수집 대상 심볼 목록 반환.
 
     Args:

@@ -135,15 +135,9 @@ class ParquetDataStore:
             quarantine_path = path.with_suffix(f".parquet.corrupted.{timestamp}")
             try:
                 path.rename(quarantine_path)
-                logger.error(
-                    f"OHLCV 축적 로드 실패 (손상): {symbol} - {e}. "
-                    f"격리됨: {quarantine_path}"
-                )
+                logger.error(f"OHLCV 축적 로드 실패 (손상): {symbol} - {e}. 격리됨: {quarantine_path}")
             except OSError as rename_err:
-                logger.error(
-                    f"OHLCV 축적 로드 실패: {symbol} - {e}. "
-                    f"격리 실패: {rename_err}"
-                )
+                logger.error(f"OHLCV 축적 로드 실패: {symbol} - {e}. 격리 실패: {rename_err}")
             return None
 
     def get_ohlcv_last_date(self, symbol: str) -> Optional[datetime]:
@@ -259,10 +253,7 @@ class ParquetDataStore:
         signal_files = list(self.signals_dir.glob("*.parquet"))
         ohlcv_files = list(self.ohlcv_dir.glob("*.parquet"))
 
-        total_size = sum(
-            f.stat().st_size
-            for f in cache_files + trade_files + signal_files + ohlcv_files
-        )
+        total_size = sum(f.stat().st_size for f in cache_files + trade_files + signal_files + ohlcv_files)
 
         return {
             "cache_files": len(cache_files),
