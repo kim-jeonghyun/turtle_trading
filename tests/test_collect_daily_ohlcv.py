@@ -258,7 +258,11 @@ class TestCollectSymbol:
         fetcher.fetch_fdr.return_value = sample_fdr_df
 
         success, rows, msg = collect_symbol(
-            "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01",
+            "005930",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
         )
         assert success is True
         assert rows == 5
@@ -271,7 +275,12 @@ class TestCollectSymbol:
         fetcher.fetch_yfinance.side_effect = [sample_fdr_df]
 
         success, rows, msg = collect_symbol(
-            "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", market="kospi",
+            "005930",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
+            market="kospi",
         )
         assert success is True
         fetcher.fetch_yfinance.assert_called_once_with("005930.KS", start="2026-02-25", end="2026-03-01")
@@ -283,7 +292,12 @@ class TestCollectSymbol:
         fetcher.fetch_yfinance.side_effect = [sample_fdr_df]
 
         success, rows, msg = collect_symbol(
-            "247540", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", market="kosdaq",
+            "247540",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
+            market="kosdaq",
         )
         assert success is True
         fetcher.fetch_yfinance.assert_called_once_with("247540.KQ", start="2026-02-25", end="2026-03-01")
@@ -295,7 +309,12 @@ class TestCollectSymbol:
         fetcher.fetch_yfinance.side_effect = [pd.DataFrame(), sample_fdr_df]
 
         success, rows, msg = collect_symbol(
-            "247540", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", market="kospi",
+            "247540",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
+            market="kospi",
         )
         assert success is True
         assert fetcher.fetch_yfinance.call_count == 2
@@ -307,7 +326,11 @@ class TestCollectSymbol:
         fetcher.fetch_yfinance.return_value = pd.DataFrame()
 
         success, rows, msg = collect_symbol(
-            "999999", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01",
+            "999999",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
         )
         assert success is None
         assert rows == 0
@@ -319,7 +342,12 @@ class TestCollectSymbol:
         fetcher.fetch_fdr.return_value = sample_fdr_df
 
         success, rows, msg = collect_symbol(
-            "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", dry_run=True,
+            "005930",
+            fetcher,
+            ohlcv_data_store,
+            "2026-02-25",
+            "2026-03-01",
+            dry_run=True,
         )
         assert success is True
         assert msg == "dry-run"
@@ -332,7 +360,12 @@ class TestCollectSymbol:
 
         with patch("scripts.collect_daily_ohlcv.time.sleep"):
             success, rows, msg = collect_symbol(
-                "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", max_retries=1,
+                "005930",
+                fetcher,
+                ohlcv_data_store,
+                "2026-02-25",
+                "2026-03-01",
+                max_retries=1,
             )
         assert success is True
         assert fetcher.fetch_fdr.call_count == 2
@@ -344,7 +377,12 @@ class TestCollectSymbol:
 
         with patch("scripts.collect_daily_ohlcv.time.sleep"):
             success, rows, msg = collect_symbol(
-                "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", max_retries=1,
+                "005930",
+                fetcher,
+                ohlcv_data_store,
+                "2026-02-25",
+                "2026-03-01",
+                max_retries=1,
             )
         assert success is False
         assert "persistent" in msg
@@ -353,12 +391,19 @@ class TestCollectSymbol:
         """R4: 지수 백오프 적용 확인"""
         fetcher = MagicMock()
         fetcher.fetch_fdr.side_effect = [
-            ConnectionError("err1"), ConnectionError("err2"), ConnectionError("err3"),
+            ConnectionError("err1"),
+            ConnectionError("err2"),
+            ConnectionError("err3"),
         ]
 
         with patch("scripts.collect_daily_ohlcv.time.sleep") as mock_sleep:
             collect_symbol(
-                "005930", fetcher, ohlcv_data_store, "2026-02-25", "2026-03-01", max_retries=2,
+                "005930",
+                fetcher,
+                ohlcv_data_store,
+                "2026-02-25",
+                "2026-03-01",
+                max_retries=2,
             )
         assert mock_sleep.call_count == 2
         mock_sleep.assert_any_call(0.5)
@@ -434,8 +479,12 @@ class TestCollectionSummary:
         notifier.send_message = AsyncMock(return_value={})
 
         result = CollectionResult(
-            total_symbols=3, success_count=3, fail_count=0, skip_count=0,
-            new_rows_total=15, elapsed_seconds=3.5,
+            total_symbols=3,
+            success_count=3,
+            fail_count=0,
+            skip_count=0,
+            new_rows_total=15,
+            elapsed_seconds=3.5,
         )
         await send_collection_summary(notifier, result)
 
@@ -450,8 +499,12 @@ class TestCollectionSummary:
         notifier.send_message = AsyncMock(return_value={})
 
         result = CollectionResult(
-            total_symbols=3, success_count=2, fail_count=1, skip_count=0,
-            new_rows_total=10, elapsed_seconds=3.0,
+            total_symbols=3,
+            success_count=2,
+            fail_count=1,
+            skip_count=0,
+            new_rows_total=10,
+            elapsed_seconds=3.0,
             failed_symbols=["999999: connection error"],
         )
         await send_collection_summary(notifier, result)
@@ -467,8 +520,12 @@ class TestCollectionSummary:
         notifier.send_message = AsyncMock(return_value={})
 
         result = CollectionResult(
-            total_symbols=5, success_count=3, fail_count=0, skip_count=2,
-            new_rows_total=15, elapsed_seconds=2.0,
+            total_symbols=5,
+            success_count=3,
+            fail_count=0,
+            skip_count=2,
+            new_rows_total=15,
+            elapsed_seconds=2.0,
         )
         await send_collection_summary(notifier, result)
 

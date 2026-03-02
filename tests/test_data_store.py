@@ -210,14 +210,16 @@ class TestOHLCVAccumulation:
 
     def test_initial_save(self, data_store):
         """최초 OHLCV 축적 저장"""
-        df = pd.DataFrame({
-            "date": pd.date_range("2026-02-25", periods=5, freq="B"),
-            "open": [100.0, 101.0, 102.0, 103.0, 104.0],
-            "high": [101.0, 102.0, 103.0, 104.0, 105.0],
-            "low": [99.0, 100.0, 101.0, 102.0, 103.0],
-            "close": [100.5, 101.5, 102.5, 103.5, 104.5],
-            "volume": [1000000] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-02-25", periods=5, freq="B"),
+                "open": [100.0, 101.0, 102.0, 103.0, 104.0],
+                "high": [101.0, 102.0, 103.0, 104.0, 105.0],
+                "low": [99.0, 100.0, 101.0, 102.0, 103.0],
+                "close": [100.5, 101.5, 102.5, 103.5, 104.5],
+                "volume": [1000000] * 5,
+            }
+        )
         new_rows = data_store.save_ohlcv_accumulated("005930", df)
         assert new_rows == 5
         loaded = data_store.load_ohlcv_accumulated("005930")
@@ -226,18 +228,26 @@ class TestOHLCVAccumulation:
 
     def test_incremental_append(self, data_store):
         """증분 추가 (겹치지 않는 날짜)"""
-        df1 = pd.DataFrame({
-            "date": pd.date_range("2026-02-20", periods=3, freq="B"),
-            "open": [100, 101, 102], "high": [101, 102, 103],
-            "low": [99, 100, 101], "close": [100.5, 101.5, 102.5],
-            "volume": [1000000] * 3,
-        })
-        df2 = pd.DataFrame({
-            "date": pd.date_range("2026-02-25", periods=3, freq="B"),
-            "open": [103, 104, 105], "high": [104, 105, 106],
-            "low": [102, 103, 104], "close": [103.5, 104.5, 105.5],
-            "volume": [1000000] * 3,
-        })
+        df1 = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-02-20", periods=3, freq="B"),
+                "open": [100, 101, 102],
+                "high": [101, 102, 103],
+                "low": [99, 100, 101],
+                "close": [100.5, 101.5, 102.5],
+                "volume": [1000000] * 3,
+            }
+        )
+        df2 = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-02-25", periods=3, freq="B"),
+                "open": [103, 104, 105],
+                "high": [104, 105, 106],
+                "low": [102, 103, 104],
+                "close": [103.5, 104.5, 105.5],
+                "volume": [1000000] * 3,
+            }
+        )
         data_store.save_ohlcv_accumulated("005930", df1)
         new_rows = data_store.save_ohlcv_accumulated("005930", df2)
         loaded = data_store.load_ohlcv_accumulated("005930")
@@ -247,18 +257,26 @@ class TestOHLCVAccumulation:
     def test_deduplication_by_date(self, data_store):
         """날짜 중복 시 최신 데이터 유지"""
         dates = pd.date_range("2026-02-25", periods=3, freq="B")
-        df1 = pd.DataFrame({
-            "date": dates,
-            "open": [100, 101, 102], "high": [101, 102, 103],
-            "low": [99, 100, 101], "close": [100.5, 101.5, 102.5],
-            "volume": [1000000] * 3,
-        })
-        df2 = pd.DataFrame({
-            "date": dates,
-            "open": [200, 201, 202], "high": [201, 202, 203],
-            "low": [199, 200, 201], "close": [200.5, 201.5, 202.5],
-            "volume": [2000000] * 3,
-        })
+        df1 = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100, 101, 102],
+                "high": [101, 102, 103],
+                "low": [99, 100, 101],
+                "close": [100.5, 101.5, 102.5],
+                "volume": [1000000] * 3,
+            }
+        )
+        df2 = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [200, 201, 202],
+                "high": [201, 202, 203],
+                "low": [199, 200, 201],
+                "close": [200.5, 201.5, 202.5],
+                "volume": [2000000] * 3,
+            }
+        )
         data_store.save_ohlcv_accumulated("005930", df1)
         data_store.save_ohlcv_accumulated("005930", df2)
         loaded = data_store.load_ohlcv_accumulated("005930")
@@ -268,17 +286,27 @@ class TestOHLCVAccumulation:
     def test_new_rows_with_overlap(self, data_store):
         """7일 오버랩 시 new_rows가 실제 신규 날짜만 카운트"""
         dates_old = pd.date_range("2026-02-20", periods=5, freq="B")
-        df_old = pd.DataFrame({
-            "date": dates_old,
-            "open": range(5), "high": range(5), "low": range(5),
-            "close": range(5), "volume": [1000] * 5,
-        })
+        df_old = pd.DataFrame(
+            {
+                "date": dates_old,
+                "open": range(5),
+                "high": range(5),
+                "low": range(5),
+                "close": range(5),
+                "volume": [1000] * 5,
+            }
+        )
         dates_new = pd.date_range("2026-02-24", periods=4, freq="B")
-        df_new = pd.DataFrame({
-            "date": dates_new,
-            "open": range(4), "high": range(4), "low": range(4),
-            "close": range(4), "volume": [1000] * 4,
-        })
+        df_new = pd.DataFrame(
+            {
+                "date": dates_new,
+                "open": range(4),
+                "high": range(4),
+                "low": range(4),
+                "close": range(4),
+                "volume": [1000] * 4,
+            }
+        )
         data_store.save_ohlcv_accumulated("005930", df_old)
         new_rows = data_store.save_ohlcv_accumulated("005930", df_new)
         assert new_rows == 1  # Only Feb 27 is genuinely new
@@ -295,12 +323,16 @@ class TestOHLCVAccumulation:
 
     def test_get_last_date(self, data_store):
         """마지막 날짜 조회"""
-        df = pd.DataFrame({
-            "date": pd.date_range("2026-02-25", periods=5, freq="B"),
-            "open": [100.0] * 5, "high": [101.0] * 5,
-            "low": [99.0] * 5, "close": [100.5] * 5,
-            "volume": [1000000] * 5,
-        })
+        df = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-02-25", periods=5, freq="B"),
+                "open": [100.0] * 5,
+                "high": [101.0] * 5,
+                "low": [99.0] * 5,
+                "close": [100.5] * 5,
+                "volume": [1000000] * 5,
+            }
+        )
         data_store.save_ohlcv_accumulated("005930", df)
         last = data_store.get_ohlcv_last_date("005930")
         assert last is not None
@@ -312,12 +344,16 @@ class TestOHLCVAccumulation:
 
     def test_cache_stats_includes_ohlcv(self, data_store):
         """cache_stats에 ohlcv_files 포함"""
-        df = pd.DataFrame({
-            "date": pd.date_range("2026-02-25", periods=3, freq="B"),
-            "open": [100.0] * 3, "high": [101.0] * 3,
-            "low": [99.0] * 3, "close": [100.5] * 3,
-            "volume": [1000000] * 3,
-        })
+        df = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-02-25", periods=3, freq="B"),
+                "open": [100.0] * 3,
+                "high": [101.0] * 3,
+                "low": [99.0] * 3,
+                "close": [100.5] * 3,
+                "volume": [1000000] * 3,
+            }
+        )
         data_store.save_ohlcv_accumulated("005930", df)
         stats = data_store.get_cache_stats()
         assert "ohlcv_files" in stats
