@@ -49,7 +49,6 @@ def sample_config(tmp_path):
             "rate_limit_seconds": 0.0,
             "max_retries": 1,
             "initial_lookback_days": 30,
-            "storage_dir": "data/ohlcv",
         },
         "symbols": {
             "kospi_200": ["005930", "000660", "035420"],

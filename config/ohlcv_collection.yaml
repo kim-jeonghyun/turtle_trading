@@ -9,7 +9,6 @@ collection:
   rate_limit_seconds: 0.1     # 요청 간 대기 시간 (초)
   max_retries: 1              # 심볼당 최대 재시도 횟수
   initial_lookback_days: 730  # 최초 수집 시 과거 데이터 범위 (2년)
-  storage_dir: "data/ohlcv"   # 저장 경로
 
 symbols:
   kospi_200:
