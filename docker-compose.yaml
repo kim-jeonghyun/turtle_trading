@@ -3,6 +3,7 @@ services:
   turtle-cron:
     build: .
     container_name: turtle-cron
+    init: true                    # tini로 PID 1 좀비 수거 (defense-in-depth)
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     env_file:
       - .env
