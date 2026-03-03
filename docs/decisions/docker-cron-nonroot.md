@@ -3,7 +3,7 @@
 ## 상태: Accepted
 
 - 구현일: 2026-02-25
-- 적용 버전: supercronic v0.2.33
+- 적용 버전: supercronic v0.2.43
 
 ---
 
@@ -28,7 +28,7 @@ CMD ["cron", "-f"]
 
 ## 결정
 
-**supercronic v0.2.33으로 전환하여 non-root 실행을 구현한다.**
+**supercronic v0.2.43으로 전환하여 non-root 실행을 구현한다.**
 
 근거:
 1. 실거래 도입 전 인프라 보안 강화의 필수 항목으로 등록되어 있었다.
@@ -60,7 +60,7 @@ CMD ["cron", "-f"]
 
 ```dockerfile
 # 전환 예시
-ARG SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-amd64
+ARG SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.43/supercronic-linux-amd64
 RUN curl -fsSLo /usr/local/bin/supercronic "$SUPERCRONIC_URL" && chmod +x /usr/local/bin/supercronic
 
 USER turtle
@@ -115,7 +115,7 @@ CMD ["supercronic", "/etc/cron.d/turtle-cron"]
 
 ### 구현 내역 (2026-02-25)
 
-- `Dockerfile`: apt `cron` 제거, `curl` 추가, supercronic v0.2.33 설치 (SHA1 체크섬 검증, TARGETARCH 멀티아키텍처)
+- `Dockerfile`: apt `cron` 제거, `curl` 추가, supercronic v0.2.43 설치 (SHA1 체크섬 검증, TARGETARCH 멀티아키텍처)
 - `Dockerfile`: TARGETARCH를 `dpkg --print-architecture` fallback으로 안전화 (docker build 시 TARGETARCH 미설정 대비)
 - `Dockerfile`: turtle UID/GID 1000 고정 (`groupadd --gid 1000`, `useradd --uid 1000 --gid 1000`) — 호스트 bind mount 소유권과 일관성 확보, `docker-compose.yaml`에서 `DOCKER_UID`/`DOCKER_GID` 환경변수로 오버라이드 가능
 - `entrypoint.sh`: preflight check로 `/app/data`, `/app/logs` 디렉토리의 쓰기 권한을 컨테이너 시작 시 즉시 검증 — 권한 불일치 시 명확한 에러 메시지와 함께 즉시 종료하여 런타임 권한 오류 사전 차단
@@ -123,6 +123,12 @@ CMD ["supercronic", "/etc/cron.d/turtle-cron"]
 - `USER turtle` + `CMD ["supercronic", "/app/crontab"]`로 non-root 실행
 - `ENV PYTHONPATH=/app` 명시 추가
 - `docker-compose.yaml`: `user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"`으로 유연한 UID/GID 매핑
+
+### v0.2.43 업그레이드 (2026-03-02)
+
+- **원인**: v0.2.33의 reaper가 PID 1 환경에서 `os.Args[0]` (bare name)으로 `syscall.ForkExec`를 호출하여 "Failed to fork exec: no such file or directory" fatal 에러 발생 (aptible/supercronic#177)
+- **수정**: supercronic v0.2.33 → v0.2.43 업그레이드 (v0.2.36에서 `os.Executable()` 절대 경로로 수정됨)
+- **추가 방어**: `docker-compose.yaml`에 `init: true` 추가 (tini가 PID 1, supercronic은 PID >1로 실행)
 
 ### 롤백 절차 (긴급 시)
 
