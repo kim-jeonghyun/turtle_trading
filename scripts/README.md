@@ -679,5 +679,5 @@ rm -f /tmp/collect_daily_ohlcv.lock
 
 ## Version History
 
-- **v2.0** (2026-03-03): Complete overhaul -- all 17 scripts documented, categorical organization, Docker integration
+- **v2.0** (2026-03-03): Complete overhaul -- all 18 scripts documented, categorical organization, Docker integration
 - **v1.0** (2026-02-17): Initial version -- 4 scripts documented
