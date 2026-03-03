@@ -9,6 +9,10 @@
 
 ## [Unreleased]
 
+### Changed
+- supercronic v0.2.33 → v0.2.43 업그레이드: PID 1 fork exec 버그 수정 (aptible/supercronic#177)
+- `docker-compose.yaml`에 `init: true` 추가 (defense-in-depth)
+
 ---
 
 ## [3.6.0] — 2026-02-28

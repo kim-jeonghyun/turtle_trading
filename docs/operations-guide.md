@@ -99,7 +99,7 @@ python scripts/health_check.py  # Python Version 항목 확인
 v3.4.0부터 Docker 컨테이너의 cron 스케줄러가 `apt cron`(root)에서 `supercronic`(non-root `turtle` 유저)로 전환되었습니다.
 
 **현재 구조:**
-- 스케줄러: supercronic v0.2.33 (`/usr/local/bin/supercronic`)
+- 스케줄러: supercronic v0.2.43 (`/usr/local/bin/supercronic`)
 - 크론탭: `/app/crontab`
 - 실행 유저: `turtle` (non-root)
 - 아키텍처: TARGETARCH 자동 감지 (amd64/arm64)
