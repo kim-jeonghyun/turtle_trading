@@ -49,6 +49,68 @@ python scripts/health_check.py  # Python Version 항목 확인
 - 주문 후: 체결 상태 동기화, 미체결 추적, 이탈/스톱 이벤트 재검토
 - 오작동 징후: 빈번한 재시도 실패, stop-loss 미반영, 동일 심볼 다중 청산 오판
 
+## 킬 스위치 (Kill Switch)
+
+시스템 레벨 트레이딩 안전장치. 신규 진입(BUY)만 차단하며, 청산(SELL)은 항상 허용한다.
+
+### 설정 우선순위
+
+1. 환경변수 `TRADING_ENABLED` (최우선)
+2. `config/system_status.yaml`
+3. 기본값: `true` (Fail-Open)
+
+### 상태 확인
+
+```bash
+python scripts/toggle_trading.py --status
+```
+
+### 긴급 중단 (킬 스위치 활성화)
+
+```bash
+# CLI를 통한 중단
+python scripts/toggle_trading.py --disable --reason "시장 급변"
+
+# 환경변수를 통한 중단 (YAML보다 우선)
+export TRADING_ENABLED=false
+```
+
+### 트레이딩 재개
+
+```bash
+python scripts/toggle_trading.py --enable
+
+# 환경변수 해제 (설정한 경우)
+unset TRADING_ENABLED
+```
+
+### config/system_status.yaml
+
+```yaml
+trading_enabled: true   # false → 신규 진입 차단
+reason: ""              # 비활성화 사유
+disabled_at: null       # 비활성화 시각 (ISO 8601)
+```
+
+### 동작 원리
+
+- `AutoTrader.place_order()`에서 BUY 주문 시 `check_entry_allowed()` 호출
+- `scripts/auto_trade.py` 시작 시 킬 스위치 상태 사전 점검
+- `scripts/check_positions.py`에서 비활성 시 경고 출력
+- `scripts/health_check.py`에서 상태 점검 항목에 포함
+
+### Fail-Open 정책
+
+YAML 파싱 실패 또는 파일 미존재 시 `trading_enabled=true`로 간주한다.
+설정 파일 오류로 거래가 중단되는 것을 방지하기 위한 의도적 설계이며,
+파싱 오류 시 `WARNING` 로그를 출력한다.
+
+### 주의사항
+
+- 킬 스위치 활성 중에도 기존 포지션의 손절/청산은 정상 실행됨
+- 환경변수 설정 후에는 프로세스 재시작 또는 `reload()` 호출 필요
+- `config/system_status.yaml`은 원자적 저장(atomic write)으로 동시 접근에 안전
+
 ## 문제 대응
 
 - 알림 수신 즉시 이벤트 원인 분리: 데이터/계산/API/알림

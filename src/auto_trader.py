@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, OrderSide, OrderType
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage
 from src.types import OrderStatus
@@ -64,12 +65,14 @@ class AutoTrader:
         max_order_amount: float = 5_000_000,
         notifier: Optional[NotificationManager] = None,
         reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
+        kill_switch: Optional["KillSwitch"] = None,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
         self.max_order_amount = max_order_amount
         self.notifier = notifier
         self.reconfirm_delay_sec = reconfirm_delay_sec
+        self.kill_switch = kill_switch
         self._order_counter = 0
 
         if not dry_run:
@@ -125,6 +128,34 @@ class AutoTrader:
         Returns:
             OrderRecord: 주문 기록
         """
+        # 킬 스위치 체크 — BUY(진입) 주문만 차단, SELL(청산)은 항상 통과
+        if self.kill_switch and side == OrderSide.BUY:
+            allowed, block_reason = self.kill_switch.check_entry_allowed()
+            if not allowed:
+                logger.error(f"주문 차단 (킬 스위치): {block_reason} ({symbol})")
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    reason=block_reason,
+                )
+                self._append_order_to_log(blocked_record)
+                if self.notifier:
+                    await self.notifier.send_all(
+                        NotificationMessage(
+                            title="킬 스위치 주문 차단",
+                            body=f"{symbol} {side.value} {quantity}주 — {block_reason}",
+                            level=NotificationLevel.ERROR,
+                        )
+                    )
+                return blocked_record
+
         order_id = self._generate_order_id()
         timestamp = datetime.now().isoformat()
 
