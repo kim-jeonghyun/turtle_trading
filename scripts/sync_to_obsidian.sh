@@ -44,7 +44,8 @@ fi
 
 mkdir -p "$TARGET_DIR"
 
-# 초기 동기화
+# 단방향 미러 동기화: SOURCE → TARGET
+# --delete: 소스에 없는 파일은 대상에서 삭제됨 (vault에 직접 추가한 파일 주의)
 do_sync() {
     rsync -av --delete \
         --exclude='.DS_Store' \
@@ -61,7 +62,7 @@ log "초기 동기화 완료"
 # 파일 변경 감시
 log "파일 변경 감시 시작... (Ctrl+C로 종료)"
 
-fswatch -o "$SOURCE_DIR" | while read -r _; do
+fswatch -o --latency 2 "$SOURCE_DIR" | while read -r _; do  # 연속 변경 시 2초 묶어 처리
     log "변경 감지 → 동기화 중..."
     do_sync
     log "동기화 완료 ($(date '+%H:%M:%S'))"
