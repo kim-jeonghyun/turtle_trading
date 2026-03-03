@@ -11,6 +11,7 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `monitor_positions.py` | Signal & Position | Intraday stop-loss and P&L monitoring via KIS API | Every 5 min cron (market hours) |
 | `check_risk_limits.py` | Risk | Portfolio risk limit monitoring with warnings | Hourly cron (market hours) |
 | `auto_trade.py` | Trading | Automated order execution (dry-run default) | Manual |
+| `toggle_trading.py` | Trading | Kill switch — enable/disable trading | Manual |
 | `daily_report.py` | Reporting | Daily summary with positions, signals, and risk | Daily 08:00 cron |
 | `weekly_report.py` | Reporting | Weekly performance summary with trade analysis | Saturday 09:00 cron |
 | `performance_review.py` | Reporting | Historical performance analysis with statistics | Manual |
@@ -222,6 +223,43 @@ python scripts/auto_trade.py --max-amount 1000000 --verbose
 | `--verbose` | Verbose log output |
 
 > Full argument list: `python scripts/auto_trade.py --help`
+
+#### toggle_trading.py
+
+Kill switch CLI — enable/disable all new trading entries. When disabled, BUY orders are blocked system-wide while SELL/exit orders (stop-loss, position closure) proceed normally.
+
+> **Note**: This script is introduced in the kill switch feature (PR #110). It will be available after that PR merges to main.
+
+##### Usage
+
+```bash
+# Disable trading (emergency stop)
+python scripts/toggle_trading.py --disable --reason "시장 급변"
+
+# Re-enable trading
+python scripts/toggle_trading.py --enable
+
+# Check current status
+python scripts/toggle_trading.py --status
+```
+
+##### Key Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--enable` | Resume trading |
+| `--disable` | Halt all new entries (sells still allowed) |
+| `--status` | Show current kill switch state |
+| `--reason TEXT` | Reason for disabling (default: "수동 킬 스위치") |
+
+> `--enable`, `--disable`, `--status` are mutually exclusive (exactly one required).
+
+> Full argument list: `python scripts/toggle_trading.py --help`
+
+##### Notes
+
+- State is persisted in `config/system_status.yaml` via `KillSwitch` class in `src/kill_switch.py`
+- See [킬 스위치 (Kill Switch)](../docs/operations-guide.md#킬-스위치-kill-switch) for detailed behavior and fail-open policy
 
 ---
 
@@ -589,7 +627,7 @@ Scripts fall into two categories based on execution mode:
 
 **Cron scripts** run automatically on schedule inside the Docker container (managed by `supercronic`). See the "Frequency" column in the Quick Reference table for each script's schedule. Cron scripts can also be run manually at any time for debugging or ad-hoc execution.
 
-**Manual scripts** are run on-demand by the operator. These include analysis tools (`performance_review.py`, `run_backtest.py`), query tools (`list_positions.py`), maintenance utilities (`validate_data.py`, `cleanup_old_data.py`, `security_check.py`), testing (`test_notifications.py`), and trading execution (`auto_trade.py`).
+**Manual scripts** are run on-demand by the operator. These include analysis tools (`performance_review.py`, `run_backtest.py`), query tools (`list_positions.py`), maintenance utilities (`validate_data.py`, `cleanup_old_data.py`, `security_check.py`), testing (`test_notifications.py`), trading execution (`auto_trade.py`), and the kill switch (`toggle_trading.py`).
 
 > For the full cron schedule, see [cron 작업 스케줄](../docs/operations-guide.md#cron-작업-스케줄) in the operations guide.
 
