@@ -154,6 +154,8 @@ turtle_trading/
 │   ├── analytics.py            # 거래 성과 분석 (R-배수, Sortino 등)
 │   ├── market_calendar.py      # 시장 영업일/상태 판단
 │   ├── security.py             # 보안 검증 유틸리티
+│   ├── monitor_state.py        # 장중 모니터링 알림 상태 관리
+│   ├── spot_price.py           # 실시간 가격 조회 (KIS API)
 │   └── utils.py                # 공유 유틸 (atomic write, retry, 심볼 검증)
 │
 ├── scripts/                    # 운영 스크립트
@@ -172,7 +174,6 @@ turtle_trading/
 │   ├── performance_review.py   # 성과 리뷰
 │   ├── validate_data.py        # 데이터 정합성 검증
 │   ├── test_notifications.py   # 알림 채널 테스트
-│   ├── toggle_trading.py       # 킬 스위치 (트레이딩 활성/비활성)
 │   ├── backup_data.sh          # 데이터 백업
 │   └── deploy-v3.2.1.sh        # v3.2.1 배포 (Legacy)
 │
@@ -180,8 +181,7 @@ turtle_trading/
 │   ├── universe.yaml           # 거래 유니버스 (심볼 단일 원본)
 │   ├── correlation_groups.yaml # 상관군/최대 노출 정책
 │   ├── notifications.yaml.example  # 알림 채널/이벤트 설정
-│   ├── ohlcv_collection.yaml   # OHLCV 수집 대상 (KOSPI 200 + KOSDAQ 150)
-│   └── system_status.yaml      # 킬 스위치 상태 (trading_enabled)
+│   └── ohlcv_collection.yaml   # OHLCV 수집 대상 (KOSPI 200 + KOSDAQ 150)
 │
 ├── data/                       # 런타임 데이터 (gitignore)
 │   ├── cache/                  # OHLCV Parquet 캐시
@@ -193,6 +193,7 @@ turtle_trading/
 ├── docs/                       # 운영 가이드
 ├── pyproject.toml              # 패키지/의존성/도구 설정
 ├── CHANGELOG.md                # 버전별 변경 이력
+├── app.py                      # Streamlit 대시보드 진입점
 ├── .env.example                # 환경 변수 템플릿
 ├── Dockerfile                  # Docker 이미지 빌드
 ├── docker-compose.yaml         # 서비스 정의 (turtle-cron + turtle-dashboard)
