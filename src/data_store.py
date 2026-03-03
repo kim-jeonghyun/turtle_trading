@@ -32,8 +32,9 @@ class ParquetDataStore:
         self.cache_dir = self.base_dir / "cache"
         self.trades_dir = self.base_dir / "trades"
         self.signals_dir = self.base_dir / "signals"
+        self.ohlcv_dir = self.base_dir / "ohlcv"
 
-        for d in [self.cache_dir, self.trades_dir, self.signals_dir]:
+        for d in [self.cache_dir, self.trades_dir, self.signals_dir, self.ohlcv_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
     def _get_cache_path(self, symbol: str, data_type: str = "ohlcv") -> Path:
@@ -65,6 +66,93 @@ class ParquetDataStore:
         except Exception as e:
             logger.error(f"OHLCV 로드 실패: {e}")
             return None
+
+    def _get_ohlcv_path(self, symbol: str) -> Path:
+        """일별 OHLCV 축적 파일 경로 (캐시와 분리)"""
+        safe_symbol = symbol.replace("/", "_").replace(":", "_")
+        return self.ohlcv_dir / f"{safe_symbol}_ohlcv.parquet"
+
+    def save_ohlcv_accumulated(self, symbol: str, df: pd.DataFrame) -> int:
+        """OHLCV 데이터를 축적 저장소에 증분 저장.
+
+        기존 데이터가 있으면 병합 후 날짜 기준 중복 제거.
+        new_rows는 set 차집합으로 계산하여 오버랩 구간에서도 정확한 값 반환.
+
+        Args:
+            symbol: 종목 코드
+            df: 새 OHLCV DataFrame (columns: date, open, high, low, close, volume)
+
+        Returns:
+            새로 추가된 행 수 (기존에 없던 날짜만 카운트)
+        """
+        symbol = validate_symbol(symbol)
+        if df.empty:
+            return 0
+
+        path = self._get_ohlcv_path(symbol)
+        existing = self.load_ohlcv_accumulated(symbol)
+
+        if existing is not None and not existing.empty:
+            existing_dates = set(pd.to_datetime(existing["date"]).dt.normalize())
+            new_dates = set(pd.to_datetime(df["date"]).dt.normalize())
+            new_rows = len(new_dates - existing_dates)
+            combined = pd.concat([existing, df], ignore_index=True)
+            combined["date"] = pd.to_datetime(combined["date"])
+            combined = combined.drop_duplicates(subset=["date"], keep="last")
+            combined = combined.sort_values("date").reset_index(drop=True)
+        else:
+            combined = df.copy()
+            combined["date"] = pd.to_datetime(combined["date"])
+            combined = combined.drop_duplicates(subset=["date"], keep="last")
+            combined = combined.sort_values("date").reset_index(drop=True)
+            new_rows = len(combined)
+
+        self._atomic_write_parquet(path, combined)
+        logger.info(f"OHLCV 축적 저장: {symbol} ({new_rows}개 신규, 총 {len(combined)}행)")
+        return new_rows
+
+    def load_ohlcv_accumulated(self, symbol: str) -> Optional[pd.DataFrame]:
+        """축적 OHLCV 데이터 로드 (캐시 만료 없음).
+
+        파일이 손상된 경우 .corrupted.{timestamp} 접미사로 격리하고 None 반환.
+
+        Args:
+            symbol: 종목 코드
+
+        Returns:
+            DataFrame or None if file doesn't exist or is corrupted
+        """
+        symbol = validate_symbol(symbol)
+        path = self._get_ohlcv_path(symbol)
+        if not path.exists():
+            return None
+        try:
+            df = pd.read_parquet(path)
+            logger.debug(f"OHLCV 축적 로드: {symbol} ({len(df)}행)")
+            return df
+        except Exception as e:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            quarantine_path = path.with_suffix(f".parquet.corrupted.{timestamp}")
+            try:
+                path.rename(quarantine_path)
+                logger.error(f"OHLCV 축적 로드 실패 (손상): {symbol} - {e}. 격리됨: {quarantine_path}")
+            except OSError as rename_err:
+                logger.error(f"OHLCV 축적 로드 실패: {symbol} - {e}. 격리 실패: {rename_err}")
+            return None
+
+    def get_ohlcv_last_date(self, symbol: str) -> Optional[datetime]:
+        """축적 OHLCV의 마지막 날짜 반환.
+
+        증분 수집 시 시작일 결정에 사용.
+
+        Returns:
+            마지막 데이터 날짜 or None
+        """
+        df = self.load_ohlcv_accumulated(symbol)
+        if df is None or df.empty:
+            return None
+        result: datetime = pd.to_datetime(df["date"]).max().to_pydatetime()
+        return result
 
     def save_indicators(self, symbol: str, df: pd.DataFrame):
         symbol = validate_symbol(symbol)
@@ -163,12 +251,14 @@ class ParquetDataStore:
         cache_files = list(self.cache_dir.glob("*.parquet"))
         trade_files = list(self.trades_dir.glob("*.parquet"))
         signal_files = list(self.signals_dir.glob("*.parquet"))
+        ohlcv_files = list(self.ohlcv_dir.glob("*.parquet"))
 
-        total_size = sum(f.stat().st_size for f in cache_files + trade_files + signal_files)
+        total_size = sum(f.stat().st_size for f in cache_files + trade_files + signal_files + ohlcv_files)
 
         return {
             "cache_files": len(cache_files),
             "trade_files": len(trade_files),
             "signal_files": len(signal_files),
+            "ohlcv_files": len(ohlcv_files),
             "total_size_mb": round(total_size / 1024 / 1024, 2),
         }

@@ -7,6 +7,9 @@ SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 PYTHONPATH=/app
 
+# 일별 OHLCV 수집 (장마감 후 16:00 KST, 월-금)
+0 16 * * 1-5 cd /app && python scripts/collect_daily_ohlcv.py >> /app/logs/ohlcv_collect.log 2>&1
+
 # 한국 시장 시그널+포지션 체크 (장 마감 후 16:00)
 0 16 * * 1-5 cd /app && python scripts/check_positions.py >> /app/logs/check_kr.log 2>&1
 
