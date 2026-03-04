@@ -279,7 +279,7 @@ class TestFetchCrypto:
         fetcher = DataFetcher()
         # Force _get_ccxt_exchange to return None (simulate ccxt not available)
         with patch.object(fetcher, "_get_ccxt_exchange", return_value=None):
-            result = fetcher.fetch_crypto("BTC/USDT")
+            fetcher.fetch_crypto("BTC/USDT")
 
         # Should fall back to yfinance with BTC-USD
         assert mock_ticker_cls.called

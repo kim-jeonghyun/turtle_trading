@@ -1160,13 +1160,13 @@ class TestSetupNotifier:
     def test_partial_credentials_missing_token(self):
         config = {"telegram_token": None, "telegram_chat_id": "cid"}
         with patch("src.script_helpers.TelegramChannel") as MockTg:
-            notifier = setup_notifier(config)
+            setup_notifier(config)
         MockTg.assert_not_called()
 
     def test_partial_credentials_missing_chat_id(self):
         config = {"telegram_token": "tok", "telegram_chat_id": None}
         with patch("src.script_helpers.TelegramChannel") as MockTg:
-            notifier = setup_notifier(config)
+            setup_notifier(config)
         MockTg.assert_not_called()
 
 
@@ -1255,8 +1255,6 @@ class TestRunChecks:
                     "dc_low_55": 90,
                     "dc_high_10": 103,
                     "dc_low_10": 97,
-                    "dc_low_20": 95,
-                    "dc_high_20": 105,
                 },
                 {
                     "date": pd.Timestamp("2025-03-02"),
@@ -1270,8 +1268,6 @@ class TestRunChecks:
                     "dc_low_55": 90,
                     "dc_high_10": 103,
                     "dc_low_10": 97,
-                    "dc_low_20": 95,
-                    "dc_high_20": 105,
                 },
             ]
         )

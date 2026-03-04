@@ -148,9 +148,9 @@ class TestPyramidPosition:
     def test_trailing_stop_update_long(self):
         """피라미딩 시 이전 진입의 스톱이 올라가야 함"""
         pos = PyramidPosition(symbol="SPY", direction=Direction.LONG)
-        e1 = pos.add_entry(datetime.now(), 100.0, 1, 2.5)  # stop=95.0
+        pos.add_entry(datetime.now(), 100.0, 1, 2.5)  # stop=95.0
         assert pos.entries[0].stop_price == 95.0
-        e2 = pos.add_entry(datetime.now(), 101.25, 1, 2.5)  # stop=96.25
+        pos.add_entry(datetime.now(), 101.25, 1, 2.5)  # stop=96.25
         # e1's stop should be raised to 96.25
         assert pos.entries[0].stop_price == 96.25
         assert pos.entries[1].stop_price == 96.25

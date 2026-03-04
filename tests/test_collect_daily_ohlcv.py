@@ -222,6 +222,21 @@ class TestValidateOHLCV:
         assert all(c.islower() for c in result.columns)
         assert len(result) == 1
 
+    def test_validate_ohlcv_enhanced(self):
+        """OHLC 논리 불일치(high < low) 행 제거"""
+        df = pd.DataFrame(
+            {
+                "date": pd.date_range("2026-01-01", periods=4),
+                "open": [100, 101, 102, 103],
+                "high": [101, 98, 103, 104],  # 두 번째 행: high(98) < low(100)
+                "low": [99, 100, 101, 102],
+                "close": [100.5, 100.5, 102.5, 103.5],
+                "volume": [1000] * 4,
+            }
+        )
+        result = validate_ohlcv(df)
+        assert len(result) == 3  # high < low 행 1개 제거
+
 
 # ─── Start Date Determination ──────────────────────────────────────────────
 

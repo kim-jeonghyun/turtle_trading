@@ -330,7 +330,6 @@ class TestRetrySync:
 
     def test_exponential_backoff(self):
         """지연 시간이 지수적으로 증가하는지 확인"""
-        sleep_calls = []
 
         @retry_sync(max_retries=3, base_delay=1.0, max_delay=30.0)
         def always_fails():
