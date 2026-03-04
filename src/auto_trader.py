@@ -14,10 +14,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, OrderSide, OrderType
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage
 from src.types import OrderStatus
 from src.utils import atomic_write_json, safe_load_json
+from src.vi_cb_detector import VICBDetector
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +66,16 @@ class AutoTrader:
         max_order_amount: float = 5_000_000,
         notifier: Optional[NotificationManager] = None,
         reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
+        kill_switch: Optional["KillSwitch"] = None,
+        vi_cb_detector: Optional["VICBDetector"] = None,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
         self.max_order_amount = max_order_amount
         self.notifier = notifier
         self.reconfirm_delay_sec = reconfirm_delay_sec
+        self.kill_switch = kill_switch
+        self.vi_cb_detector = vi_cb_detector
         self._order_counter = 0
 
         if not dry_run:
@@ -125,6 +131,55 @@ class AutoTrader:
         Returns:
             OrderRecord: 주문 기록
         """
+        # 킬 스위치 체크 — BUY(진입) 주문만 차단, SELL(청산)은 항상 통과
+        if self.kill_switch and side == OrderSide.BUY:
+            allowed, block_reason = self.kill_switch.check_entry_allowed()
+            if not allowed:
+                logger.error(f"주문 차단 (킬 스위치): {block_reason} ({symbol})")
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    reason=block_reason,
+                )
+                self._append_order_to_log(blocked_record)
+                if self.notifier:
+                    await self.notifier.send_all(
+                        NotificationMessage(
+                            title="킬 스위치 주문 차단",
+                            body=f"{symbol} {side.value} {quantity}주 — {block_reason}",
+                            level=NotificationLevel.ERROR,
+                        )
+                    )
+                return blocked_record
+
+        # VI/CB 가드: BUY(진입)만 차단, SELL(청산)은 항상 허용 (Principle 3)
+        if self.vi_cb_detector and side == OrderSide.BUY:
+            vi_allowed, vi_reason = self.vi_cb_detector.check_entry_allowed(symbol)
+            if not vi_allowed:
+                logger.warning(f"VI/CB 가드: {symbol} 주문 차단 — {vi_reason}")
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED_VI_CB",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=f"VI/CB: {vi_reason}",
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
+                return blocked_record
+
         order_id = self._generate_order_id()
         timestamp = datetime.now().isoformat()
 
@@ -479,6 +534,7 @@ class AutoTrader:
 
         filled = sum(1 for o in today_orders if o.get("status") == OrderStatus.FILLED.value)
         failed = sum(1 for o in today_orders if o.get("status") == OrderStatus.FAILED.value)
+        rejected = sum(1 for o in today_orders if o.get("status") == OrderStatus.REJECTED.value)
         dry_run_count = sum(1 for o in today_orders if o.get("status") == OrderStatus.DRY_RUN.value)
         total_amount = sum(
             o.get("quantity", 0) * o.get("price", 0)
@@ -491,6 +547,7 @@ class AutoTrader:
             "total_orders": len(today_orders),
             "filled": filled,
             "failed": failed,
+            "rejected": rejected,
             "dry_run": dry_run_count,
             "total_amount": total_amount,
         }

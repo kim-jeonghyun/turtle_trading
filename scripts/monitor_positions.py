@@ -26,6 +26,7 @@ from src.position_tracker import PositionTracker
 from src.script_helpers import create_kis_client, load_config, setup_notifier
 from src.spot_price import SpotData, SpotPriceFetcher
 from src.types import Direction
+from src.vi_cb_detector import VICBDetector
 
 LOCK_FILE = Path(__file__).parent.parent / "data" / ".monitor_positions.lock"
 # NOTE: check_positions.py(.check_positions.lock)와 별도 lock 사용.
@@ -166,6 +167,7 @@ async def monitor_positions(args):
 
             async with kis_ctx if kis_ctx else nullcontext() as kis_client:
                 spot_fetcher = SpotPriceFetcher(kis_client)
+                vi_cb_detector = VICBDetector()
 
                 open_positions = tracker.get_open_positions()
                 if not open_positions:
@@ -186,6 +188,10 @@ async def monitor_positions(args):
                     if spot is None:
                         logger.warning(f"가격 조회 실패: {pos.symbol}")
                         continue
+
+                    # VI/CB 캐시 업데이트 (KR 종목만 vi_cls_code 존재)
+                    if spot and infer_market(pos.symbol) == "KR":
+                        vi_cb_detector.update_from_spot(pos.symbol, spot)
 
                     # 스톱로스 체크
                     if check_stop_loss_intraday(pos, spot):

@@ -23,6 +23,7 @@ class SpotData(TypedDict):
     open: float
     volume: int
     is_delayed: bool
+    vi_cls_code: str
 
 
 class SpotPriceFetcher:
@@ -80,6 +81,7 @@ class SpotPriceFetcher:
             open=result["open"],
             volume=result.get("volume", 0),
             is_delayed=False,
+            vi_cls_code=result.get("vi_cls_code", "0"),
         )
 
     async def _fetch_us(self, symbol: str) -> Optional[SpotData]:
@@ -95,6 +97,7 @@ class SpotPriceFetcher:
             open=result["open"],
             volume=result.get("volume", 0),
             is_delayed=False,
+            vi_cls_code="0",
         )
 
     async def _fetch_crypto(self, symbol: str) -> Optional[SpotData]:
@@ -110,6 +113,7 @@ class SpotPriceFetcher:
                 "open": float(ticker.get("open", 0)),
                 "volume": int(ticker.get("baseVolume", 0) or 0),
                 "is_delayed": False,
+                "vi_cls_code": "0",
             }
         except Exception as e:
             logger.error(f"CCXT 조회 오류: {symbol} - {e}")
@@ -149,6 +153,7 @@ class SpotPriceFetcher:
                 "open": 0.0,
                 "volume": 0,
                 "is_delayed": True,
+                "vi_cls_code": "0",
             }
         except Exception as e:
             logger.error(f"yfinance fallback 실패: {symbol} - {e}")

@@ -11,6 +11,7 @@ import asyncio
 import fcntl
 import logging
 import os
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -19,11 +20,14 @@ from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
 from src.inverse_filter import InverseETFFilter
+from src.kill_switch import KillSwitch
+from src.kis_api import KISAPIClient
 from src.market_calendar import get_market_status, infer_market, should_check_signals
 from src.position_tracker import PositionTracker
-from src.script_helpers import load_config, setup_notifier, setup_risk_manager
+from src.script_helpers import create_kis_client, load_config, setup_notifier, setup_risk_manager
 from src.types import Direction, SignalType
 from src.universe_manager import UniverseManager
+from src.vi_cb_detector import VICBDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -284,6 +288,11 @@ async def _run_checks():
     data_store = ParquetDataStore()
     tracker = PositionTracker()
     risk_manager = setup_risk_manager()
+    vi_cb_detector = VICBDetector()
+
+    # KIS 클라이언트 (VI/CB 상태 조회용)
+    kis_config = create_kis_client(config)
+    kis_ctx = KISAPIClient(kis_config) if kis_config else None
 
     # 유니버스 매니저에서 심볼 로드
     universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
@@ -429,61 +438,83 @@ async def _run_checks():
     # 2. 신규 진입 시그널 체크
     all_signals = []
 
-    for item in all_symbols_list:
-        if isinstance(item, tuple):
-            symbol, name = item
-        else:
-            symbol = name = item
-
-        try:
-            logger.info(f"시그널 체크: {name}")
-
-            # 마켓 활성 시간 체크
-            if not should_check_signals(symbol):
-                logger.info(f"마켓 비활동 시간: {symbol} ({infer_market(symbol)}) 스킵")
-                continue
-
-            # 데이터 페칭
-            df = data_fetcher.fetch(symbol, period="6mo")
-            if df.empty:
-                continue
-
-            df = add_turtle_indicators(df)
-
-            # System 1/2 독립 운영 - 각 시스템별로 기존 포지션 확인
-            existing_positions = tracker.get_open_positions(symbol)
-            existing_systems = {p.system for p in existing_positions}
-
-            signals_s1 = []
-            signals_s2 = []
-
-            if 1 not in existing_systems:
-                signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker)
+    async with kis_ctx if kis_ctx else nullcontext() as kis_client:
+        for item in all_symbols_list:
+            if isinstance(item, tuple):
+                symbol, name = item
             else:
-                logger.info(f"System 1 포지션 보유 중: {symbol}")
+                symbol = name = item
 
-            if 2 not in existing_systems:
-                signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker)
-            else:
-                logger.info(f"System 2 포지션 보유 중: {symbol}")
+            try:
+                logger.info(f"시그널 체크: {name}")
 
-            # 리스크 매니저 필터링
-            for signal in signals_s1 + signals_s2:
-                direction = Direction(signal["direction"])
-                can_add, reason = risk_manager.can_add_position(
-                    symbol=signal["symbol"], units=1, n_value=signal["n"], direction=direction
-                )
-                if can_add:
-                    all_signals.append(signal)
-                    # 리스크 상태 업데이트 (후속 시그널 정확한 체크를 위해)
-                    risk_manager.add_position(signal["symbol"], 1, signal["n"], direction)
+                # 마켓 활성 시간 체크
+                if not should_check_signals(symbol):
+                    logger.info(f"마켓 비활동 시간: {symbol} ({infer_market(symbol)}) 스킵")
+                    continue
+
+                # KR 종목: VI/CB 상태 조회 후 캐시 업데이트
+                if is_korean_market(symbol) and kis_client is not None:
+                    try:
+                        raw = symbol.replace(".KS", "").replace(".KQ", "")
+                        price_data = await kis_client.get_korea_price(raw)
+                        if price_data:
+                            vi_cb_detector.update_from_spot(symbol, price_data)
+                    except Exception as e:
+                        logger.debug(f"VI 상태 조회 실패: {symbol} - {e}")
+
+                # VI/CB 체크: 발동 중인 종목은 신규 진입 시그널 스킵
+                vi_allowed, vi_reason = vi_cb_detector.check_entry_allowed(symbol)
+                if not vi_allowed:
+                    logger.info(f"VI/CB 발동 중: {symbol} 시그널 스킵 — {vi_reason}")
+                    continue
+
+                # 데이터 페칭
+                df = data_fetcher.fetch(symbol, period="6mo")
+                if df.empty:
+                    continue
+
+                df = add_turtle_indicators(df)
+
+                # System 1/2 독립 운영 - 각 시스템별로 기존 포지션 확인
+                existing_positions = tracker.get_open_positions(symbol)
+                existing_systems = {p.system for p in existing_positions}
+
+                signals_s1 = []
+                signals_s2 = []
+
+                if 1 not in existing_systems:
+                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker)
                 else:
-                    logger.info(f"리스크 제한으로 시그널 스킵: {signal['symbol']} - {reason}")
+                    logger.info(f"System 1 포지션 보유 중: {symbol}")
 
-        except Exception as e:
-            logger.error(f"{symbol} 처리 오류: {e}")
+                if 2 not in existing_systems:
+                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker)
+                else:
+                    logger.info(f"System 2 포지션 보유 중: {symbol}")
+
+                # 리스크 매니저 필터링
+                for signal in signals_s1 + signals_s2:
+                    direction = Direction(signal["direction"])
+                    can_add, reason = risk_manager.can_add_position(
+                        symbol=signal["symbol"], units=1, n_value=signal["n"], direction=direction
+                    )
+                    if can_add:
+                        all_signals.append(signal)
+                        # 리스크 상태 업데이트 (후속 시그널 정확한 체크를 위해)
+                        risk_manager.add_position(signal["symbol"], 1, signal["n"], direction)
+                    else:
+                        logger.info(f"리스크 제한으로 시그널 스킵: {signal['symbol']} - {reason}")
+
+            except Exception as e:
+                logger.error(f"{symbol} 처리 오류: {e}")
 
     # 3. 신규 시그널 알림
+    kill_switch = KillSwitch()
+    allowed, _reason = kill_switch.check_entry_allowed()
+    if all_signals and not allowed:
+        logger.warning(f"킬 스위치 활성 중: {len(all_signals)}개 시그널 감지되었으나 신규 진입 불가")
+
     if all_signals:
         logger.info(f"신규 시그널: {len(all_signals)}개")
 

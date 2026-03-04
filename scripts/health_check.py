@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Tuple
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.kill_switch import KillSwitch
+
 logger = logging.getLogger(__name__)
 
 # 외부 API 연결 확인 타임아웃 (초)
@@ -183,6 +186,17 @@ def check_data_freshness() -> Tuple[bool, str]:
     return True, f"Data freshness: last update {age_str}"
 
 
+def check_kill_switch() -> Tuple[bool, str]:
+    """킬 스위치 상태 확인"""
+    try:
+        kill_switch = KillSwitch()
+        if not kill_switch.is_trading_enabled:
+            return False, f"킬 스위치 활성 중: {kill_switch.reason}"
+        return True, "킬 스위치: 정상 (트레이딩 가능)"
+    except Exception as e:
+        return False, f"킬 스위치: 상태 확인 실패 - {e}"
+
+
 def check_disk_space() -> Tuple[bool, str]:
     """디스크 공간 확인"""
     try:
@@ -330,6 +344,23 @@ def check_yfinance_connection() -> Tuple[bool, str]:
         return False, f"yfinance: error ({e})"
 
 
+def check_vi_cb_detector() -> Tuple[bool, str]:
+    """VI/CB 감지 모듈 import 가능 여부 확인 (가드 와이어링 검증)"""
+    try:
+        from src.vi_cb_detector import VICBDetector
+
+        detector = VICBDetector()
+        # check_entry_allowed 호출 가능 여부 확인
+        allowed, reason = detector.check_entry_allowed("TEST")
+        if allowed:
+            return True, "VI/CB 감지: 모듈 정상 (Fail-Open 확인)"
+        return True, f"VI/CB 감지: 모듈 정상 (차단 활성: {reason})"
+    except ImportError as e:
+        return False, f"VI/CB 감지: 모듈 import 실패 - {e}"
+    except Exception as e:
+        return False, f"VI/CB 감지: 모듈 오류 - {e}"
+
+
 def main():
     """전체 헬스 체크 실행"""
     print("=== Turtle Trading System Health Check ===")
@@ -344,6 +375,8 @@ def main():
         ("Environment", check_environment_variables),
         ("Data Freshness", check_data_freshness),
         ("Disk Space", check_disk_space),
+        ("Kill Switch", check_kill_switch),
+        ("VI/CB Detector", check_vi_cb_detector),
     ]
 
     # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)
