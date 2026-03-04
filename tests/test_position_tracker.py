@@ -139,8 +139,8 @@ class TestCheckStopLoss:
         assert len(triggered) == 0
 
     def test_multiple_symbols(self, tracker):
-        pos1 = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)  # stop=95
-        pos2 = tracker.open_position("QQQ", 1, "SHORT", 200.0, 5.0, 20)  # stop=210
+        tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)  # stop=95
+        tracker.open_position("QQQ", 1, "SHORT", 200.0, 5.0, 20)  # stop=210
         # SPY: 94 <= 95 -> triggered, QQQ: 211 >= 210 -> triggered
         triggered = tracker.check_stop_loss({"SPY": 94.0, "QQQ": 211.0})
         assert len(triggered) == 2

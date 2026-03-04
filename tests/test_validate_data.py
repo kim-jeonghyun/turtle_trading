@@ -16,12 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import pytest
 
-from scripts.validate_data import (
-    validate_ohlcv_consistency,
-    validate_ohlcv_date_gaps,
-    validate_ohlcv_outliers,
-)
-
+from scripts.validate_data import validate_ohlcv_consistency, validate_ohlcv_date_gaps, validate_ohlcv_outliers
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
