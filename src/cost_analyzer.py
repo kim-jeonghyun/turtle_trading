@@ -33,6 +33,7 @@ class TradeCost:
     symbol: str
     requested_price: float
     fill_price: float
+    quantity: int            # 주문 수량
     slippage: float          # fill_price - requested_price (부호 있음)
     slippage_pct: float      # slippage / requested_price
     commission: float        # fill_amount * commission_rate
@@ -45,6 +46,7 @@ class TradeCost:
             "symbol": self.symbol,
             "requested_price": self.requested_price,
             "fill_price": self.fill_price,
+            "quantity": self.quantity,
             "slippage": self.slippage,
             "slippage_pct": self.slippage_pct,
             "commission": self.commission,
@@ -59,6 +61,7 @@ class TradeCost:
             symbol=d["symbol"],
             requested_price=d["requested_price"],
             fill_price=d["fill_price"],
+            quantity=d.get("quantity", 0),
             slippage=d["slippage"],
             slippage_pct=d["slippage_pct"],
             commission=d["commission"],
@@ -97,8 +100,13 @@ class CostAnalyzer:
         quantity: int,
     ) -> TradeCost:
         """단일 주문 비용 분석 후 TradeCost 반환 및 저장."""
+        if quantity <= 0:
+            raise ValueError(f"quantity는 양수여야 합니다: {quantity}")
+        if requested_price <= 0:
+            raise ValueError(f"requested_price는 양수여야 합니다: {requested_price}")
+
         slippage = fill_price - requested_price
-        slippage_pct = slippage / requested_price if requested_price > 0 else 0.0
+        slippage_pct = slippage / requested_price
         fill_amount = fill_price * quantity
         commission = fill_amount * self.commission_rate
         total_cost = abs(slippage * quantity) + commission
@@ -108,6 +116,7 @@ class CostAnalyzer:
             symbol=symbol,
             requested_price=requested_price,
             fill_price=fill_price,
+            quantity=quantity,
             slippage=slippage,
             slippage_pct=slippage_pct,
             commission=commission,
@@ -130,7 +139,9 @@ class CostAnalyzer:
         """
         costs = self._costs
         if since:
-            costs = [c for c in costs if c.timestamp >= since]
+            from datetime import datetime as dt
+            since_dt = dt.fromisoformat(since) if "T" in since else dt.strptime(since, "%Y-%m-%d")
+            costs = [c for c in costs if c.timestamp and dt.fromisoformat(c.timestamp) >= since_dt]
 
         if not costs:
             return {
@@ -160,6 +171,7 @@ class CostAnalyzer:
         realized_profit: float,
         equity_threshold_pct: float = 0.002,   # 0.2%
         profit_threshold_pct: float = 0.15,     # 수익의 15%
+        since: Optional[str] = None,            # ISO 날짜 문자열 (예: "2026-03-01")
     ) -> tuple[bool, str]:
         """이중 임계 예산 점검.
 
@@ -167,11 +179,14 @@ class CostAnalyzer:
         2) 누적 비용 > realized_profit × profit_threshold_pct → 차단
            (realized_profit <= 0이면 수익 임계 스킵 — 초기 단계 불필요 차단 방지)
 
+        Args:
+            since: 이 날짜 이후 비용만 집계. 미지정 시 전체 집계.
+
         Returns:
             (True, "") — 정상
             (False, 사유) — 임계 초과
         """
-        cumulative = self.get_cumulative_costs()
+        cumulative = self.get_cumulative_costs(since=since)
         total_cost = cumulative["total_cost"]
 
         # 검사 1: 자산 임계

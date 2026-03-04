@@ -15,7 +15,6 @@ CostAnalyzer 단위 테스트
 """
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -252,3 +251,149 @@ def test_cost_persistence(tmp_path: Path) -> None:
 
     assert result["trade_count"] == 2
     assert result["total_cost"] > 0
+
+
+# ---------------------------------------------------------------------------
+# 입력 검증 (C2)
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_order_rejects_zero_quantity(analyzer: CostAnalyzer) -> None:
+    """quantity=0 → ValueError."""
+    with pytest.raises(ValueError, match="quantity"):
+        analyzer.analyze_order("O_BAD", "005930", 50_000.0, 50_000.0, 0)
+
+
+def test_analyze_order_rejects_negative_quantity(analyzer: CostAnalyzer) -> None:
+    """quantity<0 → ValueError."""
+    with pytest.raises(ValueError, match="quantity"):
+        analyzer.analyze_order("O_BAD", "005930", 50_000.0, 50_000.0, -1)
+
+
+def test_analyze_order_rejects_zero_requested_price(analyzer: CostAnalyzer) -> None:
+    """requested_price=0 → ValueError."""
+    with pytest.raises(ValueError, match="requested_price"):
+        analyzer.analyze_order("O_BAD", "005930", 0.0, 50_000.0, 10)
+
+
+def test_analyze_order_rejects_negative_requested_price(analyzer: CostAnalyzer) -> None:
+    """requested_price<0 → ValueError."""
+    with pytest.raises(ValueError, match="requested_price"):
+        analyzer.analyze_order("O_BAD", "005930", -100.0, 50_000.0, 10)
+
+
+# ---------------------------------------------------------------------------
+# since 필터 (H5 / C1)
+# ---------------------------------------------------------------------------
+
+
+def test_since_filter_excludes_old_records(analyzer: CostAnalyzer) -> None:
+    """since 날짜 이전 기록은 집계에서 제외된다."""
+    # 과거 타임스탬프를 가진 레코드를 직접 주입
+    from src.cost_analyzer import TradeCost
+
+    old_cost = TradeCost(
+        order_id="OLD",
+        symbol="005930",
+        requested_price=50_000.0,
+        fill_price=50_100.0,
+        quantity=10,
+        slippage=100.0,
+        slippage_pct=0.002,
+        commission=75.0,
+        total_cost=1075.0,
+        timestamp="2026-01-01T10:00:00",
+    )
+    analyzer._costs = [old_cost]
+
+    # since=2026-03-01 → 1월 기록은 제외
+    result = analyzer.get_cumulative_costs(since="2026-03-01")
+    assert result["trade_count"] == 0
+    assert result["total_cost"] == 0.0
+
+
+def test_since_filter_includes_matching_records(analyzer: CostAnalyzer) -> None:
+    """since 날짜 이후 기록은 집계에 포함된다."""
+    from src.cost_analyzer import TradeCost
+
+    recent_cost = TradeCost(
+        order_id="NEW",
+        symbol="005930",
+        requested_price=50_000.0,
+        fill_price=50_100.0,
+        quantity=10,
+        slippage=100.0,
+        slippage_pct=0.002,
+        commission=75.0,
+        total_cost=1075.0,
+        timestamp="2026-03-04T10:00:00",
+    )
+    analyzer._costs = [recent_cost]
+
+    result = analyzer.get_cumulative_costs(since="2026-03-01")
+    assert result["trade_count"] == 1
+    assert result["total_cost"] == pytest.approx(1075.0)
+
+
+def test_check_budget_limit_with_since_ignores_old_costs(analyzer: CostAnalyzer) -> None:
+    """check_budget_limit(since=...) → 지정 날짜 이전 비용 무시."""
+    from src.cost_analyzer import TradeCost
+
+    old_cost = TradeCost(
+        order_id="OLD_BIG",
+        symbol="005930",
+        requested_price=10_000.0,
+        fill_price=10_500.0,
+        quantity=10,
+        slippage=500.0,
+        slippage_pct=0.05,
+        commission=15.75,
+        total_cost=5015.75,  # 자산 임계(2000원)를 초과하는 금액
+        timestamp="2026-01-01T10:00:00",
+    )
+    analyzer._costs = [old_cost]
+
+    # since=2026-03-01 → 1월 기록 제외 → 비용 없음 → 임계 통과
+    ok, reason = analyzer.check_budget_limit(
+        total_equity=1_000_000.0,
+        realized_profit=500_000.0,
+        since="2026-03-01",
+    )
+    assert ok is True
+    assert reason == ""
+
+
+# ---------------------------------------------------------------------------
+# quantity 필드 영속성 (H4)
+# ---------------------------------------------------------------------------
+
+
+def test_quantity_persisted_in_trade_cost(tmp_path: Path) -> None:
+    """quantity 필드가 저장 후 재로드 시 보존된다."""
+    log_path = tmp_path / "cost_log.json"
+
+    a1 = CostAnalyzer(cost_log_path=log_path)
+    a1.analyze_order("O1", "005930", 50_000.0, 50_100.0, 7)
+
+    a2 = CostAnalyzer(cost_log_path=log_path)
+    assert len(a2._costs) == 1
+    assert a2._costs[0].quantity == 7
+
+
+def test_from_dict_handles_missing_quantity() -> None:
+    """구버전 레코드(quantity 없음) → quantity=0 기본값 처리."""
+    from src.cost_analyzer import TradeCost
+
+    d = {
+        "order_id": "OLD",
+        "symbol": "005930",
+        "requested_price": 50_000.0,
+        "fill_price": 50_100.0,
+        "slippage": 100.0,
+        "slippage_pct": 0.002,
+        "commission": 75.0,
+        "total_cost": 1075.0,
+        "timestamp": "2026-01-01T10:00:00",
+    }
+    cost = TradeCost.from_dict(d)
+    assert cost.quantity == 0
