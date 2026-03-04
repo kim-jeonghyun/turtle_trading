@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 
 from src.analytics import TradeAnalytics
+from src.cost_analyzer import CostAnalyzer
 from src.data_store import ParquetDataStore
 from src.market_calendar import get_market_status
 from src.position_tracker import PositionTracker
@@ -17,6 +18,29 @@ from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def generate_cost_summary(today: str) -> dict:
+    """오늘의 비용 요약: 슬리피지, 수수료, 평균 슬리피지율."""
+    try:
+        analyzer = CostAnalyzer()
+        # 오늘 날짜 기준 ISO 접두사 필터 (예: "2026-03-04")
+        summary = analyzer.get_cumulative_costs(since=today)
+        total_cost = summary["total_cost"]
+        avg_slippage_pct = summary["avg_slippage_pct"]
+        trade_count = summary["trade_count"]
+
+        # 예산 활용률: 기본 자산 임계(0.2%) 기준 표시용 — 절대값 참고용
+        return {
+            "오늘_슬리피지": f"{summary['total_slippage']:,.0f}원",
+            "오늘_수수료": f"{summary['total_commission']:,.0f}원",
+            "평균_슬리피지율": f"{avg_slippage_pct:.4%}",
+            "비용_분석_건수": trade_count,
+            "오늘_총비용": f"{total_cost:,.0f}원",
+        }
+    except Exception as e:
+        logger.warning(f"비용 요약 조회 실패: {e}")
+        return {}
 
 
 def generate_report(
@@ -101,6 +125,9 @@ def generate_report(
         except Exception as e:
             logger.warning(f"R-배수 분석 실패: {e}")
 
+    # 비용 요약 (오늘 기준)
+    cost_summary = generate_cost_summary(today)
+
     return {
         "날짜": today,
         "마켓 상태": market_status_text,
@@ -115,6 +142,7 @@ def generate_report(
         "시스템 비교": system_comparison,
         "캐시 파일": cache_stats["cache_files"],
         "데이터 크기": f"{cache_stats['total_size_mb']:.1f}MB",
+        "비용 요약": cost_summary,
     }
 
 
