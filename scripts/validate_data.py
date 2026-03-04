@@ -276,9 +276,7 @@ def validate_ohlcv_consistency(df: pd.DataFrame, symbol: str) -> list[str]:
     return issues
 
 
-def validate_ohlcv_date_gaps(
-    df: pd.DataFrame, symbol: str, market: str = "KR"
-) -> list[str]:
+def validate_ohlcv_date_gaps(df: pd.DataFrame, symbol: str, market: str = "KR") -> list[str]:
     """거래일 갭 감지 (주말/공휴일 제외).
 
     단순 역일(calendar days) 기준. 연말/설 연휴(최대 4-5일)를 고려하여
@@ -301,16 +299,12 @@ def validate_ohlcv_date_gaps(
     for i in range(1, len(dates)):
         gap = (dates.iloc[i] - dates.iloc[i - 1]).days
         if gap > 6:  # 역일 6일 이상 = 공휴일 포함 주말 대비 여유
-            issues.append(
-                f"{symbol}: {gap}일 갭 ({dates.iloc[i - 1].date()} -> {dates.iloc[i].date()})"
-            )
+            issues.append(f"{symbol}: {gap}일 갭 ({dates.iloc[i - 1].date()} -> {dates.iloc[i].date()})")
 
     return issues
 
 
-def validate_ohlcv_outliers(
-    df: pd.DataFrame, symbol: str, threshold: float = 0.31
-) -> list[str]:
+def validate_ohlcv_outliers(df: pd.DataFrame, symbol: str, threshold: float = 0.31) -> list[str]:
     """가격 이상치 감지 (전일 대비 +/-threshold 변동).
 
     한국 시장 가격제한폭 +/-30%이므로 threshold=0.31로 설정.
@@ -335,10 +329,7 @@ def validate_ohlcv_outliers(
         change = abs(closes[i] - closes[i - 1]) / closes[i - 1]
         if change > threshold:
             date = df["date"].iloc[i]
-            issues.append(
-                f"{symbol}: {date} 가격 변동 {change:.1%} "
-                f"({closes[i - 1]:.0f} -> {closes[i]:.0f})"
-            )
+            issues.append(f"{symbol}: {date} 가격 변동 {change:.1%} ({closes[i - 1]:.0f} -> {closes[i]:.0f})")
 
     return issues
 
