@@ -178,9 +178,7 @@ class PaperPortfolio:
 
     def save_state(self):
         """포트폴리오 상태를 JSON에 영속화"""
-        position_value = sum(
-            pos.fill_price * pos.quantity for pos in self.positions.values()
-        )
+        position_value = sum(pos.fill_price * pos.quantity for pos in self.positions.values())
         total_equity = self.cash + position_value
         state = {
             "initial_capital": self.initial_capital,

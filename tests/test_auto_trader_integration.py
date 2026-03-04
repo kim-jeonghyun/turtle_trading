@@ -173,6 +173,47 @@ class TestBudgetTripActivatesKillSwitch:
         assert not kill_switch.is_trading_enabled
 
 
+class TestCostAnalyzerFailOpen:
+    """CostAnalyzer 예외가 주문 성공 상태를 깨뜨리지 않는지 검증 (fail-open)."""
+
+    def test_analyze_order_exception_does_not_break_order(self, mock_kis_client, tmp_path):
+        """analyze_order()에서 예외 발생해도 주문은 DRY_RUN 상태 유지."""
+        broken_analyzer = MagicMock()
+        broken_analyzer.analyze_order.side_effect = RuntimeError("disk full")
+
+        ks = KillSwitch(config_path=tmp_path / "ks.yaml")
+        guard = TradingGuard(
+            limits=TradingLimits(),
+            kill_switch=ks,
+            state_path=tmp_path / "guard.json",
+        )
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis_client,
+                dry_run=True,
+                kill_switch=ks,
+                trading_guard=guard,
+                cost_analyzer=broken_analyzer,
+                initial_capital=10_000_000,
+            )
+
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="fail-open test",
+                )
+            )
+
+        # 주문 상태는 정상이어야 함 (analyze_order 예외가 전파되지 않음)
+        assert record.status == OrderStatus.DRY_RUN.value
+        # analyze_order는 호출 시도됨
+        broken_analyzer.analyze_order.assert_called_once()
+
+
 class TestFullGuardChainOrder:
     """6-E: kill_switch → vi_cb → trading_guard → [5M] → order 전체 체인 검증."""
 

@@ -52,6 +52,7 @@ def check_kis_token() -> tuple[bool, str]:
         import os
 
         from src.kis_api import KISAPIClient  # noqa: F401
+
         required_keys = ["KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NO"]
         missing = [k for k in required_keys if not os.environ.get(k)]
         if missing:
@@ -279,14 +280,18 @@ def check_cost_analyzer_module() -> tuple[bool, str]:
         with tempfile.NamedTemporaryFile(suffix=".json", delete=True) as tmp:
             analyzer = CostAnalyzer(cost_log_path=Path(tmp.name))
             cost = analyzer.analyze_order(
-                order_id="TEST_001", symbol="005930.KS",
-                requested_price=70000, fill_price=70010, quantity=1,
+                order_id="TEST_001",
+                symbol="005930.KS",
+                requested_price=70000,
+                fill_price=70010,
+                quantity=1,
             )
             if cost.total_cost <= 0:
                 return False, "비용 계산 결과 비정상"
 
             ok, _ = analyzer.check_budget_limit(
-                total_equity=5_000_000, realized_profit=100_000,
+                total_equity=5_000_000,
+                realized_profit=100_000,
             )
             return True, "CostAnalyzer 인스턴스 + analyze_order + check_budget_limit 검증 통과"
     except Exception as e:

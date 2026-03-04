@@ -560,16 +560,13 @@ async def _run_checks():
     else:
         logger.info("신규 시그널 없음")
 
-    # 4. CostAnalyzer 예산 점검 (매 실행 시)
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # 4. CostAnalyzer 예산 점검 (누적 비용 vs 누적 수익 — 동일 기간 비교)
     initial_capital = config.get("initial_capital", 5_000_000)
     total_equity = initial_capital  # live 전환 시 KIS API로 교체
     closed_positions = [p for p in tracker.get_all_positions() if p.status == "closed"]
     realized_profit = sum(p.pnl for p in closed_positions if p.pnl is not None)
 
-    budget_ok, budget_reason = cost_analyzer.check_budget_limit(
-        total_equity, realized_profit, since=today_str
-    )
+    budget_ok, budget_reason = cost_analyzer.check_budget_limit(total_equity, realized_profit)
     if not budget_ok:
         kill_switch_guard.activate(reason=budget_reason)
         logger.critical(f"[CostAnalyzer] {budget_reason}")

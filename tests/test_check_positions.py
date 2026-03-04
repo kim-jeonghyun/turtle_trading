@@ -1418,7 +1418,7 @@ class TestRunChecks:
             side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
         )
 
-        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store
+        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store, mock_trading_guard
 
     def _start_patches(self, patches):
         """패치를 모두 시작하고 반환."""
@@ -1430,7 +1430,7 @@ class TestRunChecks:
 
     async def test_run_checks_no_positions_no_signals(self):
         """오픈 포지션 없음, 돌파 없음 -> 깨끗한 실행."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=101, low=97),
@@ -1444,9 +1444,9 @@ class TestRunChecks:
         notifier.send_signal.assert_not_awaited()
 
     async def test_run_checks_stop_loss_triggered(self):
-        """오픈 포지션 스톱로스 발동 -> close + notify."""
+        """오픈 포지션 스톱로스 발동 -> close + notify + record_trade_result."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=95, close=96),
         )
@@ -1457,12 +1457,14 @@ class TestRunChecks:
             self._stop_patches(patches)
         tracker.close_position.assert_called_once()
         notifier.send_signal.assert_awaited()
+        # circuit breaker: 포지션 종료 시 record_trade_result 호출 보장
+        tg.record_trade_result.assert_called_once()
 
     async def test_run_checks_exit_signal(self):
-        """오픈 포지션 청산 시그널 -> close + save + notify."""
+        """오픈 포지션 청산 시그널 -> close + save + notify + record_trade_result."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
         # low=96 < dc_low_10=97 -> exit signal, but stop_loss=80 not hit
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=96, close=97),
         )
@@ -1473,11 +1475,13 @@ class TestRunChecks:
             self._stop_patches(patches)
         tracker.close_position.assert_called_once()
         notifier.send_signal.assert_awaited()
+        # circuit breaker: 포지션 종료 시 record_trade_result 호출 보장
+        tg.record_trade_result.assert_called_once()
 
     async def test_run_checks_pyramid_opportunity(self):
         """피라미딩 기회 -> notify."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=99, close=100),
             should_pyramid=True,
@@ -1495,7 +1499,7 @@ class TestRunChecks:
     async def test_run_checks_entry_signal_generated(self):
         """새 진입 시그널 생성 + 리스크 통과 -> save + notify."""
         # high=106 > dc_high_20=105 -> long entry signal
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1509,7 +1513,7 @@ class TestRunChecks:
 
     async def test_run_checks_signal_blocked_by_risk(self):
         """진입 시그널 리스크 차단 -> 알림 없음."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1524,7 +1528,7 @@ class TestRunChecks:
 
     async def test_run_checks_empty_fetch_skipped(self):
         """빈 DataFrame -> 에러 없이 스킵."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=pd.DataFrame(),
@@ -1538,7 +1542,7 @@ class TestRunChecks:
 
     async def test_run_checks_market_inactive_skipped(self):
         """마켓 비활동 -> 시그널 체크 스킵."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1554,7 +1558,7 @@ class TestRunChecks:
     async def test_run_checks_position_error_handled(self):
         """포지션 처리 중 예외 -> 로깅 후 계속."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
         )
         # Make fetcher raise for position data (use instance mock, not class mock)
@@ -1569,7 +1573,7 @@ class TestRunChecks:
 
     async def test_run_checks_signal_error_handled(self):
         """시그널 처리 중 예외 -> 로깅 후 계속."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY", "QQQ"],
         )
@@ -1585,7 +1589,7 @@ class TestRunChecks:
 
     async def test_run_checks_symbol_tuple_handling(self):
         """(symbol, name) 튜플 심볼 처리."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1610,7 +1614,7 @@ class TestRunChecks:
     async def test_run_checks_existing_system_position_skipped(self):
         """기존 시스템 포지션 보유 중 -> 해당 시스템 시그널 스킵."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1623,7 +1627,7 @@ class TestRunChecks:
 
     async def test_run_checks_save_signal_called(self):
         """시그널 저장이 data_store.save_signal()로 호출되는지 검증."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=["SPY"],
             fetch_df=self._make_mock_df(high=106, low=99, close=105),
@@ -1637,7 +1641,7 @@ class TestRunChecks:
 
     async def test_run_checks_risk_summary_logged(self):
         """리스크 요약이 호출되는지 검증."""
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[],
             symbols=[],
         )
@@ -1651,7 +1655,7 @@ class TestRunChecks:
     async def test_run_checks_position_loaded_to_risk_manager(self):
         """오픈 포지션이 리스크 매니저에 로드되는지 검증."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=99, close=100),
         )
@@ -1666,7 +1670,7 @@ class TestRunChecks:
         """여러 포지션 동시 처리."""
         pos1 = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
         pos2 = _make_open_position(symbol="QQQ", direction="SHORT", system=2, stop_loss=120.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos1, pos2],
             symbols=["SPY", "QQQ"],
             fetch_df=self._make_mock_df(high=100, low=99, close=100),
@@ -1794,6 +1798,8 @@ class TestRunChecksInverseETF:
         mock_tracker.close_position.assert_called_once()
         notifier_calls = mock_notifier.send_signal.call_args_list
         assert any("INVERSE" in str(call) for call in notifier_calls)
+        # record_trade_result가 포지션 종료 시 호출되어야 함 (circuit breaker 작동 보장)
+        mock_tg.record_trade_result.assert_called_once()
 
     async def test_inverse_etf_no_force_exit(self):
         """Inverse ETF 정상 범위 내 -> 강제 청산 안 함."""
@@ -2253,12 +2259,12 @@ class TestSaveTradeIntegration:
             side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
         )
 
-        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store
+        return patches, mock_notifier, mock_tracker, mock_rm, mock_fetcher, mock_data_store, mock_trading_guard
 
     async def test_stop_loss_saves_trade_record(self):
         """스톱로스 청산 시 save_trade() 호출 검증."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=95, close=96),
         )
@@ -2278,7 +2284,7 @@ class TestSaveTradeIntegration:
         """청산 시그널 경로에서 save_trade() 호출 검증."""
         pos = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=80.0)
         # low=96 < dc_low_10=97 -> exit signal, stop_loss=80 not hit
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=96, close=97),
         )
@@ -2378,7 +2384,7 @@ class TestSaveTradeIntegration:
         """save_trade() 실패 시 루프가 중단되지 않고 계속 진행되는지 검증."""
         pos1 = _make_open_position(symbol="SPY", direction="LONG", system=1, stop_loss=98.0)
         pos2 = _make_open_position(symbol="QQQ", direction="LONG", system=1, stop_loss=98.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos1, pos2],
             fetch_df=self._make_mock_df(high=100, low=95, close=96),
         )
@@ -2398,7 +2404,7 @@ class TestSaveTradeIntegration:
     async def test_close_position_none_skips_save_trade(self):
         """close_position()이 None 반환 시 save_trade 호출 안 됨."""
         pos = _make_open_position(symbol="SPY", stop_loss=98.0)
-        patches, notifier, tracker, rm, fetcher, ds = self._build_patches(
+        patches, notifier, tracker, rm, fetcher, ds, _tg = self._build_patches(
             open_positions=[pos],
             fetch_df=self._make_mock_df(high=100, low=95, close=96),
         )
