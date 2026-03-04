@@ -197,6 +197,27 @@ def check_kill_switch() -> Tuple[bool, str]:
         return False, f"킬 스위치: 상태 확인 실패 - {e}"
 
 
+def check_position_sync_module() -> Tuple[bool, str]:
+    """포지션 동기화 검증 모듈 와이어링 확인
+
+    src/position_sync.py가 import 가능하고 PositionSyncVerifier 클래스가 존재하는지 확인.
+    1인 프로젝트에서 가드 와이어링 누락을 자동 검증으로 보완.
+    """
+    try:
+        from src.position_sync import PositionSyncVerifier, SyncDiscrepancy
+
+        # 클래스 존재 + 핵심 메서드/속성 확인
+        if not hasattr(PositionSyncVerifier, "verify"):
+            return False, "Position sync: PositionSyncVerifier.verify() 메서드 없음"
+        if not hasattr(SyncDiscrepancy, "is_critical"):
+            return False, "Position sync: SyncDiscrepancy.is_critical 속성 없음"
+        return True, "Position sync: module OK (PositionSyncVerifier, SyncDiscrepancy)"
+    except ImportError as e:
+        return False, f"Position sync: import 실패 - {e}"
+    except Exception as e:
+        return False, f"Position sync: 검증 오류 - {e}"
+
+
 def check_disk_space() -> Tuple[bool, str]:
     """디스크 공간 확인"""
     try:
@@ -359,6 +380,7 @@ def main():
         ("Data Freshness", check_data_freshness),
         ("Disk Space", check_disk_space),
         ("Kill Switch", check_kill_switch),
+        ("Position Sync", check_position_sync_module),
     ]
 
     # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)
