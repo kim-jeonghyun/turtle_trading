@@ -12,7 +12,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, OrderSide, OrderType
@@ -20,6 +20,9 @@ from src.notifier import NotificationLevel, NotificationManager, NotificationMes
 from src.types import OrderStatus
 from src.utils import atomic_write_json, safe_load_json
 from src.vi_cb_detector import VICBDetector
+
+if TYPE_CHECKING:
+    from src.paper_trader import PaperPortfolio
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,7 @@ class AutoTrader:
         reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
         kill_switch: Optional["KillSwitch"] = None,
         vi_cb_detector: Optional["VICBDetector"] = None,
+        paper_portfolio: Optional["PaperPortfolio"] = None,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
@@ -76,6 +80,7 @@ class AutoTrader:
         self.reconfirm_delay_sec = reconfirm_delay_sec
         self.kill_switch = kill_switch
         self.vi_cb_detector = vi_cb_detector
+        self.paper_portfolio = paper_portfolio
         self._order_counter = 0
 
         if not dry_run:
@@ -227,6 +232,15 @@ class AutoTrader:
                 fill_time=timestamp,
                 reason=reason,
             )
+            if self.paper_portfolio:
+                paper_record = self.paper_portfolio.execute_paper_order(
+                    order_id=order_id,
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    requested_price=price,
+                )
+                record.fill_price = paper_record.fill_price  # 슬리피지 적용 가격으로 업데이트
             self._append_order_to_log(record)
             return record
 
