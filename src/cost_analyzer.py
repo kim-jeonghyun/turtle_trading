@@ -33,11 +33,11 @@ class TradeCost:
     symbol: str
     requested_price: float
     fill_price: float
-    quantity: int            # 주문 수량
-    slippage: float          # fill_price - requested_price (부호 있음)
-    slippage_pct: float      # slippage / requested_price
-    commission: float        # fill_amount * commission_rate
-    total_cost: float        # abs(slippage * qty) + commission
+    quantity: int  # 주문 수량
+    slippage: float  # fill_price - requested_price (부호 있음)
+    slippage_pct: float  # slippage / requested_price
+    commission: float  # fill_amount * commission_rate
+    total_cost: float  # abs(slippage * qty) + commission
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def to_dict(self) -> dict:
@@ -140,6 +140,7 @@ class CostAnalyzer:
         costs = self._costs
         if since:
             from datetime import datetime as dt
+
             since_dt = dt.fromisoformat(since) if "T" in since else dt.strptime(since, "%Y-%m-%d")
             costs = [c for c in costs if c.timestamp and dt.fromisoformat(c.timestamp) >= since_dt]
 
@@ -169,9 +170,9 @@ class CostAnalyzer:
         self,
         total_equity: float,
         realized_profit: float,
-        equity_threshold_pct: float = 0.002,   # 0.2%
-        profit_threshold_pct: float = 0.15,     # 수익의 15%
-        since: Optional[str] = None,            # ISO 날짜 문자열 (예: "2026-03-01")
+        equity_threshold_pct: float = 0.002,  # 0.2%
+        profit_threshold_pct: float = 0.15,  # 수익의 15%
+        since: Optional[str] = None,  # ISO 날짜 문자열 (예: "2026-03-01")
     ) -> tuple[bool, str]:
         """이중 임계 예산 점검.
 
