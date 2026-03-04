@@ -154,6 +154,13 @@ class AutoTrader:
 
         Returns:
             OrderRecord: 주문 기록
+
+        Note:
+            SELL 주문으로 포지션이 청산된 후 PnL을 계산하여
+            self.trading_guard.record_trade_result(pnl)을 반드시 호출해야
+            일일 손실 서킷브레이커가 정상 동작한다.
+            이 호출이 없으면 circuit breaker는 손실을 추적하지 못한다.
+            PnL 계산은 position_tracker.py에서 수행되며, 해당 위치에서 호출해야 한다.
         """
         # 킬 스위치 체크 — BUY(진입) 주문만 차단, SELL(청산)은 항상 통과
         if self.kill_switch and side == OrderSide.BUY:

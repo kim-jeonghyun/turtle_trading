@@ -66,10 +66,14 @@ class TradingGuard:
     def check_daily_loss(self, total_equity: float) -> tuple[bool, str]:
         """일일 실현 손실 체크.
         손실이 total_equity * max_daily_loss_pct 초과 시 차단 + 킬 스위치 활성화."""
+        # H2: 킬 스위치가 이미 활성화된 경우 중복 호출 방지
+        if not self.kill_switch.is_trading_enabled:
+            return False, "킬 스위치 이미 활성 (중복 호출 방지)"
         max_loss = total_equity * self.limits.max_daily_loss_pct
         if abs(self._daily_realized_loss) > max_loss:
             reason = f"일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 (한도: {max_loss:,.0f}원)"
             self.kill_switch.activate(reason=reason)
+            self._save_state()  # M2: 서킷브레이커 발동 시 상태 저장
             return False, f"일일 손실 서킷브레이커 발동 ({self._daily_realized_loss:,.0f}원)"
         return True, ""
 
@@ -78,10 +82,11 @@ class TradingGuard:
         Note: AutoTrader의 기존 5M 하드 안전망과 별개 (defense-in-depth)."""
         if amount > self.limits.max_order_amount:
             return False, (f"주문 금액 초과: {amount:,.0f}원 (한도: {self.limits.max_order_amount:,.0f}원)")
-        if total_equity > 0:
-            max_by_pct = total_equity * self.limits.max_order_pct
-            if amount > max_by_pct:
-                return False, (f"주문 비율 초과: {amount / total_equity:.1%} (한도: {self.limits.max_order_pct:.0%})")
+        if total_equity <= 0:
+            return False, "총자산 비정상"
+        max_by_pct = total_equity * self.limits.max_order_pct
+        if amount > max_by_pct:
+            return False, (f"주문 비율 초과: {amount / total_equity:.1%} (한도: {self.limits.max_order_pct:.0%})")
         return True, ""
 
     def record_trade_result(self, pnl: float):
