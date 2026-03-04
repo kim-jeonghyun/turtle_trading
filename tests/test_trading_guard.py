@@ -7,12 +7,11 @@ TradingGuard 단위 테스트.
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.trading_guard import TradingGuard, TradingLimits
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -37,6 +36,7 @@ def limits() -> TradingLimits:
 def mock_kill_switch() -> MagicMock:
     ks = MagicMock()
     ks.activate = MagicMock()
+    ks.is_trading_enabled = True
     return ks
 
 
@@ -240,9 +240,7 @@ def test_state_file_missing_initializes_zero(
     assert guard.daily_realized_loss == 0.0
 
 
-def test_state_date_mismatch_resets(
-    limits: TradingLimits, mock_kill_switch: MagicMock, tmp_state_path: Path
-) -> None:
+def test_state_date_mismatch_resets(limits: TradingLimits, mock_kill_switch: MagicMock, tmp_state_path: Path) -> None:
     """어제 날짜 파일을 오늘 로드하면 카운터 리셋"""
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     state_data = {
@@ -260,9 +258,7 @@ def test_state_date_mismatch_resets(
     assert guard.daily_realized_loss == 0.0
 
 
-def test_state_saved_after_record(
-    limits: TradingLimits, mock_kill_switch: MagicMock, tmp_state_path: Path
-) -> None:
+def test_state_saved_after_record(limits: TradingLimits, mock_kill_switch: MagicMock, tmp_state_path: Path) -> None:
     """record_trade_result 호출 후 상태 파일이 저장되는지 확인"""
     guard = TradingGuard(limits=limits, kill_switch=mock_kill_switch, state_path=tmp_state_path)
     guard.record_trade_result(pnl=-50_000.0)
@@ -279,18 +275,14 @@ def test_state_saved_after_record(
 # ---------------------------------------------------------------------------
 
 
-def test_custom_limits_from_config(
-    mock_kill_switch: MagicMock, tmp_state_path: Path
-) -> None:
+def test_custom_limits_from_config(mock_kill_switch: MagicMock, tmp_state_path: Path) -> None:
     """TradingLimits 커스텀 값이 체크에 반영되는지 확인"""
     custom_limits = TradingLimits(
         max_daily_loss_pct=0.05,  # 5%
         max_order_amount=1_000_000,  # 100만원
         max_order_pct=0.05,  # 5%
     )
-    guard = TradingGuard(
-        limits=custom_limits, kill_switch=mock_kill_switch, state_path=tmp_state_path
-    )
+    guard = TradingGuard(limits=custom_limits, kill_switch=mock_kill_switch, state_path=tmp_state_path)
 
     total_equity = 5_000_000.0
 
@@ -312,3 +304,67 @@ def test_custom_limits_from_config(
     allowed, reason = guard.check_order_size(260_000.0, total_equity)  # 5.2% > 5%
     assert allowed is False
     assert "주문 비율 초과" in reason
+
+
+# ---------------------------------------------------------------------------
+# C3 - check_order_size: total_equity <= 0 가드
+# ---------------------------------------------------------------------------
+
+
+def test_order_size_zero_equity_returns_false(guard: TradingGuard) -> None:
+    """C3: total_equity = 0이면 (False, '총자산 비정상') 반환"""
+    allowed, reason = guard.check_order_size(amount=100_000.0, total_equity=0.0)
+
+    assert allowed is False
+    assert reason == "총자산 비정상"
+
+
+def test_order_size_negative_equity_returns_false(guard: TradingGuard) -> None:
+    """C3: total_equity < 0이면 (False, '총자산 비정상') 반환"""
+    allowed, reason = guard.check_order_size(amount=100_000.0, total_equity=-1_000_000.0)
+
+    assert allowed is False
+    assert reason == "총자산 비정상"
+
+
+# ---------------------------------------------------------------------------
+# H2 - check_daily_loss: kill_switch 중복 activate 방지
+# ---------------------------------------------------------------------------
+
+
+def test_daily_loss_skip_when_kill_switch_already_active(limits: TradingLimits, tmp_state_path: Path) -> None:
+    """H2: kill_switch 이미 활성 시 중복 activate 없이 조기 반환"""
+    ks = MagicMock()
+    ks.activate = MagicMock()
+    ks.is_trading_enabled = False  # 이미 비활성
+
+    guard = TradingGuard(limits=limits, kill_switch=ks, state_path=tmp_state_path)
+    guard._daily_realized_loss = -200_000.0  # 한도 초과 상태여도
+
+    allowed, reason = guard.check_daily_loss(total_equity=5_000_000.0)
+
+    assert allowed is False
+    assert "중복 호출 방지" in reason
+    ks.activate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# M2 - check_daily_loss: CB 발동 시 _save_state() 호출 확인
+# ---------------------------------------------------------------------------
+
+
+def test_daily_loss_saves_state_on_circuit_breaker(
+    limits: TradingLimits, mock_kill_switch: MagicMock, tmp_state_path: Path
+) -> None:
+    """M2: 서킷브레이커 발동 시 _save_state()가 호출되어 상태 파일에 저장됨"""
+    guard = TradingGuard(limits=limits, kill_switch=mock_kill_switch, state_path=tmp_state_path)
+    guard._daily_realized_loss = -200_000.0  # 한도 5M * 3% = 150K 초과
+
+    allowed, reason = guard.check_daily_loss(total_equity=5_000_000.0)
+
+    assert allowed is False
+    assert "서킷브레이커" in reason
+    # 상태 파일이 저장되었는지 확인
+    assert tmp_state_path.exists()
+    saved = json.loads(tmp_state_path.read_text())
+    assert saved["daily_realized_loss"] == pytest.approx(-200_000.0)

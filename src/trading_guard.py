@@ -112,12 +112,18 @@ class TradingGuard:
         Returns:
             (allowed, reason): allowed=True이면 거래 허용, False이면 차단
         """
+        # H2: 킬 스위치 이미 활성 시 중복 호출 방지
+        if not self.kill_switch.is_trading_enabled:
+            return False, "킬 스위치 이미 활성 (중복 호출 방지)"
+
         max_loss = total_equity * self.limits.max_daily_loss_pct
         if abs(self._daily_realized_loss) > max_loss:
             reason = f"일일 손실 서킷브레이커 발동 ({self._daily_realized_loss:,.0f}원)"
             self.kill_switch.activate(
                 reason=(f"일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 (한도: {max_loss:,.0f}원)")
             )
+            # M2: CB 발동 시 상태 즉시 저장 (프로세스 재시작 후에도 상태 유지)
+            self._save_state()
             logger.critical(
                 f"[TradingGuard] 일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 "
                 f"(한도: {max_loss:,.0f}원, 총자산: {total_equity:,.0f}원)"
@@ -139,6 +145,10 @@ class TradingGuard:
         Returns:
             (allowed, reason): allowed=True이면 허용, False이면 차단
         """
+        # C3: 총자산 비정상 가드 (division error 방지)
+        if total_equity <= 0:
+            return False, "총자산 비정상"
+
         if amount > self.limits.max_order_amount:
             reason = f"주문 금액 초과: {amount:,.0f}원 (한도: {self.limits.max_order_amount:,.0f}원)"
             logger.warning(f"[TradingGuard] {reason}")
