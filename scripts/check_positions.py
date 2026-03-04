@@ -25,6 +25,7 @@ from src.position_tracker import PositionTracker
 from src.script_helpers import load_config, setup_notifier, setup_risk_manager
 from src.types import Direction, SignalType
 from src.universe_manager import UniverseManager
+from src.vi_cb_detector import VICBDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -285,6 +286,7 @@ async def _run_checks():
     data_store = ParquetDataStore()
     tracker = PositionTracker()
     risk_manager = setup_risk_manager()
+    vi_cb_detector = VICBDetector()
 
     # 유니버스 매니저에서 심볼 로드
     universe_yaml = Path(__file__).parent.parent / "config" / "universe.yaml"
@@ -442,6 +444,12 @@ async def _run_checks():
             # 마켓 활성 시간 체크
             if not should_check_signals(symbol):
                 logger.info(f"마켓 비활동 시간: {symbol} ({infer_market(symbol)}) 스킵")
+                continue
+
+            # VI/CB 체크: 발동 중인 종목은 신규 진입 시그널 스킵
+            vi_allowed, vi_reason = vi_cb_detector.check_entry_allowed(symbol)
+            if not vi_allowed:
+                logger.info(f"VI/CB 발동 중: {symbol} 시그널 스킵 — {vi_reason}")
                 continue
 
             # 데이터 페칭

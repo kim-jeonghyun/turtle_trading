@@ -19,6 +19,7 @@ from src.kis_api import KISAPIClient, OrderSide, OrderType
 from src.notifier import NotificationLevel, NotificationManager, NotificationMessage
 from src.types import OrderStatus
 from src.utils import atomic_write_json, safe_load_json
+from src.vi_cb_detector import VICBDetector
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class AutoTrader:
         notifier: Optional[NotificationManager] = None,
         reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
         kill_switch: Optional["KillSwitch"] = None,
+        vi_cb_detector: Optional["VICBDetector"] = None,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
@@ -73,6 +75,7 @@ class AutoTrader:
         self.notifier = notifier
         self.reconfirm_delay_sec = reconfirm_delay_sec
         self.kill_switch = kill_switch
+        self.vi_cb_detector = vi_cb_detector
         self._order_counter = 0
 
         if not dry_run:
@@ -154,6 +157,27 @@ class AutoTrader:
                             level=NotificationLevel.ERROR,
                         )
                     )
+                return blocked_record
+
+        # VI/CB 가드: BUY(진입)만 차단, SELL(청산)은 항상 허용 (Principle 3)
+        if self.vi_cb_detector and side == OrderSide.BUY:
+            vi_allowed, vi_reason = self.vi_cb_detector.check_entry_allowed(symbol)
+            if not vi_allowed:
+                logger.warning(f"VI/CB 가드: {symbol} 주문 차단 — {vi_reason}")
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED_VI_CB",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=f"VI/CB: {vi_reason}",
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
                 return blocked_record
 
         order_id = self._generate_order_id()
@@ -510,6 +534,7 @@ class AutoTrader:
 
         filled = sum(1 for o in today_orders if o.get("status") == OrderStatus.FILLED.value)
         failed = sum(1 for o in today_orders if o.get("status") == OrderStatus.FAILED.value)
+        rejected = sum(1 for o in today_orders if o.get("status") == OrderStatus.REJECTED.value)
         dry_run_count = sum(1 for o in today_orders if o.get("status") == OrderStatus.DRY_RUN.value)
         total_amount = sum(
             o.get("quantity", 0) * o.get("price", 0)
@@ -522,6 +547,7 @@ class AutoTrader:
             "total_orders": len(today_orders),
             "filled": filled,
             "failed": failed,
+            "rejected": rejected,
             "dry_run": dry_run_count,
             "total_amount": total_amount,
         }

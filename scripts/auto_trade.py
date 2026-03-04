@@ -409,6 +409,7 @@ async def run_auto_trade(args: argparse.Namespace):
                 OrderStatus.FAILED.value: "실패",
                 OrderStatus.PENDING.value: "대기",
                 OrderStatus.CANCELLED.value: "취소",
+                OrderStatus.REJECTED.value: "차단(VI/CB)",
             }.get(order.status, order.status)
 
             print(

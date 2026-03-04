@@ -26,6 +26,7 @@ from src.position_tracker import PositionTracker
 from src.script_helpers import create_kis_client, load_config, setup_notifier
 from src.spot_price import SpotData, SpotPriceFetcher
 from src.types import Direction
+from src.vi_cb_detector import VICBDetector
 
 LOCK_FILE = Path(__file__).parent.parent / "data" / ".monitor_positions.lock"
 # NOTE: check_positions.py(.check_positions.lock)와 별도 lock 사용.
@@ -166,6 +167,7 @@ async def monitor_positions(args):
 
             async with kis_ctx if kis_ctx else nullcontext() as kis_client:
                 spot_fetcher = SpotPriceFetcher(kis_client)
+                vi_cb_detector = VICBDetector()
 
                 open_positions = tracker.get_open_positions()
                 if not open_positions:
@@ -185,6 +187,12 @@ async def monitor_positions(args):
                     spot = await spot_fetcher.fetch_spot_price(pos.symbol)
                     if spot is None:
                         logger.warning(f"가격 조회 실패: {pos.symbol}")
+                        continue
+
+                    # VI/CB 상태 체크: 발동 중이면 모니터링 일시 중지
+                    vi_allowed, vi_reason = vi_cb_detector.check_entry_allowed(pos.symbol)
+                    if not vi_allowed:
+                        logger.info(f"VI/CB 발동 중: {pos.symbol} 모니터링 일시 중지 — {vi_reason}")
                         continue
 
                     # 스톱로스 체크
