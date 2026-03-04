@@ -1329,9 +1329,34 @@ class TestRunChecks:
         mock_tracker.get_summary.return_value = {"open": len(open_positions)}
         mock_tracker.should_pyramid.return_value = should_pyramid
         mock_tracker.get_position_history.return_value = []
+        mock_tracker.get_all_positions.return_value = []
         patches["PositionTracker"] = patch(
             "scripts.check_positions.PositionTracker",
             return_value=mock_tracker,
+        )
+
+        # TradingGuard / CostAnalyzer / KillSwitch
+        mock_trading_guard = MagicMock()
+        mock_trading_guard.record_trade_result = MagicMock()
+        patches["TradingGuard"] = patch(
+            "scripts.check_positions.TradingGuard",
+            return_value=mock_trading_guard,
+        )
+        patches["TradingLimits"] = patch(
+            "scripts.check_positions.TradingLimits",
+        )
+        mock_cost_analyzer = MagicMock()
+        mock_cost_analyzer.check_budget_limit.return_value = (True, "")
+        patches["CostAnalyzer"] = patch(
+            "scripts.check_positions.CostAnalyzer",
+            return_value=mock_cost_analyzer,
+        )
+        mock_ks = MagicMock()
+        mock_ks.is_trading_enabled = True
+        mock_ks.check_entry_allowed.return_value = (True, "")
+        patches["KillSwitch"] = patch(
+            "scripts.check_positions.KillSwitch",
+            return_value=mock_ks,
         )
 
         # setup_risk_manager
@@ -1732,6 +1757,14 @@ class TestRunChecksInverseETF:
         mock_yaml_path = MagicMock()
         mock_yaml_path.exists.return_value = False
 
+        mock_tg = MagicMock()
+        mock_tg.record_trade_result = MagicMock()
+        mock_ca = MagicMock()
+        mock_ca.check_budget_limit.return_value = (True, "")
+        mock_ks = MagicMock()
+        mock_ks.is_trading_enabled = True
+        mock_ks.check_entry_allowed.return_value = (True, "")
+
         with (
             patch(
                 "scripts.check_positions.load_config", return_value={"telegram_token": None, "telegram_chat_id": None}
@@ -1751,6 +1784,10 @@ class TestRunChecksInverseETF:
                 "scripts.check_positions.Path",
                 side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
             ),
+            patch("scripts.check_positions.TradingGuard", return_value=mock_tg),
+            patch("scripts.check_positions.TradingLimits"),
+            patch("scripts.check_positions.CostAnalyzer", return_value=mock_ca),
+            patch("scripts.check_positions.KillSwitch", return_value=mock_ks),
         ):
             await _run_checks()
 
@@ -1808,6 +1845,19 @@ class TestRunChecksInverseETF:
             patch(
                 "scripts.check_positions.Path",
                 side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+            patch("scripts.check_positions.TradingGuard", return_value=MagicMock()),
+            patch("scripts.check_positions.TradingLimits"),
+            patch(
+                "scripts.check_positions.CostAnalyzer",
+                return_value=MagicMock(check_budget_limit=MagicMock(return_value=(True, ""))),
+            ),
+            patch(
+                "scripts.check_positions.KillSwitch",
+                return_value=MagicMock(
+                    is_trading_enabled=True,
+                    check_entry_allowed=MagicMock(return_value=(True, "")),
+                ),
             ),
         ):
             await _run_checks()
@@ -1872,6 +1922,19 @@ class TestRunChecksInverseETF:
             patch(
                 "scripts.check_positions.Path",
                 side_effect=lambda p: mock_yaml_path if "universe" in str(p) else Path(p),
+            ),
+            patch("scripts.check_positions.TradingGuard", return_value=MagicMock()),
+            patch("scripts.check_positions.TradingLimits"),
+            patch(
+                "scripts.check_positions.CostAnalyzer",
+                return_value=MagicMock(check_budget_limit=MagicMock(return_value=(True, ""))),
+            ),
+            patch(
+                "scripts.check_positions.KillSwitch",
+                return_value=MagicMock(
+                    is_trading_enabled=True,
+                    check_entry_allowed=MagicMock(return_value=(True, "")),
+                ),
             ),
         ):
             await _run_checks()
@@ -2092,6 +2155,7 @@ class TestSaveTradeIntegration:
         mock_tracker.get_summary.return_value = {"open": len(open_positions)}
         mock_tracker.should_pyramid.return_value = should_pyramid
         mock_tracker.get_position_history.return_value = []
+        mock_tracker.get_all_positions.return_value = []
         # close_position 기본 반환: 청산된 Position mock
         mock_closed = MagicMock()
         mock_closed.position_id = "test_pos_id"
@@ -2113,6 +2177,30 @@ class TestSaveTradeIntegration:
         patches["PositionTracker"] = patch(
             "scripts.check_positions.PositionTracker",
             return_value=mock_tracker,
+        )
+
+        # TradingGuard / CostAnalyzer / KillSwitch
+        mock_trading_guard = MagicMock()
+        mock_trading_guard.record_trade_result = MagicMock()
+        patches["TradingGuard"] = patch(
+            "scripts.check_positions.TradingGuard",
+            return_value=mock_trading_guard,
+        )
+        patches["TradingLimits"] = patch(
+            "scripts.check_positions.TradingLimits",
+        )
+        mock_cost_analyzer = MagicMock()
+        mock_cost_analyzer.check_budget_limit.return_value = (True, "")
+        patches["CostAnalyzer"] = patch(
+            "scripts.check_positions.CostAnalyzer",
+            return_value=mock_cost_analyzer,
+        )
+        mock_ks = MagicMock()
+        mock_ks.is_trading_enabled = True
+        mock_ks.check_entry_allowed.return_value = (True, "")
+        patches["KillSwitch"] = patch(
+            "scripts.check_positions.KillSwitch",
+            return_value=mock_ks,
         )
 
         mock_rm = MagicMock()

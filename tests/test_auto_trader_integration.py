@@ -1,0 +1,264 @@
+"""AutoTrader 런타임 통합 테스트.
+
+TradingGuard + CostAnalyzer가 주문 경로에 올바르게 연결되었는지 검증.
+Guard chain: kill_switch → vi_cb_detector → trading_guard → [5M safety net] → order
+"""
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from src.auto_trader import AutoTrader
+from src.cost_analyzer import CostAnalyzer
+from src.kill_switch import KillSwitch
+from src.kis_api import OrderSide
+from src.trading_guard import TradingGuard, TradingLimits
+from src.types import OrderStatus
+
+
+@pytest.fixture
+def mock_kis_client():
+    client = MagicMock()
+    client.place_order = AsyncMock(return_value={"success": True, "order_no": "KIS001"})
+    client.get_balance = AsyncMock(return_value={"total_equity": 5_000_000, "cash": 5_000_000})
+    return client
+
+
+@pytest.fixture
+def kill_switch(tmp_path):
+    # KillSwitch uses config_path (writes YAML); tmp_path / "ks.yaml" avoids
+    # collisions with the real project config/system_status.yaml.
+    return KillSwitch(config_path=tmp_path / "ks.yaml")
+
+
+@pytest.fixture
+def trading_guard(kill_switch, tmp_path):
+    return TradingGuard(
+        limits=TradingLimits(max_daily_loss_pct=0.03, max_order_amount=2_000_000),
+        kill_switch=kill_switch,
+        state_path=tmp_path / "guard.json",
+    )
+
+
+@pytest.fixture
+def cost_analyzer(tmp_path):
+    return CostAnalyzer(cost_log_path=tmp_path / "cost.json")
+
+
+@pytest.fixture
+def auto_trader(mock_kis_client, kill_switch, trading_guard, cost_analyzer, tmp_path):
+    with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+        trader = AutoTrader(
+            kis_client=mock_kis_client,
+            dry_run=True,
+            kill_switch=kill_switch,
+            trading_guard=trading_guard,
+            cost_analyzer=cost_analyzer,
+            initial_capital=10_000_000,  # 10M: keeps 10주*70K=700K well under 10% ratio
+        )
+    return trader
+
+
+class TestGuardChainBlocksBuy:
+    """6-A: TradingGuard가 일일 손실 초과 상태에서 BUY 차단 검증."""
+
+    def test_daily_loss_exceeds_blocks_buy(self, auto_trader, trading_guard, tmp_path):
+        # initial_capital=10M, max_daily_loss_pct=3% → 한도 300K
+        # -400K 손실로 한도 초과
+        trading_guard.record_trade_result(-400_000)
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                auto_trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="test",
+                )
+            )
+
+        assert record.status == OrderStatus.REJECTED.value
+        assert record.order_id == "BLOCKED_GUARD"
+        assert "손실" in (record.error_message or "")
+
+    def test_order_size_exceeds_blocks_buy(self, auto_trader, tmp_path):
+        """주문 금액 2M 초과 시 차단 (100주 * 30,000원 = 3,000,000원 > 2,000,000원 한도)."""
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                auto_trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=100,
+                    price=30_000,  # 3M > 2M limit
+                    reason="test",
+                )
+            )
+
+        assert record.status == OrderStatus.REJECTED.value
+        assert record.order_id == "BLOCKED_GUARD"
+        assert "주문" in (record.error_message or "")
+
+
+class TestGuardChainAllowsSell:
+    """6-B: 같은 상태에서 SELL은 통과 검증 (Entry-Only Block)."""
+
+    def test_sell_bypasses_trading_guard(self, auto_trader, trading_guard, tmp_path):
+        # initial_capital=10M, max_daily_loss_pct=3% → 한도 300K; -400K로 초과
+        trading_guard.record_trade_result(-400_000)
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                auto_trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.SELL,
+                    quantity=10,
+                    price=70_000,
+                    reason="exit",
+                )
+            )
+
+        # SELL은 TradingGuard에서 차단되지 않아야 함 (DRY_RUN 상태로 통과)
+        assert record.status != OrderStatus.REJECTED.value
+        assert record.status == OrderStatus.DRY_RUN.value
+
+
+class TestCostAnalyzerRecordsOnFill:
+    """6-C: 주문 체결 후 CostAnalyzer.analyze_order() 호출 검증."""
+
+    def test_cost_recorded_on_dry_run_fill(self, auto_trader, cost_analyzer, tmp_path):
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                auto_trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="test",
+                )
+            )
+
+        assert record.status == OrderStatus.DRY_RUN.value
+        # CostAnalyzer에 비용이 기록되어 있어야 함
+        cumulative = cost_analyzer.get_cumulative_costs()
+        assert cumulative["trade_count"] == 1
+        assert cumulative["total_cost"] > 0
+
+
+class TestBudgetTripActivatesKillSwitch:
+    """6-D: 예산 초과 시 KillSwitch 활성화 end-to-end 검증."""
+
+    def test_budget_exceeded_activates_kill_switch(self, cost_analyzer, kill_switch, tmp_path):
+        # 큰 슬리피지를 가진 거래를 반복 기록하여 예산 임계 초과 유도
+        # 주당 슬리피지 1,000원, 10주 = 10,000원/거래, 50회 = 500,000원 누적 비용
+        # 자산 5M * 0.2% = 10,000원 임계치 → 2번째 거래 이후 초과
+        for i in range(50):
+            cost_analyzer.analyze_order(
+                order_id=f"TEST_{i:03d}",
+                symbol="005930.KS",
+                requested_price=70_000,
+                fill_price=71_000,  # 1,000원 슬리피지
+                quantity=10,
+            )
+
+        total_equity = 5_000_000
+        realized_profit = 100_000
+
+        ok, reason = cost_analyzer.check_budget_limit(total_equity, realized_profit)
+
+        # 누적 비용이 임계를 초과해야 함
+        assert not ok, f"Expected budget exceeded but got ok=True, reason={reason}"
+        kill_switch.activate(reason=reason)
+        assert not kill_switch.is_trading_enabled
+
+
+class TestFullGuardChainOrder:
+    """6-E: kill_switch → vi_cb → trading_guard → [5M] → order 전체 체인 검증."""
+
+    def test_full_chain_normal_order(self, mock_kis_client, tmp_path):
+        """정상 주문: 전체 체인 통과."""
+        ks = KillSwitch(config_path=tmp_path / "ks.yaml")
+        guard = TradingGuard(
+            limits=TradingLimits(),
+            kill_switch=ks,
+            state_path=tmp_path / "guard.json",
+        )
+        analyzer = CostAnalyzer(cost_log_path=tmp_path / "cost.json")
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis_client,
+                dry_run=True,
+                kill_switch=ks,
+                trading_guard=guard,
+                cost_analyzer=analyzer,
+                initial_capital=10_000_000,  # 10M: 700K order = 7% < 10% ratio limit
+            )
+
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="full chain test",
+                )
+            )
+
+        assert record.status == OrderStatus.DRY_RUN.value
+        assert analyzer.get_cumulative_costs()["trade_count"] == 1
+
+    def test_kill_switch_blocks_before_guard(self, mock_kis_client, tmp_path):
+        """킬 스위치 활성 → TradingGuard 도달 전에 차단."""
+        ks = KillSwitch(config_path=tmp_path / "ks.yaml")
+        ks.activate(reason="test shutdown")
+        guard = TradingGuard(
+            limits=TradingLimits(),
+            kill_switch=ks,
+            state_path=tmp_path / "guard.json",
+        )
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis_client,
+                dry_run=True,
+                kill_switch=ks,
+                trading_guard=guard,
+            )
+
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="should be blocked by kill switch",
+                )
+            )
+
+        # kill_switch는 order_id="BLOCKED"로 차단
+        assert record.status == OrderStatus.REJECTED.value
+        assert record.order_id == "BLOCKED"
+
+    def test_none_guard_backward_compatible(self, mock_kis_client, tmp_path):
+        """TradingGuard=None이면 기존 동작 유지 (AC5 후방 호환성)."""
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis_client,
+                dry_run=True,
+                trading_guard=None,
+                cost_analyzer=None,
+            )
+
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="no guard test",
+                )
+            )
+
+        assert record.status == OrderStatus.DRY_RUN.value

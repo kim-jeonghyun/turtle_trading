@@ -22,7 +22,9 @@ from src.utils import atomic_write_json, safe_load_json
 from src.vi_cb_detector import VICBDetector
 
 if TYPE_CHECKING:
+    from src.cost_analyzer import CostAnalyzer
     from src.paper_trader import PaperPortfolio
+    from src.trading_guard import TradingGuard
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,9 @@ class AutoTrader:
         kill_switch: Optional["KillSwitch"] = None,
         vi_cb_detector: Optional["VICBDetector"] = None,
         paper_portfolio: Optional["PaperPortfolio"] = None,
+        trading_guard: Optional["TradingGuard"] = None,
+        cost_analyzer: Optional["CostAnalyzer"] = None,
+        initial_capital: float = 5_000_000,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
@@ -81,6 +86,10 @@ class AutoTrader:
         self.kill_switch = kill_switch
         self.vi_cb_detector = vi_cb_detector
         self.paper_portfolio = paper_portfolio
+        self.trading_guard = trading_guard
+        self.cost_analyzer = cost_analyzer
+        self._initial_capital = initial_capital
+        self._cached_equity: Optional[float] = None
         self._order_counter = 0
 
         if not dry_run:
@@ -96,6 +105,24 @@ class AutoTrader:
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
         mode = "DRY" if self.dry_run else "LIVE"
         return f"{mode}_{ts}_{self._order_counter:04d}"
+
+    async def _get_equity(self) -> float:
+        """총 자산 조회 (캐싱). dry_run=initial_capital, live=KIS API."""
+        if self._cached_equity is not None:
+            return self._cached_equity
+        if self.dry_run:
+            self._cached_equity = self._initial_capital
+        else:
+            summary = await self.get_account_summary()
+            equity = summary.get("total_equity", 0.0)
+            if equity <= 0:
+                logger.warning("[AutoTrader] equity 조회 실패 — initial_capital로 fallback")
+            self._cached_equity = equity if equity > 0 else self._initial_capital
+        return self._cached_equity
+
+    def reset_equity_cache(self):
+        """equity 캐시 초기화 (주문 체결 후 호출)."""
+        self._cached_equity = None
 
     def _load_order_log(self) -> List[dict]:
         """기존 주문 로그 로드"""
@@ -185,6 +212,57 @@ class AutoTrader:
                 self._append_order_to_log(blocked_record)
                 return blocked_record
 
+        # Trading Guard 체크 (BUY only — Entry-Only Block)
+        if self.trading_guard and side == OrderSide.BUY:
+            total_equity = await self._get_equity()
+
+            # 일일 손실 체크
+            loss_ok, loss_reason = self.trading_guard.check_daily_loss(total_equity)
+            if not loss_ok:
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED_GUARD",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=loss_reason,
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
+                if self.notifier:
+                    await self.notifier.send_all(
+                        NotificationMessage(
+                            title="TradingGuard 주문 차단",
+                            body=f"{symbol} {side.value} {quantity}주 — {loss_reason}",
+                            level=NotificationLevel.ERROR,
+                        )
+                    )
+                return blocked_record
+
+            # 주문 크기 체크 (비즈니스 가드: 2M)
+            order_amount_guard = price * quantity
+            size_ok, size_reason = self.trading_guard.check_order_size(order_amount_guard, total_equity)
+            if not size_ok:
+                blocked_record = OrderRecord(
+                    order_id="BLOCKED_GUARD",
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=size_reason,
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
+                return blocked_record
+
         order_id = self._generate_order_id()
         timestamp = datetime.now().isoformat()
 
@@ -236,6 +314,17 @@ class AutoTrader:
             if self.paper_portfolio is not None:
                 record = self.paper_portfolio.execute_paper_order(record)
 
+            # CostAnalyzer 비용 기록
+            if self.cost_analyzer and record.fill_price is not None:
+                self.cost_analyzer.analyze_order(
+                    order_id=record.order_id,
+                    symbol=symbol,
+                    requested_price=price,
+                    fill_price=record.fill_price,
+                    quantity=quantity,
+                )
+
+            self.reset_equity_cache()
             self._append_order_to_log(record)
             return record
 
@@ -268,6 +357,18 @@ class AutoTrader:
                 if result.get("order_no"):
                     record.order_id = result["order_no"]
                 logger.info(f"주문 성공: {record.order_id}")
+
+                # CostAnalyzer 비용 기록
+                if self.cost_analyzer and record.fill_price is not None:
+                    self.cost_analyzer.analyze_order(
+                        order_id=record.order_id,
+                        symbol=symbol,
+                        requested_price=price,
+                        fill_price=record.fill_price,
+                        quantity=quantity,
+                    )
+
+                self.reset_equity_cache()
             else:
                 error_msg = result.get("message", "Unknown error")
                 record = OrderRecord(

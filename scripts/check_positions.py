@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from src.cost_analyzer import CostAnalyzer
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
@@ -25,6 +26,7 @@ from src.kis_api import KISAPIClient
 from src.market_calendar import get_market_status, infer_market, should_check_signals
 from src.position_tracker import PositionTracker
 from src.script_helpers import create_kis_client, load_config, setup_notifier, setup_risk_manager
+from src.trading_guard import TradingGuard, TradingLimits
 from src.types import Direction, SignalType
 from src.universe_manager import Asset, UniverseManager
 from src.vi_cb_detector import VICBDetector
@@ -302,6 +304,11 @@ async def _run_checks():
     risk_manager = setup_risk_manager()
     vi_cb_detector = VICBDetector()
 
+    # 안전 가드 초기화
+    kill_switch_guard = KillSwitch()
+    trading_guard = TradingGuard(limits=TradingLimits(), kill_switch=kill_switch_guard)
+    cost_analyzer = CostAnalyzer()
+
     # KIS 클라이언트 (VI/CB 상태 조회용)
     kis_config = create_kis_client(config)
     kis_ctx = KISAPIClient(kis_config) if kis_config else None
@@ -369,6 +376,8 @@ async def _run_checks():
                         data_store.save_trade(_build_trade_record(closed_pos))
                     except Exception as e:
                         logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
+                    if closed_pos.pnl is not None:
+                        trading_guard.record_trade_result(closed_pos.pnl)
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=universe.get_display_name(pos.symbol),
@@ -401,6 +410,8 @@ async def _run_checks():
                                     data_store.save_trade(_build_trade_record(closed_pos))
                                 except Exception as e:
                                     logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
+                                if closed_pos.pnl is not None:
+                                    trading_guard.record_trade_result(closed_pos.pnl)
                             risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                             await notifier.send_signal(
                                 symbol=universe.get_display_name(pos.symbol),
@@ -421,6 +432,8 @@ async def _run_checks():
                         data_store.save_trade(_build_trade_record(closed_pos))
                     except Exception as e:
                         logger.error(f"거래 기록 저장 실패: {pos.symbol} - {e}")
+                    if closed_pos.pnl is not None:
+                        trading_guard.record_trade_result(closed_pos.pnl)
                 risk_manager.remove_position(pos.symbol, pos.units, pos.direction, n_value=pos.entry_n)
                 await notifier.send_signal(
                     symbol=universe.get_display_name(pos.symbol),
@@ -524,8 +537,7 @@ async def _run_checks():
                 logger.error(f"{symbol} 처리 오류: {e}")
 
     # 3. 신규 시그널 알림
-    kill_switch = KillSwitch()
-    allowed, _reason = kill_switch.check_entry_allowed()
+    allowed, _reason = kill_switch_guard.check_entry_allowed()
     if all_signals and not allowed:
         logger.warning(f"킬 스위치 활성 중: {len(all_signals)}개 시그널 감지되었으나 신규 진입 불가")
 
@@ -548,7 +560,28 @@ async def _run_checks():
     else:
         logger.info("신규 시그널 없음")
 
-    # 4. 요약 리포트
+    # 4. CostAnalyzer 예산 점검 (매 실행 시)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    initial_capital = config.get("initial_capital", 5_000_000)
+    total_equity = initial_capital  # live 전환 시 KIS API로 교체
+    closed_positions = [p for p in tracker.get_all_positions() if p.status == "closed"]
+    realized_profit = sum(p.pnl for p in closed_positions if p.pnl is not None)
+
+    budget_ok, budget_reason = cost_analyzer.check_budget_limit(
+        total_equity, realized_profit, since=today_str
+    )
+    if not budget_ok:
+        kill_switch_guard.activate(reason=budget_reason)
+        logger.critical(f"[CostAnalyzer] {budget_reason}")
+        await notifier.send_signal(
+            symbol="SYSTEM",
+            action="슬리피지 예산 초과",
+            price=0,
+            quantity=0,
+            reason=budget_reason,
+        )
+
+    # 5. 요약 리포트
     summary = tracker.get_summary()
     logger.info(f"포지션 요약: {summary}")
 
