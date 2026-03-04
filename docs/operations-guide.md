@@ -189,6 +189,39 @@ DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d
 3. `USER turtle` 제거, `CMD ["cron", "-f"]`로 복원
 4. `docker-compose build && docker-compose up -d`
 
+### cron 작업 스케줄
+
+아래 테이블은 `crontab` 파일의 18개 개별 엔트리를 14개 논리 그룹으로 정리한 것입니다. 각 그룹 내 복수 cron 엔트리는 시간대 분할(DST 커버, 장시간 분할 등)에 의한 것입니다.
+
+| 시간 (KST) | 요일 | 작업 | 스크립트 | 로그 위치 |
+|------------|------|------|---------|----------|
+| 02:00 | 매일 | 데이터 백업 | `backup_data.sh` | `/app/logs/backup.log` |
+| 03:00 | 일 | 캐시 정리 (7일+) | `find` (crontab 직접) | `/app/logs/cleanup.log` |
+| 03:30 | 매월 1일 | 시그널/거래 정리 (90일+) | `find` (crontab 직접) | `/app/logs/cleanup.log` |
+| 04:00 | 일 | 로그 정리 (14일+) | `find` (crontab 직접) | `/app/logs/cleanup.log` |
+| 매 4시간 | 매일 | 시스템 건강 점검 | `health_check.py` | `/app/logs/health_check.log` |
+| 07:00 | 화-토 | US 시그널+포지션 체크 | `check_positions.py` | `/app/logs/check_us.log` |
+| 08:00 | 매일 | 일일 리포트 | `daily_report.py` | `/app/logs/daily_report.log` |
+| 09:00 | 토 | 주간 리포트 | `weekly_report.py --send` | `/app/logs/weekly_report.log` |
+| 매시 09-15 | 월-금 | KR 리스크 한도 점검 (7회/일) | `check_risk_limits.py` | `/app/logs/risk_check.log` |
+| 5분 간격 09:00-15:25 | 월-금 | KR 장중 모니터링 (2 cron 엔트리) | `monitor_positions.py` | Python 로깅 |
+| 16:00 | 월-금 | OHLCV 일별 수집 | `collect_daily_ohlcv.py` | `/app/logs/ohlcv_collect.log` |
+| 16:00 | 월-금 | KR 시그널+포지션 체크 | `check_positions.py` | `/app/logs/check_kr.log` |
+| 5분 간격 22:00-06:25 | 월-토 | US 장중 모니터링 (3 cron 엔트리) | `monitor_positions.py` | Python 로깅 |
+| 매시 23-06 | 월-토 | US 리스크 한도 점검 (2 cron 엔트리) | `check_risk_limits.py` | `/app/logs/risk_check.log` |
+
+### US 시장 DST (서머타임) 처리
+
+US 장중 모니터링과 리스크 점검은 DST 양방향을 커버하는 넓은 시간대로 설정되어 있습니다:
+
+| 기간 | US 장시간 (KST) | cron 커버 범위 |
+|------|----------------|---------------|
+| 표준시 (EST, 11월~3월) | 23:30~06:00 | 22:00~06:25 |
+| 서머타임 (EDT, 3월~11월) | 22:30~05:00 | 22:00~06:25 |
+
+실제 장 시간 판별은 `monitor_positions.py` 내부의 `is_market_open()` 게이트가 수행합니다.
+cron은 최대 범위로 실행하고, 장 외 시간에는 스크립트가 즉시 종료됩니다.
+
 ## KIS API 로그 마스킹 정책
 
 `kis_api.py`의 `_sanitize_response_for_log()` 함수가 DEBUG 로그에 안전 필드만 출력한다.
