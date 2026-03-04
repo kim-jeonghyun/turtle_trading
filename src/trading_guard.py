@@ -114,14 +114,9 @@ class TradingGuard:
         """
         max_loss = total_equity * self.limits.max_daily_loss_pct
         if abs(self._daily_realized_loss) > max_loss:
-            reason = (
-                f"일일 손실 서킷브레이커 발동 ({self._daily_realized_loss:,.0f}원)"
-            )
+            reason = f"일일 손실 서킷브레이커 발동 ({self._daily_realized_loss:,.0f}원)"
             self.kill_switch.activate(
-                reason=(
-                    f"일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 "
-                    f"(한도: {max_loss:,.0f}원)"
-                )
+                reason=(f"일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 (한도: {max_loss:,.0f}원)")
             )
             logger.critical(
                 f"[TradingGuard] 일일 손실 한도 초과: {self._daily_realized_loss:,.0f}원 "
@@ -130,9 +125,7 @@ class TradingGuard:
             return False, reason
         return True, ""
 
-    def check_order_size(
-        self, amount: float, total_equity: float
-    ) -> tuple[bool, str]:
+    def check_order_size(self, amount: float, total_equity: float) -> tuple[bool, str]:
         """주문 크기 체크 — 절대 금액 + 비율 이중 제한.
 
         Note:
@@ -147,19 +140,13 @@ class TradingGuard:
             (allowed, reason): allowed=True이면 허용, False이면 차단
         """
         if amount > self.limits.max_order_amount:
-            reason = (
-                f"주문 금액 초과: {amount:,.0f}원 "
-                f"(한도: {self.limits.max_order_amount:,.0f}원)"
-            )
+            reason = f"주문 금액 초과: {amount:,.0f}원 (한도: {self.limits.max_order_amount:,.0f}원)"
             logger.warning(f"[TradingGuard] {reason}")
             return False, reason
 
         max_by_pct = total_equity * self.limits.max_order_pct
         if amount > max_by_pct:
-            reason = (
-                f"주문 비율 초과: {amount / total_equity:.1%} "
-                f"(한도: {self.limits.max_order_pct:.0%})"
-            )
+            reason = f"주문 비율 초과: {amount / total_equity:.1%} (한도: {self.limits.max_order_pct:.0%})"
             logger.warning(f"[TradingGuard] {reason}")
             return False, reason
 
@@ -176,19 +163,13 @@ class TradingGuard:
         """
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_reset_date != today:
-            logger.info(
-                f"[TradingGuard] 날짜 변경 — 일일 손실 카운터 리셋 "
-                f"({self._daily_reset_date} → {today})"
-            )
+            logger.info(f"[TradingGuard] 날짜 변경 — 일일 손실 카운터 리셋 ({self._daily_reset_date} → {today})")
             self._daily_realized_loss = 0.0
             self._daily_reset_date = today
 
         if pnl < 0:
             self._daily_realized_loss += pnl
-            logger.debug(
-                f"[TradingGuard] 손실 누적: {pnl:,.0f}원, "
-                f"일일 합계: {self._daily_realized_loss:,.0f}원"
-            )
+            logger.debug(f"[TradingGuard] 손실 누적: {pnl:,.0f}원, 일일 합계: {self._daily_realized_loss:,.0f}원")
 
         self._save_state()
 
