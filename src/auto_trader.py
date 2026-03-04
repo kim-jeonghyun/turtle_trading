@@ -12,7 +12,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, OrderSide, OrderType
@@ -20,6 +20,9 @@ from src.notifier import NotificationLevel, NotificationManager, NotificationMes
 from src.types import OrderStatus
 from src.utils import atomic_write_json, safe_load_json
 from src.vi_cb_detector import VICBDetector
+
+if TYPE_CHECKING:
+    from src.trading_guard import TradingGuard
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,8 @@ class AutoTrader:
         reconfirm_delay_sec: float = DEFAULT_RECONFIRM_DELAY_SEC,
         kill_switch: Optional["KillSwitch"] = None,
         vi_cb_detector: Optional["VICBDetector"] = None,
+        trading_guard: Optional["TradingGuard"] = None,
+        initial_capital: float = 5_000_000,
     ):
         self.kis_client = kis_client
         self.dry_run = dry_run
@@ -76,6 +81,9 @@ class AutoTrader:
         self.reconfirm_delay_sec = reconfirm_delay_sec
         self.kill_switch = kill_switch
         self.vi_cb_detector = vi_cb_detector
+        self.trading_guard = trading_guard
+        self._initial_capital = initial_capital
+        self._cached_equity: Optional[float] = None
         self._order_counter = 0
 
         if not dry_run:
@@ -107,6 +115,22 @@ class AutoTrader:
         orders.append(record.to_dict())
         self._save_order_log(orders)
         logger.info(f"주문 로그 저장: {record.order_id} ({record.symbol} {record.side} {record.quantity})")
+
+    async def _get_equity(self) -> float:
+        """총 자산 조회 (캐싱). dry_run은 initial_capital, live는 KIS API."""
+        if self._cached_equity is not None:
+            return self._cached_equity
+        if self.dry_run:
+            self._cached_equity = self._initial_capital
+        else:
+            summary = await self.get_account_summary()
+            equity = summary.get("total_equity", 0.0)
+            self._cached_equity = equity if equity > 0 else self._initial_capital
+        return self._cached_equity
+
+    def reset_equity_cache(self):
+        """equity 캐시 리셋"""
+        self._cached_equity = None
 
     async def place_order(
         self,
@@ -175,6 +199,49 @@ class AutoTrader:
                     timestamp=datetime.now().isoformat(),
                     dry_run=self.dry_run,
                     error_message=f"VI/CB: {vi_reason}",
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
+                return blocked_record
+
+        # Trading Guard 체크 (BUY only -- Entry-Only Block)
+        if self.trading_guard and side == OrderSide.BUY:
+            total_equity = await self._get_equity()
+
+            # 일일 손실 체크
+            loss_ok, loss_reason = self.trading_guard.check_daily_loss(total_equity)
+            if not loss_ok:
+                blocked_record = OrderRecord(
+                    order_id=self._generate_order_id(),
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=loss_reason,
+                    reason=reason,
+                )
+                self._append_order_to_log(blocked_record)
+                return blocked_record
+
+            # 주문 크기 체크 (비즈니스 가드: 2M)
+            order_amount = price * quantity
+            size_ok, size_reason = self.trading_guard.check_order_size(order_amount, total_equity)
+            if not size_ok:
+                blocked_record = OrderRecord(
+                    order_id=self._generate_order_id(),
+                    symbol=symbol,
+                    side=side.value,
+                    quantity=quantity,
+                    price=price,
+                    order_type=order_type.name,
+                    status=OrderStatus.REJECTED.value,
+                    timestamp=datetime.now().isoformat(),
+                    dry_run=self.dry_run,
+                    error_message=size_reason,
                     reason=reason,
                 )
                 self._append_order_to_log(blocked_record)

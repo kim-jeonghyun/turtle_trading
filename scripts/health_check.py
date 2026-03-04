@@ -382,6 +382,29 @@ def check_vi_cb_detector() -> Tuple[bool, str]:
         return False, f"VI/CB 감지: 모듈 오류 - {e}"
 
 
+def check_trading_guard() -> Tuple[bool, str]:
+    """Trading Guard 모듈 와이어링 확인 (일일 손실 CB + 주문 크기 제한)"""
+    try:
+        from src.trading_guard import TradingGuard, TradingLimits
+
+        # 클래스 존재 + 핵심 메서드 확인
+        if not hasattr(TradingGuard, "check_daily_loss"):
+            return False, "Trading Guard: check_daily_loss() 메서드 없음"
+        if not hasattr(TradingGuard, "check_order_size"):
+            return False, "Trading Guard: check_order_size() 메서드 없음"
+
+        # TradingLimits 기본값 확인
+        limits = TradingLimits()
+        if limits.max_daily_loss_pct <= 0 or limits.max_order_amount <= 0:
+            return False, "Trading Guard: TradingLimits 기본값 비정상"
+
+        return True, "Trading Guard: module OK (TradingGuard, TradingLimits)"
+    except ImportError as e:
+        return False, f"Trading Guard: import 실패 - {e}"
+    except Exception as e:
+        return False, f"Trading Guard: 검증 오류 - {e}"
+
+
 def main():
     """전체 헬스 체크 실행"""
     print("=== Turtle Trading System Health Check ===")
@@ -399,6 +422,7 @@ def main():
         ("Kill Switch", check_kill_switch),
         ("Position Sync", check_position_sync_module),
         ("VI/CB Detector", check_vi_cb_detector),
+        ("Trading Guard", check_trading_guard),
     ]
 
     # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)
