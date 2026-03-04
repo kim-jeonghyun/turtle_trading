@@ -365,6 +365,23 @@ def check_yfinance_connection() -> Tuple[bool, str]:
         return False, f"yfinance: error ({e})"
 
 
+def check_vi_cb_detector() -> Tuple[bool, str]:
+    """VI/CB 감지 모듈 import 가능 여부 확인 (가드 와이어링 검증)"""
+    try:
+        from src.vi_cb_detector import VICBDetector
+
+        detector = VICBDetector()
+        # check_entry_allowed 호출 가능 여부 확인
+        allowed, reason = detector.check_entry_allowed("TEST")
+        if allowed:
+            return True, "VI/CB 감지: 모듈 정상 (Fail-Open 확인)"
+        return True, f"VI/CB 감지: 모듈 정상 (차단 활성: {reason})"
+    except ImportError as e:
+        return False, f"VI/CB 감지: 모듈 import 실패 - {e}"
+    except Exception as e:
+        return False, f"VI/CB 감지: 모듈 오류 - {e}"
+
+
 def main():
     """전체 헬스 체크 실행"""
     print("=== Turtle Trading System Health Check ===")
@@ -381,6 +398,7 @@ def main():
         ("Disk Space", check_disk_space),
         ("Kill Switch", check_kill_switch),
         ("Position Sync", check_position_sync_module),
+        ("VI/CB Detector", check_vi_cb_detector),
     ]
 
     # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)
