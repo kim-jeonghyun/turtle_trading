@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Tuple
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.kill_switch import KillSwitch
+
 logger = logging.getLogger(__name__)
 
 # 외부 API 연결 확인 타임아웃 (초)
@@ -183,6 +186,17 @@ def check_data_freshness() -> Tuple[bool, str]:
     return True, f"Data freshness: last update {age_str}"
 
 
+def check_kill_switch() -> Tuple[bool, str]:
+    """킬 스위치 상태 확인"""
+    try:
+        kill_switch = KillSwitch()
+        if not kill_switch.is_trading_enabled:
+            return False, f"킬 스위치 활성 중: {kill_switch.reason}"
+        return True, "킬 스위치: 정상 (트레이딩 가능)"
+    except Exception as e:
+        return False, f"킬 스위치: 상태 확인 실패 - {e}"
+
+
 def check_disk_space() -> Tuple[bool, str]:
     """디스크 공간 확인"""
     try:
@@ -344,6 +358,7 @@ def main():
         ("Environment", check_environment_variables),
         ("Data Freshness", check_data_freshness),
         ("Disk Space", check_disk_space),
+        ("Kill Switch", check_kill_switch),
     ]
 
     # 외부 API 체크 (실패해도 경고만, 종료 코드에 영향 없음)

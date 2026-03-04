@@ -19,6 +19,7 @@ from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
 from src.inverse_filter import InverseETFFilter
+from src.kill_switch import KillSwitch
 from src.market_calendar import get_market_status, infer_market, should_check_signals
 from src.position_tracker import PositionTracker
 from src.script_helpers import load_config, setup_notifier, setup_risk_manager
@@ -484,6 +485,11 @@ async def _run_checks():
             logger.error(f"{symbol} 처리 오류: {e}")
 
     # 3. 신규 시그널 알림
+    kill_switch = KillSwitch()
+    allowed, _reason = kill_switch.check_entry_allowed()
+    if all_signals and not allowed:
+        logger.warning(f"킬 스위치 활성 중: {len(all_signals)}개 시그널 감지되었으나 신규 진입 불가")
+
     if all_signals:
         logger.info(f"신규 시그널: {len(all_signals)}개")
 

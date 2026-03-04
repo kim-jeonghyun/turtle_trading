@@ -27,6 +27,7 @@ from pathlib import Path
 from src.auto_trader import AutoTrader
 from src.data_fetcher import DataFetcher
 from src.indicators import add_turtle_indicators
+from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 from src.types import OrderStatus
 from src.universe_manager import UniverseManager
@@ -258,6 +259,13 @@ async def run_auto_trade(args: argparse.Namespace):
             logger.error("실거래가 차단됨. TURTLE_ALLOW_LIVE=true 환경변수를 설정하세요.")
             sys.exit(1)
 
+    # 킬 스위치 체크 — 비활성 시 조기 종료
+    kill_switch = KillSwitch()
+    allowed, reason = kill_switch.check_entry_allowed()
+    if not allowed:
+        logger.critical(f"시스템 트레이딩 비활성화: {reason}")
+        return
+
     # Live 모드 경고
     if args.live:
         logger.warning("=" * 70)
@@ -272,7 +280,12 @@ async def run_auto_trade(args: argparse.Namespace):
     kis_client = KISAPIClient(kis_config)
 
     # AutoTrader 초기화 (--live 미사용 시 dry_run=True)
-    trader = AutoTrader(kis_client=kis_client, dry_run=not args.live, max_order_amount=args.max_amount)
+    trader = AutoTrader(
+        kis_client=kis_client,
+        dry_run=not args.live,
+        max_order_amount=args.max_amount,
+        kill_switch=kill_switch,
+    )
 
     # 데이터 페처
     data_fetcher = DataFetcher()
