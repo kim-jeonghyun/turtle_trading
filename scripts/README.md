@@ -259,7 +259,7 @@ python scripts/toggle_trading.py --status
 ##### Notes
 
 - State is persisted in `config/system_status.yaml` via `KillSwitch` class in `src/kill_switch.py`
-- See [킬 스위치 (Kill Switch)](../docs/operations-guide.md#킬-스위치-kill-switch) for detailed behavior and fail-open policy
+- Kill switch behavior and fail-open policy는 PR #110 머지 후 [운영 가이드](../docs/operations-guide.md)에 추가 예정
 
 ---
 
