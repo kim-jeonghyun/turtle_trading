@@ -42,7 +42,8 @@ from scripts.check_positions import (
     setup_risk_manager,
 )
 from src.position_tracker import Position
-from src.types import Direction, SignalType
+from src.types import AssetGroup, Direction, SignalType
+from src.universe_manager import Asset
 
 # ---------------------------------------------------------------------------
 # 헬퍼 함수
@@ -2215,9 +2216,7 @@ class TestSaveTradeIntegration:
         mock_fetcher.fetch.return_value = self._make_mock_df(high=100, low=99, close=100)
 
         mock_tracker = MagicMock()
-        mock_tracker.get_open_positions.side_effect = lambda sym=None: (
-            [pos] if sym is None or sym == "SH" else []
-        )
+        mock_tracker.get_open_positions.side_effect = lambda sym=None: [pos] if sym is None or sym == "SH" else []
         mock_tracker.get_summary.return_value = {"open": 1}
         mock_tracker.should_pyramid.return_value = False
         mock_tracker.get_position_history.return_value = []
@@ -2322,3 +2321,95 @@ class TestSaveTradeIntegration:
         finally:
             PatchManager.stop_all(patches)
         ds.save_trade.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Short restriction filter tests (Issue #132)
+# ---------------------------------------------------------------------------
+
+
+def _make_asset(symbol: str, short_restricted: bool) -> Asset:
+    """테스트용 Asset 생성 헬퍼."""
+    group = AssetGroup.KR_EQUITY if symbol.endswith((".KS", ".KQ")) else AssetGroup.US_EQUITY
+    country = "KR" if symbol.endswith((".KS", ".KQ")) else "US"
+    return Asset(
+        symbol=symbol,
+        name=symbol,
+        country=country,
+        asset_type="equity",
+        group=group,
+        short_restricted=short_restricted,
+    )
+
+
+class TestShortRestrictionFilter:
+    """asset.short_restricted 기반 숏 시그널 필터 테스트"""
+
+    def test_short_signal_blocked_when_restricted(self):
+        """short_restricted=True 이면 이탈이 있어도 숏 시그널 미생성"""
+        df = _make_df(
+            today_high=99.0,
+            today_low=BELOW_20_ONLY,
+            today_close=BELOW_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        asset = _make_asset("005930.KS", short_restricted=True)
+        signals = check_entry_signals(df, "005930.KS", system=1, tracker=None, asset=asset)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, "short_restricted=True 이면 숏 시그널이 생성되지 않아야 한다"
+
+    def test_short_signal_allowed_when_not_restricted(self):
+        """short_restricted=False 이면 이탈 시 숏 시그널 생성"""
+        df = _make_df(
+            today_high=99.0,
+            today_low=BELOW_20_ONLY,
+            today_close=BELOW_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        asset = _make_asset("SPY", short_restricted=False)
+        signals = check_entry_signals(df, "SPY", system=1, tracker=None, asset=asset)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 1, "short_restricted=False 이면 숏 시그널이 생성되어야 한다"
+        assert short_signals[0]["type"] == SignalType.ENTRY_SHORT.value
+
+    def test_long_signal_not_affected_by_short_restriction(self):
+        """short_restricted=True 이어도 롱 시그널은 정상 생성"""
+        df = _make_df(
+            today_high=ABOVE_20_ONLY,
+            today_low=99.0,
+            today_close=ABOVE_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        asset = _make_asset("005930.KS", short_restricted=True)
+        signals = check_entry_signals(df, "005930.KS", system=1, tracker=None, asset=asset)
+
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) == 1, "short_restricted=True 이어도 롱 시그널은 생성되어야 한다"
+
+    def test_no_asset_fallback_uses_is_korean_market(self):
+        """asset=None 이면 is_korean_market() fallback 사용 — KR 심볼은 숏 차단"""
+        df = _make_df(
+            today_high=99.0,
+            today_low=BELOW_20_ONLY,
+            today_close=BELOW_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+        # asset=None → fallback to is_korean_market("005930.KS") → True → 차단
+        signals = check_entry_signals(df, "005930.KS", system=1, tracker=None, asset=None)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, "asset=None + KR 심볼이면 fallback으로 숏이 차단되어야 한다"
