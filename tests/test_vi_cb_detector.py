@@ -213,7 +213,7 @@ class TestRejectedCountedInDailyStats:
 
         try:
             # VI로 차단되는 BUY 주문
-            record = asyncio.get_event_loop().run_until_complete(
+            record = asyncio.run(
                 trader.place_order(
                     symbol="005930",
                     side=OrderSide.BUY,
@@ -227,7 +227,7 @@ class TestRejectedCountedInDailyStats:
             assert "VI/CB" in (record.error_message or "")
 
             # 정상 DRY_RUN 주문 (다른 종목)
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 trader.place_order(
                     symbol="SPY",
                     side=OrderSide.BUY,
