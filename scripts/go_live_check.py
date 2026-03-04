@@ -19,7 +19,9 @@ PROJECT_ROOT = Path(__file__).parent.parent
 def check_health_check_passes() -> tuple[bool, str]:
     """체크 1: health_check.py 전체 통과"""
     try:
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        scripts_dir = str(PROJECT_ROOT / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
         import health_check
 
         core_checks = [
@@ -90,7 +92,7 @@ def check_data_integrity() -> tuple[bool, str]:
 
 
 def check_recent_ohlcv() -> tuple[bool, str]:
-    """체크 6: 최근 OHLCV 데이터 존재 (1일 이내)"""
+    """체크 6: 최근 OHLCV 데이터 존재 (2일 이내 — 주말 포함)"""
     cache_dir = PROJECT_ROOT / "data" / "cache"
     if not cache_dir.exists():
         return False, "data/cache/ 디렉토리 없음"
@@ -136,8 +138,13 @@ def check_backtest_performance() -> tuple[bool, str]:
     try:
         with open(newest) as f:
             result = json.load(f)
-        mdd = abs(result.get("max_drawdown", result.get("max_drawdown_pct", 0)))
-        pf = result.get("profit_factor", 0)
+        mdd_raw = result.get("max_drawdown", result.get("max_drawdown_pct"))
+        if mdd_raw is None:
+            return False, "백테스트 결과에 max_drawdown 필드 없음"
+        mdd = abs(mdd_raw)
+        pf = result.get("profit_factor")
+        if pf is None:
+            return False, "백테스트 결과에 profit_factor 필드 없음"
         issues = []
         if mdd > 0.3:
             issues.append(f"MDD {mdd:.1%} > 30%")
@@ -161,7 +168,7 @@ def check_notification() -> tuple[bool, str]:
 
 
 def check_dry_run_order() -> tuple[bool, str]:
-    """체크 10: dry_run 주문 성공 (모듈 확인, 주문금액은 TradingGuard 한도 이내)"""
+    """체크 10: AutoTrader/KIS 모듈 로드 확인 (실제 주문 시뮬레이션은 수동 확인 필요)"""
     try:
         from src.auto_trader import AutoTrader  # noqa: F401
         from src.kis_api import OrderSide, OrderType  # noqa: F401
@@ -228,7 +235,7 @@ def check_correlation_groups_consistency() -> tuple[bool, str]:
                         corr_symbols.update(str(s) for s in members)
 
         if not universe_symbols:
-            return True, "유니버스 심볼 없음 (스킵)"
+            return False, "universe.yaml에 심볼이 없음 — 설정 확인 필요"
 
         unmapped = universe_symbols - corr_symbols
         if unmapped and len(unmapped) == len(universe_symbols):
@@ -250,7 +257,7 @@ ALL_CHECKS = [
     ("킬 스위치 정상", check_kill_switch),
     ("백테스트 최소 성과", check_backtest_performance),
     ("알림 채널", check_notification),
-    ("dry_run 주문", check_dry_run_order),
+    ("AutoTrader/KIS 모듈 로드", check_dry_run_order),
     ("안전 가드 모듈", check_trading_guard_module),
     ("상관그룹 일관성", check_correlation_groups_consistency),
 ]
@@ -258,9 +265,11 @@ ALL_CHECKS = [
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Go-Live 자동 검증 체크리스트")
-    parser.parse_args()
+    parser.add_argument("--verbose", action="store_true", help="상세 출력")
+    args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(message)s")
     logger.info("=" * 60)
     logger.info("Go-Live 자동 검증 체크리스트")
     logger.info("=" * 60)
