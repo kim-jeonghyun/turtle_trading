@@ -22,6 +22,7 @@ class Asset:
     leverage: float = 1.0
     underlying: Optional[str] = None
     enabled: bool = True
+    short_restricted: bool = True
 
     @property
     def is_inverse(self) -> bool:
@@ -80,6 +81,9 @@ class UniverseManager:
                 if asset_group == AssetGroup.INVERSE:
                     leverage = -1.0
 
+                # short_restricted: explicit field in YAML, else default True (safe)
+                short_restricted = item.get("short_restricted", True)
+
                 asset = Asset(
                     symbol=symbol,
                     name=item.get("name", symbol),
@@ -89,6 +93,7 @@ class UniverseManager:
                     leverage=leverage,
                     underlying=item.get("underlying"),
                     enabled=True,
+                    short_restricted=short_restricted,
                 )
                 self.assets[symbol] = asset
 
@@ -108,14 +113,16 @@ class UniverseManager:
 
     def _load_defaults(self):
         defaults = [
-            Asset("SPY", "S&P 500 ETF", "US", "Index ETF", AssetGroup.US_EQUITY),
-            Asset("QQQ", "Nasdaq 100 ETF", "US", "Index ETF", AssetGroup.US_EQUITY),
-            Asset("DIA", "Dow Jones ETF", "US", "Index ETF", AssetGroup.US_EQUITY),
-            Asset("IWM", "Russell 2000 ETF", "US", "Index ETF", AssetGroup.US_EQUITY),
-            Asset("GLD", "Gold ETF", "US", "Commodity ETF", AssetGroup.COMMODITY),
-            Asset("TLT", "Treasury 20+ ETF", "US", "Bond ETF", AssetGroup.BOND),
-            Asset("SH", "S&P 500 Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -1, "SPY"),
-            Asset("SQQQ", "Nasdaq 3x Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -3, "QQQ"),
+            Asset("SPY", "S&P 500 ETF", "US", "Index ETF", AssetGroup.US_EQUITY, short_restricted=False),
+            Asset("QQQ", "Nasdaq 100 ETF", "US", "Index ETF", AssetGroup.US_EQUITY, short_restricted=False),
+            Asset("DIA", "Dow Jones ETF", "US", "Index ETF", AssetGroup.US_EQUITY, short_restricted=False),
+            Asset("IWM", "Russell 2000 ETF", "US", "Index ETF", AssetGroup.US_EQUITY, short_restricted=False),
+            Asset("GLD", "Gold ETF", "US", "Commodity ETF", AssetGroup.COMMODITY, short_restricted=False),
+            Asset("TLT", "Treasury 20+ ETF", "US", "Bond ETF", AssetGroup.BOND, short_restricted=False),
+            Asset("SH", "S&P 500 Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -1, "SPY", short_restricted=False),
+            Asset(
+                "SQQQ", "Nasdaq 3x Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -3, "QQQ", short_restricted=False
+            ),
         ]
         for asset in defaults:
             self.assets[asset.symbol] = asset
