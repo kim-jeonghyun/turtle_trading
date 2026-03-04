@@ -67,10 +67,15 @@ class PositionSyncVerifier:
     async def _fetch_broker_positions(self) -> dict[str, int]:
         """KIS get_balance() -> {normalized_symbol: quantity} 매핑.
 
-        Note: get_balance() returns {} on API failure.
+        Raises:
+            RuntimeError: get_balance()가 빈 dict 반환 시 (API 장애 가능성)
         """
         balance = await self.kis.get_balance()
-        # get_balance()가 {} 반환 시 graceful 처리
+        if not balance:
+            raise RuntimeError(
+                "KIS get_balance() returned empty response — "
+                "API failure suspected, skipping sync to avoid false alerts"
+            )
         return {
             p["symbol"]: p["quantity"]
             for p in balance.get("positions", [])

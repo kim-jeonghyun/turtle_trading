@@ -138,17 +138,33 @@ class TestSyncAPIFailure:
         with pytest.raises(RuntimeError, match="KIS API 장애"):
             asyncio.run(verifier.verify())
 
-    def test_sync_api_empty_response(self):
-        """get_balance() → {} 반환 시 graceful 처리"""
+    def test_sync_api_empty_response_raises_error(self):
+        """get_balance() → {} 반환 시 RuntimeError 발생 (false alert 방지)"""
         kis = AsyncMock()
         kis.get_balance.return_value = {}  # API 실패 시 빈 dict
 
         tracker = MagicMock()
-        tracker.get_open_positions.return_value = []
+        tracker.get_open_positions.return_value = [
+            _make_position("005930.KS", 100)
+        ]
 
         verifier = PositionSyncVerifier(kis_client=kis, tracker=tracker)
-        result = asyncio.run(verifier.verify())
-        assert result == []
+        with pytest.raises(RuntimeError, match="empty response"):
+            asyncio.run(verifier.verify())
+
+    @pytest.mark.asyncio
+    async def test_empty_balance_raises_error(self):
+        """get_balance()가 빈 dict 반환 시 RuntimeError 발생 (false alert 방지)"""
+        mock_kis_client = AsyncMock()
+        mock_kis_client.get_balance = AsyncMock(return_value={})
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_open_positions.return_value = []
+
+        verifier = PositionSyncVerifier(mock_kis_client, mock_tracker)
+
+        with pytest.raises(RuntimeError, match="empty response"):
+            await verifier.verify()
 
 
 class TestSymbolNormalization:
