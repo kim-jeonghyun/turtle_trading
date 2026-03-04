@@ -26,7 +26,7 @@ from src.market_calendar import get_market_status, infer_market, should_check_si
 from src.position_tracker import PositionTracker
 from src.script_helpers import create_kis_client, load_config, setup_notifier, setup_risk_manager
 from src.types import Direction, SignalType
-from src.universe_manager import UniverseManager
+from src.universe_manager import Asset, UniverseManager
 from src.vi_cb_detector import VICBDetector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -99,7 +99,11 @@ def check_stop_loss(position, today_data) -> bool:
 
 
 def is_korean_market(symbol: str) -> bool:
-    """한국 시장 종목 여부 (공매도 제한)"""
+    """한국 시장 종목 여부.
+
+    Deprecated: 공매도 제한 판단은 asset.short_restricted 를 사용하세요.
+    VI/CB 상태 조회 등 시장 구분 목적으로만 사용됩니다.
+    """
     return symbol.endswith(".KS") or symbol.endswith(".KQ")
 
 
@@ -120,7 +124,13 @@ def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: boo
     return False
 
 
-def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker | None" = None) -> list:
+def check_entry_signals(
+    df,
+    symbol: str,
+    system: int = 1,
+    tracker: "PositionTracker | None" = None,
+    asset: Optional[Asset] = None,
+) -> list:
     """진입 시그널 확인"""
     signals: list[dict] = []
     if len(df) < 2:
@@ -176,8 +186,10 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
                 }
             )
 
-    # 숏 진입 시그널 (미국 시장만 — 한국은 공매도 제한)
-    if not is_korean_market(symbol):
+    # 숏 진입 시그널 (공매도 제한 종목 제외)
+    # asset.short_restricted 기반 필터 (config 주도). asset 없으면 is_korean_market() fallback.
+    _short_restricted = asset.short_restricted if asset is not None else is_korean_market(symbol)
+    if not _short_restricted:
         if system == 1:
             short_low_col = "dc_low_20"
         else:
@@ -483,13 +495,15 @@ async def _run_checks():
                 signals_s1 = []
                 signals_s2 = []
 
+                current_asset = universe.assets.get(symbol)
+
                 if 1 not in existing_systems:
-                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker)
+                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker, asset=current_asset)
                 else:
                     logger.info(f"System 1 포지션 보유 중: {symbol}")
 
                 if 2 not in existing_systems:
-                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker)
+                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker, asset=current_asset)
                 else:
                     logger.info(f"System 2 포지션 보유 중: {symbol}")
 

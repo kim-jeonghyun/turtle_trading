@@ -340,3 +340,75 @@ symbols:
         """유니버스에 없는 한국 심볼은 그대로 반환"""
         um = UniverseManager()
         assert um.get_display_name("999999.KS") == "999999.KS"
+
+
+class TestShortRestricted:
+    """short_restricted 필드 테스트"""
+
+    def test_short_restricted_default_true(self):
+        """Asset 기본값: short_restricted=True (공매도 불가, 안전 우선)"""
+        asset = Asset(
+            symbol="005930.KS",
+            name="삼성전자",
+            country="KR",
+            asset_type="kr_equity",
+            group=AssetGroup.KR_EQUITY,
+        )
+        assert asset.short_restricted is True
+
+    def test_short_restricted_from_yaml(self):
+        """YAML에서 short_restricted 파싱 — KR 종목은 True"""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                asset = um.assets["005930.KS"]
+                assert asset.short_restricted is True
+            finally:
+                os.unlink(f.name)
+
+    def test_us_equity_short_allowed(self):
+        """YAML에서 short_restricted 파싱 — US 종목은 False"""
+        yaml_content = """
+symbols:
+  us_equity:
+    - {symbol: SPY, name: "S&P 500 ETF", group: us_equity, short_restricted: false}
+    - {symbol: QQQ, name: "Nasdaq 100 ETF", group: us_equity, short_restricted: false}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["SPY"].short_restricted is False
+                assert um.assets["QQQ"].short_restricted is False
+            finally:
+                os.unlink(f.name)
+
+    def test_default_us_equity_short_not_restricted(self):
+        """기본 유니버스의 US equity는 short_restricted=False"""
+        um = UniverseManager()
+        assert um.assets["SPY"].short_restricted is False
+        assert um.assets["QQQ"].short_restricted is False
+
+    def test_yaml_missing_short_restricted_defaults_true(self):
+        """YAML에 short_restricted 없으면 기본값 True (안전 우선)"""
+        yaml_content = """
+symbols:
+  us_equity:
+    - {symbol: AAPL, name: "Apple", group: us_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["AAPL"].short_restricted is True
+            finally:
+                os.unlink(f.name)
