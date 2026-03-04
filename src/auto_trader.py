@@ -361,15 +361,18 @@ class AutoTrader:
                     record.order_id = result["order_no"]
                 logger.info(f"주문 성공: {record.order_id}")
 
-                # CostAnalyzer 비용 기록
+                # CostAnalyzer 비용 기록 (fail-open: 기록 실패가 주문 상태에 영향 없음)
                 if self.cost_analyzer and record.fill_price is not None:
-                    self.cost_analyzer.analyze_order(
-                        order_id=record.order_id,
-                        symbol=symbol,
-                        requested_price=price,
-                        fill_price=record.fill_price,
-                        quantity=quantity,
-                    )
+                    try:
+                        self.cost_analyzer.analyze_order(
+                            order_id=record.order_id,
+                            symbol=symbol,
+                            requested_price=price,
+                            fill_price=record.fill_price,
+                            quantity=quantity,
+                        )
+                    except Exception as e:
+                        logger.warning(f"[CostAnalyzer] 비용 기록 실패 (주문은 정상): {e}")
 
                 self.reset_equity_cache()
             else:

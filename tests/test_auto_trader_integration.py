@@ -213,6 +213,49 @@ class TestCostAnalyzerFailOpen:
         # analyze_order는 호출 시도됨
         broken_analyzer.analyze_order.assert_called_once()
 
+    def test_live_order_preserved_on_analyzer_exception(self, tmp_path):
+        """Live 주문 성공 후 analyze_order() 예외가 주문 상태(FILLED)를 깨뜨리지 않음."""
+        mock_kis = MagicMock()
+        mock_kis.place_order = AsyncMock(
+            return_value={"success": True, "order_no": "KIS_LIVE_001", "order_time": "09:01:00"}
+        )
+
+        broken_analyzer = MagicMock()
+        broken_analyzer.analyze_order.side_effect = RuntimeError("disk full")
+
+        ks = KillSwitch(config_path=tmp_path / "ks.yaml")
+        guard = TradingGuard(
+            limits=TradingLimits(),
+            kill_switch=ks,
+            state_path=tmp_path / "guard.json",
+        )
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis,
+                dry_run=False,
+                kill_switch=ks,
+                trading_guard=guard,
+                cost_analyzer=broken_analyzer,
+                initial_capital=10_000_000,
+            )
+
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="live fail-open test",
+                )
+            )
+
+        # Live 주문이 FILLED 상태로 유지되어야 함 (FAILED가 아님!)
+        assert record.status == OrderStatus.FILLED.value
+        assert record.order_id == "KIS_LIVE_001"
+        # analyze_order는 호출 시도됨
+        broken_analyzer.analyze_order.assert_called_once()
+
 
 class TestFullGuardChainOrder:
     """6-E: kill_switch → vi_cb → trading_guard → [5M] → order 전체 체인 검증."""
