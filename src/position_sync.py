@@ -73,14 +73,9 @@ class PositionSyncVerifier:
         balance = await self.kis.get_balance()
         if not balance:
             raise RuntimeError(
-                "KIS get_balance() returned empty response — "
-                "API failure suspected, skipping sync to avoid false alerts"
+                "KIS get_balance() returned empty response — API failure suspected, skipping sync to avoid false alerts"
             )
-        return {
-            p["symbol"]: p["quantity"]
-            for p in balance.get("positions", [])
-            if p["quantity"] > 0
-        }
+        return {p["symbol"]: p["quantity"] for p in balance.get("positions", []) if p["quantity"] > 0}
 
     def _get_local_positions(self) -> dict[str, int]:
         """positions.json -> {normalized_symbol: total_shares} 매핑.
@@ -95,9 +90,7 @@ class PositionSyncVerifier:
             result[normalized] = result.get(normalized, 0) + pos.total_shares
         return result
 
-    def _compare(
-        self, broker: dict[str, int], local: dict[str, int]
-    ) -> list[SyncDiscrepancy]:
+    def _compare(self, broker: dict[str, int], local: dict[str, int]) -> list[SyncDiscrepancy]:
         """브로커/로컬 포지션 비교 후 불일치 리스트 반환."""
         discrepancies: list[SyncDiscrepancy] = []
         all_symbols = set(broker.keys()) | set(local.keys())

@@ -28,9 +28,7 @@ logger = logging.getLogger(__name__)
 
 def setup_logging(verbose: bool = False):
     """로깅 설정."""
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
 
@@ -73,11 +71,7 @@ async def main(args: argparse.Namespace) -> None:
         if discrepancies:
             report = verifier.format_report(discrepancies)
             has_critical = any(d.is_critical for d in discrepancies)
-            level = (
-                NotificationLevel.ERROR
-                if has_critical
-                else NotificationLevel.WARNING
-            )
+            level = NotificationLevel.ERROR if has_critical else NotificationLevel.WARNING
             logger.warning(f"포지션 불일치 {len(discrepancies)}건 발견")
             logger.warning(report)
 
@@ -97,17 +91,13 @@ async def main(args: argparse.Namespace) -> None:
 
 def cli_main():
     """CLI 엔트리포인트."""
-    parser = argparse.ArgumentParser(
-        description="KIS 잔고 vs 로컬 포지션 동기화 검증"
-    )
+    parser = argparse.ArgumentParser(description="KIS 잔고 vs 로컬 포지션 동기화 검증")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="검증만 수행하고 알림은 전송하지 않음",
     )
-    parser.add_argument(
-        "--verbose", action="store_true", help="상세 로깅 활성화"
-    )
+    parser.add_argument("--verbose", action="store_true", help="상세 로깅 활성화")
 
     args = parser.parse_args()
     setup_logging(verbose=args.verbose)
