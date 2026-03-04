@@ -63,3 +63,12 @@ Thumbs.db
 .claude/settings.local.json
 
 .sisyphus/
+
+# OMC (oh-my-claudecode) state
+.omc/
+
+# Session work logs
+work_logs/
+
+# Personal research notes
+research/readings/youtube/
