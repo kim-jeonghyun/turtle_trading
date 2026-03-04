@@ -189,7 +189,8 @@ def _load_backtest_json(path: Path) -> Optional[Dict[str, Any]]:
     """JSON 백테스트 결과 파일 로드. 실패 시 None 반환."""
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            data: Dict[str, Any] = json.load(f)
+            return data
     except Exception:
         return None
 
