@@ -31,6 +31,7 @@ from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient, KISConfig, OrderSide, OrderType
 from src.types import OrderStatus
 from src.universe_manager import UniverseManager
+from src.vi_cb_detector import VICBDetector
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,8 @@ async def run_auto_trade(args: argparse.Namespace):
         logger.critical(f"시스템 트레이딩 비활성화: {reason}")
         return
 
+    vi_cb_detector = VICBDetector()
+
     # Live 모드 경고
     if args.live:
         logger.warning("=" * 70)
@@ -285,6 +288,7 @@ async def run_auto_trade(args: argparse.Namespace):
         dry_run=not args.live,
         max_order_amount=args.max_amount,
         kill_switch=kill_switch,
+        vi_cb_detector=vi_cb_detector,
     )
 
     # 데이터 페처
@@ -321,6 +325,16 @@ async def run_auto_trade(args: argparse.Namespace):
     for symbol in symbols:
         try:
             logger.info(f"종목 처리 중: {symbol}")
+
+            # VI/CB 상태 조회 (KR 종목만)
+            if symbol.endswith((".KS", ".KQ")):
+                try:
+                    raw = symbol.replace(".KS", "").replace(".KQ", "")
+                    price_data = await kis_client.get_korea_price(raw)
+                    if price_data:
+                        vi_cb_detector.update_from_spot(symbol, price_data)
+                except Exception as e:
+                    logger.debug(f"VI 상태 조회 실패: {symbol} - {e}")
 
             # 데이터 페칭 (6개월)
             df = data_fetcher.fetch(symbol, period="6mo")

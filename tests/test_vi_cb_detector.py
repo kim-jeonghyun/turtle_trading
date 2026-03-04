@@ -151,6 +151,23 @@ class TestVICBDetector:
         status2 = detector.update_from_spot("005930", {})
         assert status2.vi_status == VIStatus.NONE
 
+    def test_spot_data_vi_cls_code_propagation(self, detector):
+        """SpotData에서 vi_cls_code가 VICBDetector로 전달됨"""
+        from src.spot_price import SpotData
+
+        spot = SpotData(
+            price=70000.0,
+            high=71000.0,
+            low=69000.0,
+            open=70500.0,
+            volume=1000000,
+            is_delayed=False,
+            vi_cls_code="1",
+        )
+        status = detector.update_from_spot("005930", spot)
+        assert status.vi_status == VIStatus.STATIC_VI
+        assert status.is_entry_blocked is True
+
 
 # ---------------------------------------------------------------------------
 # TestRejectedCountedInDailyStats -- auto_trader 통합

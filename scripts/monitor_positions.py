@@ -189,11 +189,9 @@ async def monitor_positions(args):
                         logger.warning(f"가격 조회 실패: {pos.symbol}")
                         continue
 
-                    # VI/CB 상태 체크: 발동 중이면 모니터링 일시 중지
-                    vi_allowed, vi_reason = vi_cb_detector.check_entry_allowed(pos.symbol)
-                    if not vi_allowed:
-                        logger.info(f"VI/CB 발동 중: {pos.symbol} 모니터링 일시 중지 — {vi_reason}")
-                        continue
+                    # VI/CB 캐시 업데이트 (KR 종목만 vi_cls_code 존재)
+                    if spot and infer_market(pos.symbol) == "KR":
+                        vi_cb_detector.update_from_spot(pos.symbol, spot)
 
                     # 스톱로스 체크
                     if check_stop_loss_intraday(pos, spot):
