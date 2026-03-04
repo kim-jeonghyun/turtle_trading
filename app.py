@@ -2,18 +2,19 @@
 터틀 트레이딩 Streamlit 대시보드
 """
 
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+from src.backtester import BacktestConfig, TurtleBacktester
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
 from src.indicators import add_turtle_indicators
 from src.universe_manager import UniverseManager
-from src.backtester import TurtleBacktester, BacktestConfig
 
 st.set_page_config(
     page_title="터틀 트레이딩 시스템",

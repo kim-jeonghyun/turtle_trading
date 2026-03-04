@@ -141,9 +141,15 @@ def validate_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     for col in price_cols:
         df = df[df[col] >= 0]
 
+    # OHLC 논리 검증: high < low인 행 제거
+    invalid_hl = df["high"] < df["low"]
+    if invalid_hl.any():
+        logger.warning(f"OHLC 불일치 {invalid_hl.sum()}건 제거 (high < low)")
+        df = df[~invalid_hl]
+
     dropped = original_len - len(df)
     if dropped > 0:
-        logger.warning(f"OHLCV 유효성 검증: {dropped}행 제거됨 (null close 또는 음수 가격)")
+        logger.warning(f"OHLCV 유효성 검증: {dropped}행 제거됨 (null close, 음수 가격, 또는 OHLC 불일치)")
 
     return df.reset_index(drop=True)
 

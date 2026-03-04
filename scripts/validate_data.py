@@ -5,6 +5,7 @@ Turtle Trading Data Validation
 """
 
 import argparse
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,10 @@ from typing import Tuple
 
 import pandas as pd
 
+from src.data_store import ParquetDataStore
 from src.utils import atomic_write_json, safe_load_json, validate_position_schema
+
+logger = logging.getLogger(__name__)
 
 
 class DataValidator:
@@ -237,6 +241,137 @@ class DataValidator:
         return True, "Price sanity: all prices valid"
 
 
+def validate_ohlcv_consistency(df: pd.DataFrame, symbol: str) -> list[str]:
+    """OHLCV 논리 일관성 검증.
+
+    Args:
+        df: OHLCV DataFrame (columns: high, low, close, open, volume)
+        symbol: 종목 코드
+
+    Returns:
+        이슈 메시지 리스트 (빈 리스트 = 정상)
+    """
+    issues = []
+
+    # 1. high >= low
+    bad_hl = df[df["high"] < df["low"]]
+    if not bad_hl.empty:
+        issues.append(f"{symbol}: high < low ({len(bad_hl)}건) — {bad_hl.index.tolist()[:3]}")
+
+    # 2. high >= close and high >= open
+    bad_hc = df[(df["high"] < df["close"]) | (df["high"] < df["open"])]
+    if not bad_hc.empty:
+        issues.append(f"{symbol}: high < close/open ({len(bad_hc)}건)")
+
+    # 3. low <= close and low <= open
+    bad_lc = df[(df["low"] > df["close"]) | (df["low"] > df["open"])]
+    if not bad_lc.empty:
+        issues.append(f"{symbol}: low > close/open ({len(bad_lc)}건)")
+
+    # 4. 음수 거래량
+    bad_vol = df[df["volume"] < 0]
+    if not bad_vol.empty:
+        issues.append(f"{symbol}: 음수 거래량 ({len(bad_vol)}건)")
+
+    return issues
+
+
+def validate_ohlcv_date_gaps(df: pd.DataFrame, symbol: str, market: str = "KR") -> list[str]:
+    """거래일 갭 감지 (주말/공휴일 제외).
+
+    단순 역일(calendar days) 기준. 연말/설 연휴(최대 4-5일)를 고려하여
+    6일 이상을 이상 갭으로 판단. market_calendar.py 활용한 정밀 판단은 v3.8.0 검토.
+    주의: 월~월 사이 1일 공휴일 = 역일 7일이므로 5일 기준은 false positive 발생 가능.
+
+    Args:
+        df: OHLCV DataFrame (columns: date)
+        symbol: 종목 코드
+        market: 시장 코드 (향후 확장용)
+
+    Returns:
+        이슈 메시지 리스트 (빈 리스트 = 정상)
+    """
+    issues: list[str] = []
+    if len(df) < 2:
+        return issues
+
+    dates = pd.to_datetime(df["date"]).sort_values()
+    for i in range(1, len(dates)):
+        gap = (dates.iloc[i] - dates.iloc[i - 1]).days
+        if gap > 6:  # 역일 6일 이상 = 공휴일 포함 주말 대비 여유
+            issues.append(f"{symbol}: {gap}일 갭 ({dates.iloc[i - 1].date()} -> {dates.iloc[i].date()})")
+
+    return issues
+
+
+def validate_ohlcv_outliers(df: pd.DataFrame, symbol: str, threshold: float = 0.31) -> list[str]:
+    """가격 이상치 감지 (전일 대비 +/-threshold 변동).
+
+    한국 시장 가격제한폭 +/-30%이므로 threshold=0.31로 설정.
+    정확히 30.00% 변동(상한가/하한가)은 정상 범위로 처리.
+
+    Args:
+        df: OHLCV DataFrame (columns: date, close)
+        symbol: 종목 코드
+        threshold: 이상치 판단 기준 (기본 0.31 = 31%)
+
+    Returns:
+        이슈 메시지 리스트 (빈 리스트 = 정상)
+    """
+    issues: list[str] = []
+    if len(df) < 2:
+        return issues
+
+    closes = df["close"].values
+    for i in range(1, len(closes)):
+        if closes[i - 1] == 0:
+            continue
+        change = abs(closes[i] - closes[i - 1]) / closes[i - 1]
+        if change > threshold:
+            date = df["date"].iloc[i]
+            issues.append(f"{symbol}: {date} 가격 변동 {change:.1%} ({closes[i - 1]:.0f} -> {closes[i]:.0f})")
+
+    return issues
+
+
+def validate_ohlcv_data(base_dir: str = "data") -> Tuple[bool, str]:
+    """축적된 OHLCV parquet 파일 전체에 대해 무결성 검증 수행.
+
+    Args:
+        base_dir: 데이터 디렉토리 경로
+
+    Returns:
+        (성공 여부, 요약 메시지) 튜플
+    """
+    data_store = ParquetDataStore(base_dir=base_dir)
+    ohlcv_dir = data_store.ohlcv_dir
+
+    parquet_files = list(ohlcv_dir.glob("*_ohlcv.parquet"))
+    if not parquet_files:
+        return True, "OHLCV: no accumulated data files"
+
+    total_issues: list[str] = []
+
+    for pf in parquet_files:
+        symbol = pf.stem.replace("_ohlcv", "")
+        try:
+            df = pd.read_parquet(pf)
+        except Exception as e:
+            total_issues.append(f"{symbol}: parquet 읽기 실패 — {e}")
+            continue
+
+        total_issues.extend(validate_ohlcv_consistency(df, symbol))
+        total_issues.extend(validate_ohlcv_date_gaps(df, symbol))
+        total_issues.extend(validate_ohlcv_outliers(df, symbol))
+
+    if total_issues:
+        for issue in total_issues:
+            logger.warning(f"OHLCV 검증: {issue}")
+        return False, f"OHLCV: {len(total_issues)} issues in {len(parquet_files)} files"
+
+    return True, f"OHLCV: {len(parquet_files)} files, all valid"
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate Turtle Trading data integrity")
     parser.add_argument("--fix", action="store_true", help="Auto-fix issues where possible")
@@ -255,6 +390,7 @@ def main():
         ("Data Consistency", lambda: validator.validate_data_consistency(fix=args.fix)),
         ("Date Range", validator.validate_date_range),
         ("Price Sanity", validator.validate_price_sanity),
+        ("OHLCV Data", lambda: validate_ohlcv_data()),
     ]
 
     results = []
