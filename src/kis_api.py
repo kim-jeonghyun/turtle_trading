@@ -273,6 +273,7 @@ class KISAPIClient:
                             "high": float(output.get("stck_hgpr", 0)),
                             "low": float(output.get("stck_lwpr", 0)),
                             "open": float(output.get("stck_oprc", 0)),
+                            "vi_cls_code": output.get("vi_cls_code", "0"),
                         }
                     else:
                         logger.error(
