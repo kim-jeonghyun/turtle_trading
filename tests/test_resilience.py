@@ -27,7 +27,7 @@ from src.utils import retry_async, retry_sync, setup_structured_logging
 
 def run_async(coro):
     """동기 테스트에서 코루틴 실행 헬퍼"""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
