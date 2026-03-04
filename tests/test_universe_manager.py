@@ -340,3 +340,65 @@ symbols:
         """유니버스에 없는 한국 심볼은 그대로 반환"""
         um = UniverseManager()
         assert um.get_display_name("999999.KS") == "999999.KS"
+
+
+class TestShortRestricted:
+    """Asset.short_restricted 필드 및 YAML 파싱 테스트"""
+
+    def test_asset_short_restricted_default(self):
+        """short_restricted 기본값은 True (안전 기본값)"""
+        asset = Asset(
+            symbol="SPY",
+            name="S&P 500 ETF",
+            country="US",
+            asset_type="Index ETF",
+            group=AssetGroup.US_EQUITY,
+        )
+        assert asset.short_restricted is True
+
+    def test_asset_short_restricted_explicit_false(self):
+        """short_restricted=False로 명시 설정 가능"""
+        asset = Asset(
+            symbol="SPY",
+            name="S&P 500 ETF",
+            country="US",
+            asset_type="Index ETF",
+            group=AssetGroup.US_EQUITY,
+            short_restricted=False,
+        )
+        assert asset.short_restricted is False
+
+    def test_load_yaml_with_short_restricted(self):
+        """YAML에 short_restricted 필드가 있으면 파싱됨"""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
+  us_equity:
+    - {symbol: SPY, name: "S&P 500 ETF", group: us_equity, short_restricted: false}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["005930.KS"].short_restricted is True
+                assert um.assets["SPY"].short_restricted is False
+            finally:
+                os.unlink(f.name)
+
+    def test_load_yaml_without_short_restricted_defaults_true(self):
+        """YAML에 short_restricted 없으면 기본값 True"""
+        yaml_content = """
+symbols:
+  us_equity:
+    - {symbol: SPY, name: "S&P 500 ETF", group: us_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["SPY"].short_restricted is True
+            finally:
+                os.unlink(f.name)

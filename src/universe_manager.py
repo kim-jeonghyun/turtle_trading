@@ -22,6 +22,7 @@ class Asset:
     leverage: float = 1.0
     underlying: Optional[str] = None
     enabled: bool = True
+    short_restricted: bool = True  # 공매도 제한 여부 (기본값: 제한됨, 안전 기본값)
 
     @property
     def is_inverse(self) -> bool:
@@ -80,6 +81,9 @@ class UniverseManager:
                 if asset_group == AssetGroup.INVERSE:
                     leverage = -1.0
 
+                # short_restricted: YAML에 명시되면 그 값 사용, 없으면 True (안전 기본값)
+                short_restricted = item.get("short_restricted", True)
+
                 asset = Asset(
                     symbol=symbol,
                     name=item.get("name", symbol),
@@ -89,6 +93,7 @@ class UniverseManager:
                     leverage=leverage,
                     underlying=item.get("underlying"),
                     enabled=True,
+                    short_restricted=short_restricted,
                 )
                 self.assets[symbol] = asset
 

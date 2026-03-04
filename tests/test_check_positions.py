@@ -2322,3 +2322,82 @@ class TestSaveTradeIntegration:
         finally:
             PatchManager.stop_all(patches)
         ds.save_trade.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 공매도 제한 (short_restricted) 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestShortRestricted:
+    """Asset.short_restricted 필드 기반 SHORT 시그널 필터 테스트."""
+
+    def _make_df_short_breakout(self) -> "pd.DataFrame":
+        """20일 하향 이탈 + 55일 하향 이탈 DataFrame (숏 진입 조건 충족)."""
+        return _make_df(
+            today_high=99.0,
+            today_low=BELOW_20_ONLY,
+            today_close=BELOW_20_ONLY,
+            dc_high_20=DC_HIGH_20,
+            dc_low_20=DC_LOW_20,
+            dc_high_55=DC_HIGH_55,
+            dc_low_55=DC_LOW_55,
+        )
+
+    def _make_universe(self, symbol: str, short_restricted: bool) -> "object":
+        """단일 심볼을 담은 UniverseManager mock."""
+        from unittest.mock import MagicMock
+
+        from src.universe_manager import Asset
+        from src.types import AssetGroup
+
+        asset = Asset(
+            symbol=symbol,
+            name=symbol,
+            country="KR" if short_restricted else "US",
+            asset_type="equity",
+            group=AssetGroup.KR_EQUITY if short_restricted else AssetGroup.US_EQUITY,
+            short_restricted=short_restricted,
+        )
+        universe = MagicMock()
+        universe.assets = {symbol: asset}
+        return universe
+
+    def test_short_signal_filtered_when_restricted(self):
+        """short_restricted=True 종목은 SHORT 시그널 생성 안 됨."""
+        df = self._make_df_short_breakout()
+        universe = self._make_universe("005930.KS", short_restricted=True)
+
+        signals = check_entry_signals(df, "005930.KS", system=1, universe=universe)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, "공매도 제한 종목에서는 SHORT 시그널이 생성되면 안 된다"
+
+    def test_short_signal_allowed_when_not_restricted(self):
+        """short_restricted=False 종목은 SHORT 시그널 생성됨."""
+        df = self._make_df_short_breakout()
+        universe = self._make_universe("SPY", short_restricted=False)
+
+        signals = check_entry_signals(df, "SPY", system=1, universe=universe)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 1, "공매도 가능 종목에서는 SHORT 시그널이 생성되어야 한다"
+        assert short_signals[0]["type"] == SignalType.ENTRY_SHORT.value
+
+    def test_short_signal_fallback_to_is_korean_market_when_no_universe(self):
+        """universe=None이면 is_korean_market() 폴백: .KS 심볼은 SHORT 차단."""
+        df = self._make_df_short_breakout()
+
+        signals = check_entry_signals(df, "005930.KS", system=1, universe=None)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 0, "universe 없을 때 .KS 심볼은 is_korean_market() 폴백으로 SHORT 차단"
+
+    def test_short_signal_fallback_allows_us_when_no_universe(self):
+        """universe=None이면 is_korean_market() 폴백: US 심볼은 SHORT 허용."""
+        df = self._make_df_short_breakout()
+
+        signals = check_entry_signals(df, SYMBOL_US, system=1, universe=None)
+
+        short_signals = [s for s in signals if s["direction"] == "SHORT"]
+        assert len(short_signals) == 1, "universe 없을 때 US 심볼은 is_korean_market() 폴백으로 SHORT 허용"

@@ -99,7 +99,11 @@ def check_stop_loss(position, today_data) -> bool:
 
 
 def is_korean_market(symbol: str) -> bool:
-    """한국 시장 종목 여부 (공매도 제한)"""
+    """한국 시장 종목 여부 (공매도 제한).
+
+    Deprecated: 신규 코드에서는 Asset.short_restricted 필드를 사용하세요.
+    이 함수는 하위 호환성을 위해 유지됩니다.
+    """
     return symbol.endswith(".KS") or symbol.endswith(".KQ")
 
 
@@ -120,7 +124,13 @@ def _should_allow_entry(system: int, is_profitable: bool, is_55day_breakout: boo
     return False
 
 
-def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTracker | None" = None) -> list:
+def check_entry_signals(
+    df,
+    symbol: str,
+    system: int = 1,
+    tracker: "PositionTracker | None" = None,
+    universe: "UniverseManager | None" = None,
+) -> list:
     """진입 시그널 확인"""
     signals: list[dict] = []
     if len(df) < 2:
@@ -176,8 +186,15 @@ def check_entry_signals(df, symbol: str, system: int = 1, tracker: "PositionTrac
                 }
             )
 
-    # 숏 진입 시그널 (미국 시장만 — 한국은 공매도 제한)
-    if not is_korean_market(symbol):
+    # 숏 진입 시그널 (공매도 가능 종목만 — short_restricted=False)
+    # universe가 주어지면 Asset.short_restricted로 판단, 없으면 is_korean_market() 폴백
+    if universe is not None:
+        asset = universe.assets.get(symbol)
+        short_allowed = asset is not None and not asset.short_restricted
+    else:
+        short_allowed = not is_korean_market(symbol)
+
+    if short_allowed:
         if system == 1:
             short_low_col = "dc_low_20"
         else:
@@ -484,12 +501,12 @@ async def _run_checks():
                 signals_s2 = []
 
                 if 1 not in existing_systems:
-                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker)
+                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker, universe=universe)
                 else:
                     logger.info(f"System 1 포지션 보유 중: {symbol}")
 
                 if 2 not in existing_systems:
-                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker)
+                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker, universe=universe)
                 else:
                     logger.info(f"System 2 포지션 보유 중: {symbol}")
 
