@@ -103,12 +103,14 @@ def load_backtest_results(path: Path = BACKTEST_DIR) -> dict:
     result_file = path / "latest_result.json"
     if result_file.exists():
         with open(result_file) as f:
-            return json.load(f)
+            result: dict = json.load(f)
+            return result
     # Try loading from any available result file
     json_files = sorted(path.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if json_files:
         with open(json_files[0]) as f:
-            return json.load(f)
+            result = json.load(f)
+            return result
     return {}
 
 
