@@ -291,7 +291,7 @@ def validate_ohlcv_date_gaps(df: pd.DataFrame, symbol: str, market: str = "KR") 
     Returns:
         이슈 메시지 리스트 (빈 리스트 = 정상)
     """
-    issues = []
+    issues: list[str] = []
     if len(df) < 2:
         return issues
 
@@ -318,7 +318,7 @@ def validate_ohlcv_outliers(df: pd.DataFrame, symbol: str, threshold: float = 0.
     Returns:
         이슈 메시지 리스트 (빈 리스트 = 정상)
     """
-    issues = []
+    issues: list[str] = []
     if len(df) < 2:
         return issues
 
