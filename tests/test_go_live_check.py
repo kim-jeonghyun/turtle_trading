@@ -128,18 +128,11 @@ def test_kis_balance_check_missing_method():
 
 
 def test_position_sync_check():
-    """PositionSyncVerifier 인스턴스 생성 + verify() 존재 시 True."""
-    mock_instance = MagicMock()
-    mock_instance.verify = MagicMock()
-    mock_verifier_class = MagicMock()
-    mock_verifier_class.verify = MagicMock()
-    mock_verifier_class.return_value = mock_instance
-    mock_module = MagicMock()
-    mock_module.PositionSyncVerifier = mock_verifier_class
-
-    with patch.dict(sys.modules, {"src.position_sync": mock_module}):
-        ok, msg = go_live_check.check_position_sync()
+    """PositionSyncVerifier.verify() + 생성자 시그니처 검증 시 True."""
+    # 실제 모듈이 importable하므로 직접 호출
+    ok, msg = go_live_check.check_position_sync()
     assert ok is True
+    assert "verify" in msg or "확인" in msg
 
 
 def test_position_sync_check_missing_verify():

@@ -77,17 +77,21 @@ def check_kis_balance() -> tuple[bool, str]:
 
 
 def check_position_sync() -> tuple[bool, str]:
-    """체크 4: 포지션 동기화 모듈 정상 (인스턴스 생성 검증)"""
+    """체크 4: 포지션 동기화 모듈 정상 (클래스 + 메서드 callable 검증)"""
     try:
+        import inspect
+
         from src.position_sync import PositionSyncVerifier
 
         if not callable(getattr(PositionSyncVerifier, "verify", None)):
             return False, "verify() 메서드 없음"
-        # 인스턴스 생성 가능 여부 검증
-        verifier = PositionSyncVerifier()
-        if not hasattr(verifier, "verify"):
-            return False, "인스턴스에 verify() 메서드 없음"
-        return True, "PositionSyncVerifier 인스턴스 생성 + verify() 확인"
+        # 생성자 시그니처 검증 (kis_client, tracker 필수)
+        sig = inspect.signature(PositionSyncVerifier.__init__)
+        required = {"kis_client", "tracker"}
+        params = set(sig.parameters.keys()) - {"self"}
+        if not required.issubset(params):
+            return False, f"생성자 파라미터 누락: {required - params}"
+        return True, "PositionSyncVerifier.verify() + 생성자 시그니처 확인"
     except Exception as e:
         return False, f"포지션 동기화 모듈 검증 실패: {e}"
 
