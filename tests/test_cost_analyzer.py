@@ -20,7 +20,6 @@ import pytest
 
 from src.cost_analyzer import CostAnalyzer, TradeCost
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -151,8 +150,8 @@ def test_budget_within_limits(analyzer: CostAnalyzer) -> None:
     analyzer.analyze_order("O1", "005930", 50_000.0, 50_050.0, 1)
 
     ok, reason = analyzer.check_budget_limit(
-        total_equity=100_000_000.0,   # 1억
-        realized_profit=10_000_000.0, # 1천만 수익
+        total_equity=100_000_000.0,  # 1억
+        realized_profit=10_000_000.0,  # 1천만 수익
     )
     assert ok is True
     assert reason == ""
@@ -198,7 +197,7 @@ def test_budget_profit_threshold_exceeded(analyzer: CostAnalyzer) -> None:
 
     ok, reason = analyzer.check_budget_limit(
         total_equity=100_000_000.0,  # 자산 임계=200,000원 → 통과
-        realized_profit=10_000.0,    # 수익 임계=1,500원 → 초과
+        realized_profit=10_000.0,  # 수익 임계=1,500원 → 초과
         equity_threshold_pct=0.002,
         profit_threshold_pct=0.15,
     )
@@ -290,7 +289,6 @@ def test_analyze_order_rejects_negative_requested_price(analyzer: CostAnalyzer) 
 def test_since_filter_excludes_old_records(analyzer: CostAnalyzer) -> None:
     """since 날짜 이전 기록은 집계에서 제외된다."""
     # 과거 타임스탬프를 가진 레코드를 직접 주입
-    from src.cost_analyzer import TradeCost
 
     old_cost = TradeCost(
         order_id="OLD",
@@ -314,7 +312,6 @@ def test_since_filter_excludes_old_records(analyzer: CostAnalyzer) -> None:
 
 def test_since_filter_includes_matching_records(analyzer: CostAnalyzer) -> None:
     """since 날짜 이후 기록은 집계에 포함된다."""
-    from src.cost_analyzer import TradeCost
 
     recent_cost = TradeCost(
         order_id="NEW",
@@ -337,7 +334,6 @@ def test_since_filter_includes_matching_records(analyzer: CostAnalyzer) -> None:
 
 def test_check_budget_limit_with_since_ignores_old_costs(analyzer: CostAnalyzer) -> None:
     """check_budget_limit(since=...) → 지정 날짜 이전 비용 무시."""
-    from src.cost_analyzer import TradeCost
 
     old_cost = TradeCost(
         order_id="OLD_BIG",
@@ -382,7 +378,6 @@ def test_quantity_persisted_in_trade_cost(tmp_path: Path) -> None:
 
 def test_from_dict_handles_missing_quantity() -> None:
     """구버전 레코드(quantity 없음) → quantity=0 기본값 처리."""
-    from src.cost_analyzer import TradeCost
 
     d = {
         "order_id": "OLD",

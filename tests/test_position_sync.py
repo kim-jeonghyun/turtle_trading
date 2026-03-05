@@ -144,9 +144,7 @@ class TestSyncAPIFailure:
         kis.get_balance.return_value = {}  # API 실패 시 빈 dict
 
         tracker = MagicMock()
-        tracker.get_open_positions.return_value = [
-            _make_position("005930.KS", 100)
-        ]
+        tracker.get_open_positions.return_value = [_make_position("005930.KS", 100)]
 
         verifier = PositionSyncVerifier(kis_client=kis, tracker=tracker)
         with pytest.raises(RuntimeError, match="empty response"):

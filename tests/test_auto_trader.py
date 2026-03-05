@@ -1074,12 +1074,14 @@ class TestKillSwitch:
     def blocked_trader(self, mock_kis_client, temp_data_dir, kill_switch_config):
         """킬 스위치가 활성화된 트레이더"""
         import yaml
+
         kill_switch_config.parent.mkdir(parents=True, exist_ok=True)
         with open(kill_switch_config, "w") as f:
             yaml.dump({"trading_enabled": False, "reason": "테스트 차단"}, f)
         ks = KillSwitch(config_path=kill_switch_config)
         trader = AutoTrader(kis_client=mock_kis_client, dry_run=True, kill_switch=ks)
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
         yield trader
@@ -1089,12 +1091,14 @@ class TestKillSwitch:
     def enabled_trader(self, mock_kis_client, temp_data_dir, kill_switch_config):
         """킬 스위치가 비활성화된 트레이더"""
         import yaml
+
         kill_switch_config.parent.mkdir(parents=True, exist_ok=True)
         with open(kill_switch_config, "w") as f:
             yaml.dump({"trading_enabled": True}, f)
         ks = KillSwitch(config_path=kill_switch_config)
         trader = AutoTrader(kis_client=mock_kis_client, dry_run=True, kill_switch=ks)
         import src.auto_trader as at_module
+
         original_path = at_module.ORDER_LOG_PATH
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
         yield trader
@@ -1103,9 +1107,7 @@ class TestKillSwitch:
     @pytest.mark.asyncio
     async def test_place_order_buy_blocked_by_kill_switch(self, blocked_trader):
         """BUY 주문 + 킬 스위치 활성 → REJECTED 반환"""
-        record = await blocked_trader.place_order(
-            symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0
-        )
+        record = await blocked_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0)
         assert record.status == OrderStatus.REJECTED.value
         assert record.order_id == "BLOCKED"
         assert "킬 스위치" in (record.reason or "")
@@ -1113,24 +1115,18 @@ class TestKillSwitch:
     @pytest.mark.asyncio
     async def test_place_order_sell_allowed_despite_kill_switch(self, blocked_trader):
         """SELL 주문 + 킬 스위치 활성 → 정상 통과 (DRY_RUN)"""
-        record = await blocked_trader.place_order(
-            symbol="SPY", side=OrderSide.SELL, quantity=10, price=100.0
-        )
+        record = await blocked_trader.place_order(symbol="SPY", side=OrderSide.SELL, quantity=10, price=100.0)
         # SELL은 킬 스위치와 무관하게 통과해야 함
         assert record.status != OrderStatus.REJECTED.value
 
     @pytest.mark.asyncio
     async def test_place_order_allowed_without_kill_switch(self, dry_run_trader):
         """kill_switch=None 시 기존 동작 보존"""
-        record = await dry_run_trader.place_order(
-            symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0
-        )
+        record = await dry_run_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0)
         assert record.status == OrderStatus.DRY_RUN.value
 
     @pytest.mark.asyncio
     async def test_place_order_allowed_when_kill_switch_off(self, enabled_trader):
         """trading_enabled=true 시 정상 주문"""
-        record = await enabled_trader.place_order(
-            symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0
-        )
+        record = await enabled_trader.place_order(symbol="SPY", side=OrderSide.BUY, quantity=10, price=100.0)
         assert record.status == OrderStatus.DRY_RUN.value

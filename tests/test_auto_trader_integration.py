@@ -346,3 +346,59 @@ class TestFullGuardChainOrder:
             )
 
         assert record.status == OrderStatus.DRY_RUN.value
+
+
+class TestPaperTradeReportAccuracy:
+    """AC17: save_state() → print_report() 라운드트립 정확성 검증."""
+
+    def test_save_state_fields_consumed_by_report(self, tmp_path):
+        """save_state()가 저장한 position_value/total_equity를 print_report()가 정확히 사용."""
+        from scripts.paper_trade_report import print_report
+        from src.paper_trader import PaperPortfolio, PaperPosition
+
+        port_path = tmp_path / "port.json"
+        with patch("src.paper_trader.PORTFOLIO_PATH", port_path):
+            portfolio = PaperPortfolio(initial_capital=5_000_000)
+            # 포지션 추가: 005930 100주 @ 70,000원
+            portfolio.positions["005930"] = PaperPosition(
+                symbol="005930",
+                side="BUY",
+                quantity=100,
+                entry_price=70_000,
+                fill_price=70_100,  # 슬리피지 반영 체결가
+                commission=7_000,
+                timestamp="2026-03-05T09:00:00",
+            )
+            portfolio.cash = 5_000_000 - (70_100 * 100) - 7_000  # 잔여 현금
+            portfolio.total_commission = 7_000
+            portfolio.total_slippage_cost = 10_000
+
+            # save_state → 파일에 저장
+            portfolio.save_state()
+
+        # 저장된 파일 로드
+        from src.utils import safe_load_json
+
+        state = safe_load_json(tmp_path / "port.json", default={})
+
+        # 핵심 검증: position_value, total_equity 필드 존재 + 정확한 값
+        expected_position_value = 70_100 * 100  # fill_price * quantity
+        expected_total_equity = portfolio.cash + expected_position_value
+
+        assert "position_value" in state, "save_state에 position_value 필드 누락"
+        assert "total_equity" in state, "save_state에 total_equity 필드 누락"
+        assert state["position_value"] == expected_position_value
+        assert state["total_equity"] == expected_total_equity
+
+        # print_report가 이 값을 정확히 사용하는지 검증 (stdout 캡처)
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            print_report(state, [])
+
+        output = buf.getvalue()
+        # 총 자산과 포지션 평가액이 리포트에 정확히 표시됨
+        assert f"{expected_total_equity:,.0f}" in output
+        assert f"{expected_position_value:,.0f}" in output

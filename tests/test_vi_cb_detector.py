@@ -181,12 +181,8 @@ class TestRejectedCountedInDailyStats:
     def mock_kis_client(self):
         """KISAPIClient Mock"""
         client = MagicMock(spec=KISAPIClient)
-        client.config = KISConfig(
-            app_key="TEST", app_secret="TEST", account_no="12345678"
-        )
-        client.place_order = AsyncMock(
-            return_value={"success": True, "order_no": "KIS_001", "order_time": "120000"}
-        )
+        client.config = KISConfig(app_key="TEST", app_secret="TEST", account_no="12345678")
+        client.place_order = AsyncMock(return_value={"success": True, "order_no": "KIS_001", "order_time": "120000"})
         client.get_balance = AsyncMock(
             return_value={"total_equity": 10_000_000.0, "cash": 5_000_000.0, "positions": []}
         )
@@ -257,12 +253,8 @@ class TestVICBAutoTraderIntegration:
     def mock_kis_client(self):
         """KISAPIClient Mock"""
         client = MagicMock(spec=KISAPIClient)
-        client.config = KISConfig(
-            app_key="TEST", app_secret="TEST", account_no="12345678"
-        )
-        client.place_order = AsyncMock(
-            return_value={"success": True, "order_no": "KIS_001", "order_time": "120000"}
-        )
+        client.config = KISConfig(app_key="TEST", app_secret="TEST", account_no="12345678")
+        client.place_order = AsyncMock(return_value={"success": True, "order_no": "KIS_001", "order_time": "120000"})
         client.get_balance = AsyncMock(
             return_value={"total_equity": 10_000_000.0, "cash": 5_000_000.0, "positions": []}
         )
@@ -289,15 +281,11 @@ class TestVICBAutoTraderIntegration:
 
         try:
             # BUY -> REJECTED
-            buy_record = await trader.place_order(
-                symbol="005930", side=OrderSide.BUY, quantity=10, price=70_000.0
-            )
+            buy_record = await trader.place_order(symbol="005930", side=OrderSide.BUY, quantity=10, price=70_000.0)
             assert buy_record.status == OrderStatus.REJECTED.value
 
             # SELL -> DRY_RUN (VI에 관계없이 통과)
-            sell_record = await trader.place_order(
-                symbol="005930", side=OrderSide.SELL, quantity=10, price=70_000.0
-            )
+            sell_record = await trader.place_order(symbol="005930", side=OrderSide.SELL, quantity=10, price=70_000.0)
             assert sell_record.status == OrderStatus.DRY_RUN.value
         finally:
             at_module.ORDER_LOG_PATH = original_path
@@ -318,9 +306,7 @@ class TestVICBAutoTraderIntegration:
         at_module.ORDER_LOG_PATH = temp_data_dir / "trades" / "order_log.json"
 
         try:
-            record = await trader.place_order(
-                symbol="005930", side=OrderSide.BUY, quantity=10, price=70_000.0
-            )
+            record = await trader.place_order(symbol="005930", side=OrderSide.BUY, quantity=10, price=70_000.0)
             assert record.status == OrderStatus.DRY_RUN.value
         finally:
             at_module.ORDER_LOG_PATH = original_path

@@ -15,9 +15,7 @@ class TestVersionMetadata:
     def test_version_format_semver(self):
         """시맨틱 버전 형식(X.Y.Z)을 따라야 한다."""
         pattern = r"^\d+\.\d+\.\d+$"
-        assert re.match(pattern, src.__version__), (
-            f"Version '{src.__version__}' does not match semver format X.Y.Z"
-        )
+        assert re.match(pattern, src.__version__), f"Version '{src.__version__}' does not match semver format X.Y.Z"
 
     def test_version_matches_pyproject(self):
         """src.__version__이 pyproject.toml의 version과 일치해야 한다."""
