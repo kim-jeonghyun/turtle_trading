@@ -69,9 +69,9 @@ def check_kis_balance() -> tuple[bool, str]:
 
         if not callable(getattr(KISAPIClient, "get_balance", None)):
             return False, "get_balance() 메서드 없음"
-        if not callable(getattr(KISAPIClient, "get_account_summary", None)):
-            return False, "get_account_summary() 메서드 없음"
-        return True, "get_balance() + get_account_summary() 메서드 확인"
+        if not callable(getattr(KISAPIClient, "get_daily_fills", None)):
+            return False, "get_daily_fills() 메서드 없음"
+        return True, "get_balance() + get_daily_fills() 메서드 확인"
     except Exception as e:
         return False, f"확인 실패: {e}"
 

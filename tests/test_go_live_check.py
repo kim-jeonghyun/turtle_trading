@@ -97,10 +97,10 @@ def test_kis_token_check_fails_on_import_error():
 
 
 def test_kis_balance_check():
-    """get_balance + get_account_summary 메서드 존재 시 True."""
+    """get_balance + get_daily_fills 메서드 존재 시 True."""
     mock_client = MagicMock()
     mock_client.get_balance = MagicMock()
-    mock_client.get_account_summary = MagicMock()
+    mock_client.get_daily_fills = MagicMock()
     mock_module = MagicMock()
     mock_module.KISAPIClient = mock_client
 
