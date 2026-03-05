@@ -1458,7 +1458,7 @@ class TestRunChecks:
         tracker.close_position.assert_called_once()
         notifier.send_signal.assert_awaited()
         # circuit breaker: 포지션 종료 시 record_trade_result 호출 보장
-        tg.record_trade_result.assert_called_once()
+        tg.record_trade_result.assert_called_once_with(tracker.close_position.return_value.pnl)
 
     async def test_run_checks_exit_signal(self):
         """오픈 포지션 청산 시그널 -> close + save + notify + record_trade_result."""
@@ -1476,7 +1476,7 @@ class TestRunChecks:
         tracker.close_position.assert_called_once()
         notifier.send_signal.assert_awaited()
         # circuit breaker: 포지션 종료 시 record_trade_result 호출 보장
-        tg.record_trade_result.assert_called_once()
+        tg.record_trade_result.assert_called_once_with(tracker.close_position.return_value.pnl)
 
     async def test_run_checks_pyramid_opportunity(self):
         """피라미딩 기회 -> notify."""
@@ -1799,7 +1799,7 @@ class TestRunChecksInverseETF:
         notifier_calls = mock_notifier.send_signal.call_args_list
         assert any("INVERSE" in str(call) for call in notifier_calls)
         # record_trade_result가 포지션 종료 시 호출되어야 함 (circuit breaker 작동 보장)
-        mock_tg.record_trade_result.assert_called_once()
+        mock_tg.record_trade_result.assert_called_once_with(mock_tracker.close_position.return_value.pnl)
 
     async def test_inverse_etf_no_force_exit(self):
         """Inverse ETF 정상 범위 내 -> 강제 청산 안 함."""

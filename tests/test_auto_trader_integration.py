@@ -124,6 +124,64 @@ class TestGuardChainAllowsSell:
         assert record.status == OrderStatus.DRY_RUN.value
 
 
+class TestVICBDetectorBlocking:
+    """6-C(vi): vi_cb_detector가 활성 상태에서 BUY 차단, SELL 통과 검증."""
+
+    def _make_trader(self, tmp_path, mock_kis_client, kill_switch, trading_guard):
+        """VI/CB 감지기(MagicMock)가 연결된 AutoTrader 생성."""
+        vi_cb = MagicMock()
+        vi_cb.check_entry_allowed.return_value = (False, "VI 발동 — 단기 변동성 차단")
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            trader = AutoTrader(
+                kis_client=mock_kis_client,
+                dry_run=True,
+                kill_switch=kill_switch,
+                trading_guard=trading_guard,
+                vi_cb_detector=vi_cb,
+            )
+        return trader, vi_cb
+
+    def test_vi_cb_blocks_buy(self, mock_kis_client, kill_switch, trading_guard, tmp_path):
+        """VI/CB 감지 시 BUY는 BLOCKED_VI_CB order_id로 REJECTED."""
+        trader, vi_cb = self._make_trader(tmp_path, mock_kis_client, kill_switch, trading_guard)
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.BUY,
+                    quantity=10,
+                    price=70_000,
+                    reason="vi cb block test",
+                )
+            )
+
+        assert record.status == OrderStatus.REJECTED.value
+        assert record.order_id == "BLOCKED_VI_CB"
+        assert "VI/CB" in (record.error_message or "")
+        vi_cb.check_entry_allowed.assert_called_once_with("005930.KS")
+
+    def test_vi_cb_allows_sell(self, mock_kis_client, kill_switch, trading_guard, tmp_path):
+        """같은 VI/CB 감지 상태에서도 SELL은 차단되지 않고 DRY_RUN으로 통과."""
+        trader, vi_cb = self._make_trader(tmp_path, mock_kis_client, kill_switch, trading_guard)
+
+        with patch("src.auto_trader.ORDER_LOG_PATH", tmp_path / "orders.json"):
+            record = asyncio.run(
+                trader.place_order(
+                    symbol="005930.KS",
+                    side=OrderSide.SELL,
+                    quantity=10,
+                    price=70_000,
+                    reason="exit — vi cb should not block sell",
+                )
+            )
+
+        # SELL은 VI/CB 체크를 받지 않아야 함 (Entry-Only Block)
+        assert record.status == OrderStatus.DRY_RUN.value
+        vi_cb.check_entry_allowed.assert_not_called()
+
+
 class TestCostAnalyzerRecordsOnFill:
     """6-C: 주문 체결 후 CostAnalyzer.analyze_order() 호출 검증."""
 

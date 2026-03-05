@@ -56,34 +56,40 @@ def check_kis_token() -> tuple[bool, str]:
         required_keys = ["KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NO"]
         missing = [k for k in required_keys if not os.environ.get(k)]
         if missing:
-            return True, f"KIS API 모듈 정상 (환경변수 미설정: {', '.join(missing)} — .env 확인)"
+            return False, f"KIS 환경변수 미설정: {', '.join(missing)} — .env 확인 필요"
         return True, "KIS API 모듈 + 환경변수 정상"
     except Exception as e:
         return False, f"KIS API 모듈 로드 실패: {e}"
 
 
 def check_kis_balance() -> tuple[bool, str]:
-    """체크 3: KIS 잔고 조회 가능 (모듈 확인)"""
+    """체크 3: KIS 잔고 조회 가능 (메서드 호출 가능 검증)"""
     try:
         from src.kis_api import KISAPIClient
 
-        if hasattr(KISAPIClient, "get_balance"):
-            return True, "get_balance() 메서드 존재"
-        return False, "get_balance() 메서드 없음"
+        if not callable(getattr(KISAPIClient, "get_balance", None)):
+            return False, "get_balance() 메서드 없음"
+        if not callable(getattr(KISAPIClient, "get_account_summary", None)):
+            return False, "get_account_summary() 메서드 없음"
+        return True, "get_balance() + get_account_summary() 메서드 확인"
     except Exception as e:
         return False, f"확인 실패: {e}"
 
 
 def check_position_sync() -> tuple[bool, str]:
-    """체크 4: 포지션 동기화 모듈 정상"""
+    """체크 4: 포지션 동기화 모듈 정상 (인스턴스 생성 검증)"""
     try:
         from src.position_sync import PositionSyncVerifier
 
-        if hasattr(PositionSyncVerifier, "verify"):
-            return True, "PositionSyncVerifier.verify() 존재"
-        return False, "verify() 메서드 없음"
+        if not callable(getattr(PositionSyncVerifier, "verify", None)):
+            return False, "verify() 메서드 없음"
+        # 인스턴스 생성 가능 여부 검증
+        verifier = PositionSyncVerifier()
+        if not hasattr(verifier, "verify"):
+            return False, "인스턴스에 verify() 메서드 없음"
+        return True, "PositionSyncVerifier 인스턴스 생성 + verify() 확인"
     except Exception as e:
-        return False, f"포지션 동기화 모듈 로드 실패: {e}"
+        return False, f"포지션 동기화 모듈 검증 실패: {e}"
 
 
 def check_data_integrity() -> tuple[bool, str]:
@@ -174,21 +180,32 @@ def check_notification() -> tuple[bool, str]:
 
 
 def check_dry_run_order() -> tuple[bool, str]:
-    """체크 10: AutoTrader 런타임 통합 검증"""
+    """체크 10: AutoTrader 런타임 통합 검증 (인스턴스 생성 + 가드 연결 확인)"""
     try:
-        import inspect
+        from unittest.mock import MagicMock
 
         from src.auto_trader import AutoTrader
-        from src.kis_api import OrderSide, OrderType  # noqa: F401
+        from src.kill_switch import KillSwitch
+        from src.trading_guard import TradingGuard, TradingLimits
 
-        sig = inspect.signature(AutoTrader.__init__)
-        required_params = ["trading_guard", "cost_analyzer", "kill_switch", "vi_cb_detector"]
-        missing = [p for p in required_params if p not in sig.parameters]
-        if missing:
-            return False, f"AutoTrader 파라미터 누락: {missing}"
-        return True, "AutoTrader 런타임 통합 파라미터 확인 (trading_guard, cost_analyzer 포함)"
+        ks = KillSwitch()
+        guard = TradingGuard(limits=TradingLimits(), kill_switch=ks)
+        mock_kis = MagicMock()
+
+        trader = AutoTrader(
+            kis_client=mock_kis,
+            dry_run=True,
+            kill_switch=ks,
+            trading_guard=guard,
+        )
+        # 가드 체인 연결 검증
+        if trader.trading_guard is not guard:
+            return False, "trading_guard 연결 실패"
+        if trader.kill_switch is not ks:
+            return False, "kill_switch 연결 실패"
+        return True, "AutoTrader 인스턴스 생성 + 가드 체인 연결 검증 통과"
     except Exception as e:
-        return False, f"AutoTrader 모듈 로드 실패: {e}"
+        return False, f"AutoTrader 런타임 검증 실패: {e}"
 
 
 def check_trading_guard_module() -> tuple[bool, str]:
