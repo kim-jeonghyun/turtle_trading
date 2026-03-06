@@ -49,15 +49,21 @@ fi
 # 5. main에서 git push (브랜치 미명시 포함) 전면 차단
 #    rev.2 ISSUE 4: git push origin, git push, git push -u origin 등 모두 커버
 #    rev.5: 태그 push는 예외 허용 (refs/tags/ 패턴)
+#    rev.6: --delete는 리모트 브랜치 삭제이므로 main 보호와 무관, 허용
 if echo "$COMMAND" | grep -qE '\bgit\s+push\b'; then
   if [ "$BRANCH" = "main" ]; then
     # 태그 push는 코드 변경 없이 기존 커밋에 레이블만 부착하므로 허용
     if echo "$COMMAND" | grep -qE '\bgit\s+push\b.*\brefs/tags/'; then
       exit 0
     fi
+    # --delete는 리모트 브랜치 정리용이므로 허용
+    if echo "$COMMAND" | grep -qE '\bgit\s+push\b.*--delete\b'; then
+      exit 0
+    fi
     echo "BLOCKED: main 브랜치에서 push 금지. feature 브랜치에서 작업하세요." >&2
     echo "허용: git push origin feature/issue-NNN-<설명>" >&2
     echo "허용: git push origin refs/tags/<태그명> (태그 push)" >&2
+    echo "허용: git push origin --delete <브랜치명> (리모트 브랜치 삭제)" >&2
     exit 2
   fi
 fi
