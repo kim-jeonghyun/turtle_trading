@@ -40,11 +40,17 @@ class AssetGroup(SerializableEnum):
     KR_EQUITY = "kr_equity"
     US_EQUITY = "us_equity"
     ASIA_EQUITY = "asia_equity"
+    EU_EQUITY = "eu_equity"
+    CHINA_EQUITY = "china_equity"
     CRYPTO = "crypto"
     COMMODITY = "commodity"
+    COMMODITY_ENERGY = "commodity_energy"
+    COMMODITY_AGRI = "commodity_agri"
     BOND = "bond"
     INVERSE = "inverse"
     CURRENCY = "currency"
+    REIT = "reit"
+    ALTERNATIVES = "alternatives"
 
 
 class OrderStatus(SerializableEnum):
