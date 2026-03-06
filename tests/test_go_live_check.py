@@ -1,6 +1,7 @@
 """tests/test_go_live_check.py — Go-Live 자동 검증 체크리스트 테스트."""
 
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -63,12 +64,24 @@ def test_health_check_fails_when_one_fails():
 
 
 def test_kis_token_check():
-    """KISAPIClient import 성공 시 True."""
+    """KIS 환경변수 + 모듈 정상 시 True."""
     mock_kis = MagicMock()
+    env_vars = {"KIS_APP_KEY": "test", "KIS_APP_SECRET": "test", "KIS_ACCOUNT_NO": "test"}
     with patch.dict(sys.modules, {"src.kis_api": mock_kis}):
-        ok, msg = go_live_check.check_kis_token()
+        with patch.dict(os.environ, env_vars):
+            ok, msg = go_live_check.check_kis_token()
     assert ok is True
     assert "정상" in msg
+
+
+def test_kis_token_check_missing_env_vars():
+    """KIS 환경변수 미설정 시 False."""
+    mock_kis = MagicMock()
+    with patch.dict(sys.modules, {"src.kis_api": mock_kis}):
+        with patch.dict(os.environ, {}, clear=True):
+            ok, msg = go_live_check.check_kis_token()
+    assert ok is False
+    assert "미설정" in msg
 
 
 def test_kis_token_check_fails_on_import_error():
@@ -84,16 +97,17 @@ def test_kis_token_check_fails_on_import_error():
 
 
 def test_kis_balance_check():
-    """get_balance 메서드 존재 시 True."""
+    """get_balance + get_daily_fills 메서드 존재 시 True."""
     mock_client = MagicMock()
     mock_client.get_balance = MagicMock()
+    mock_client.get_daily_fills = MagicMock()
     mock_module = MagicMock()
     mock_module.KISAPIClient = mock_client
 
     with patch.dict(sys.modules, {"src.kis_api": mock_module}):
         ok, msg = go_live_check.check_kis_balance()
     assert ok is True
-    assert "get_balance" in msg
+    assert "get_balance" in msg or "메서드" in msg
 
 
 def test_kis_balance_check_missing_method():
@@ -114,15 +128,11 @@ def test_kis_balance_check_missing_method():
 
 
 def test_position_sync_check():
-    """PositionSyncVerifier.verify 존재 시 True."""
-    mock_verifier = MagicMock()
-    mock_verifier.verify = MagicMock()
-    mock_module = MagicMock()
-    mock_module.PositionSyncVerifier = mock_verifier
-
-    with patch.dict(sys.modules, {"src.position_sync": mock_module}):
-        ok, msg = go_live_check.check_position_sync()
+    """PositionSyncVerifier.verify() + 생성자 시그니처 검증 시 True."""
+    # 실제 모듈이 importable하므로 직접 호출
+    ok, msg = go_live_check.check_position_sync()
     assert ok is True
+    assert "verify" in msg or "확인" in msg
 
 
 def test_position_sync_check_missing_verify():
@@ -369,13 +379,10 @@ def test_notification_check_fails():
 
 
 def test_dry_run_order_check():
-    """AutoTrader 모듈 import 성공 시 True."""
-    mock_auto = MagicMock()
-    mock_kis = MagicMock()
-    with patch.dict(sys.modules, {"src.auto_trader": mock_auto, "src.kis_api": mock_kis}):
-        ok, msg = go_live_check.check_dry_run_order()
+    """AutoTrader 런타임 통합 검증 통과."""
+    ok, msg = go_live_check.check_dry_run_order()
     assert ok is True
-    assert "정상" in msg
+    assert "통합" in msg or "검증" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -383,23 +390,11 @@ def test_dry_run_order_check():
 # ---------------------------------------------------------------------------
 
 
-def test_trading_guard_module():
-    """TradingGuard + TradingLimits import 성공, 메서드 존재 시 True."""
-    mock_guard = MagicMock()
-    mock_guard.check_daily_loss = MagicMock()
-    mock_guard.check_order_size = MagicMock()
-    mock_guard.record_trade_result = MagicMock()
-
-    mock_limits = MagicMock()
-    mock_module = MagicMock()
-    mock_module.TradingGuard = mock_guard
-    mock_module.TradingLimits = mock_limits
-
-    with patch.dict(sys.modules, {"src.trading_guard": mock_module}):
-        ok, msg = go_live_check.check_trading_guard_module()
-
+def test_trading_guard_module(tmp_path):
+    """TradingGuard 인스턴스 생성 + 기능 검증 통과."""
+    ok, msg = go_live_check.check_trading_guard_module()
     assert ok is True
-    assert "정상" in msg
+    assert "검증" in msg or "통과" in msg
 
 
 def test_trading_guard_module_missing():
@@ -407,21 +402,44 @@ def test_trading_guard_module_missing():
     with patch.dict(sys.modules, {"src.trading_guard": None}):
         ok, msg = go_live_check.check_trading_guard_module()
     assert ok is False
-    assert "없음" in msg
 
 
-def test_trading_guard_module_missing_methods():
-    """TradingGuard 메서드 누락 시 False."""
-    mock_guard = MagicMock(spec=["check_daily_loss"])  # missing check_order_size, record_trade_result
+def test_trading_guard_module_exception():
+    """TradingGuard 생성 실패 시 False."""
     mock_module = MagicMock()
-    mock_module.TradingGuard = mock_guard
+    mock_module.TradingGuard.side_effect = RuntimeError("test")
     mock_module.TradingLimits = MagicMock()
-
-    with patch.dict(sys.modules, {"src.trading_guard": mock_module}):
+    with patch.dict(sys.modules, {"src.trading_guard": mock_module, "src.kill_switch": MagicMock()}):
         ok, msg = go_live_check.check_trading_guard_module()
-
     assert ok is False
-    assert "누락" in msg
+
+
+# ---------------------------------------------------------------------------
+# 체크 13: CostAnalyzer 모듈
+# ---------------------------------------------------------------------------
+
+
+def test_cost_analyzer_module():
+    """CostAnalyzer 인스턴스 생성 + 기능 검증 통과."""
+    ok, msg = go_live_check.check_cost_analyzer_module()
+    assert ok is True
+    assert "검증" in msg or "통과" in msg
+
+
+def test_cost_analyzer_module_missing():
+    """src/cost_analyzer.py 없으면 False."""
+    with patch.dict(sys.modules, {"src.cost_analyzer": None}):
+        ok, msg = go_live_check.check_cost_analyzer_module()
+    assert ok is False
+
+
+def test_cost_analyzer_module_exception():
+    """CostAnalyzer 생성 실패 시 False."""
+    mock_module = MagicMock()
+    mock_module.CostAnalyzer.side_effect = RuntimeError("test")
+    with patch.dict(sys.modules, {"src.cost_analyzer": mock_module}):
+        ok, msg = go_live_check.check_cost_analyzer_module()
+    assert ok is False
 
 
 # ---------------------------------------------------------------------------

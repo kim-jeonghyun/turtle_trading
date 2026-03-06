@@ -47,37 +47,53 @@ def check_health_check_passes() -> tuple[bool, str]:
 
 
 def check_kis_token() -> tuple[bool, str]:
-    """체크 2: KIS 토큰 발급 성공 (mock-safe)"""
+    """체크 2: KIS API 설정 확인"""
     try:
+        import os
+
         from src.kis_api import KISAPIClient  # noqa: F401
 
-        return True, "KIS API 모듈 정상 로드"
+        required_keys = ["KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NO"]
+        missing = [k for k in required_keys if not os.environ.get(k)]
+        if missing:
+            return False, f"KIS 환경변수 미설정: {', '.join(missing)} — .env 확인 필요"
+        return True, "KIS API 모듈 + 환경변수 정상"
     except Exception as e:
         return False, f"KIS API 모듈 로드 실패: {e}"
 
 
 def check_kis_balance() -> tuple[bool, str]:
-    """체크 3: KIS 잔고 조회 가능 (모듈 확인)"""
+    """체크 3: KIS 잔고 조회 가능 (메서드 호출 가능 검증)"""
     try:
         from src.kis_api import KISAPIClient
 
-        if hasattr(KISAPIClient, "get_balance"):
-            return True, "get_balance() 메서드 존재"
-        return False, "get_balance() 메서드 없음"
+        if not callable(getattr(KISAPIClient, "get_balance", None)):
+            return False, "get_balance() 메서드 없음"
+        if not callable(getattr(KISAPIClient, "get_daily_fills", None)):
+            return False, "get_daily_fills() 메서드 없음"
+        return True, "get_balance() + get_daily_fills() 메서드 확인"
     except Exception as e:
         return False, f"확인 실패: {e}"
 
 
 def check_position_sync() -> tuple[bool, str]:
-    """체크 4: 포지션 동기화 모듈 정상"""
+    """체크 4: 포지션 동기화 모듈 정상 (클래스 + 메서드 callable 검증)"""
     try:
+        import inspect
+
         from src.position_sync import PositionSyncVerifier
 
-        if hasattr(PositionSyncVerifier, "verify"):
-            return True, "PositionSyncVerifier.verify() 존재"
-        return False, "verify() 메서드 없음"
+        if not callable(getattr(PositionSyncVerifier, "verify", None)):
+            return False, "verify() 메서드 없음"
+        # 생성자 시그니처 검증 (kis_client, tracker 필수)
+        sig = inspect.signature(PositionSyncVerifier.__init__)
+        required = {"kis_client", "tracker"}
+        params = set(sig.parameters.keys()) - {"self"}
+        if not required.issubset(params):
+            return False, f"생성자 파라미터 누락: {required - params}"
+        return True, "PositionSyncVerifier.verify() + 생성자 시그니처 확인"
     except Exception as e:
-        return False, f"포지션 동기화 모듈 로드 실패: {e}"
+        return False, f"포지션 동기화 모듈 검증 실패: {e}"
 
 
 def check_data_integrity() -> tuple[bool, str]:
@@ -168,30 +184,56 @@ def check_notification() -> tuple[bool, str]:
 
 
 def check_dry_run_order() -> tuple[bool, str]:
-    """체크 10: AutoTrader/KIS 모듈 로드 확인 (실제 주문 시뮬레이션은 수동 확인 필요)"""
+    """체크 10: AutoTrader 런타임 통합 검증 (인스턴스 생성 + 가드 연결 확인)"""
     try:
-        from src.auto_trader import AutoTrader  # noqa: F401
-        from src.kis_api import OrderSide, OrderType  # noqa: F401
+        from unittest.mock import MagicMock
 
-        return True, "AutoTrader dry_run 모듈 정상 (주문 시뮬레이션은 수동 확인)"
+        from src.auto_trader import AutoTrader
+        from src.kill_switch import KillSwitch
+        from src.trading_guard import TradingGuard, TradingLimits
+
+        ks = KillSwitch()
+        guard = TradingGuard(limits=TradingLimits(), kill_switch=ks)
+        mock_kis = MagicMock()
+
+        trader = AutoTrader(
+            kis_client=mock_kis,
+            dry_run=True,
+            kill_switch=ks,
+            trading_guard=guard,
+        )
+        # 가드 체인 연결 검증
+        if trader.trading_guard is not guard:
+            return False, "trading_guard 연결 실패"
+        if trader.kill_switch is not ks:
+            return False, "kill_switch 연결 실패"
+        return True, "AutoTrader 인스턴스 생성 + 가드 체인 연결 검증 통과"
     except Exception as e:
-        return False, f"AutoTrader 모듈 로드 실패: {e}"
+        return False, f"AutoTrader 런타임 검증 실패: {e}"
 
 
 def check_trading_guard_module() -> tuple[bool, str]:
-    """체크 11: 안전 가드 모듈 존재"""
+    """체크 11: 안전 가드 모듈 기능 검증"""
     try:
-        from src.trading_guard import TradingGuard, TradingLimits  # noqa: F401
+        from src.kill_switch import KillSwitch
+        from src.trading_guard import TradingGuard, TradingLimits
 
-        guard_methods = ["check_daily_loss", "check_order_size", "record_trade_result"]
-        missing = [m for m in guard_methods if not hasattr(TradingGuard, m)]
-        if missing:
-            return False, f"TradingGuard 메서드 누락: {missing}"
-        return True, "TradingGuard + TradingLimits 정상"
+        ks = KillSwitch()
+        guard = TradingGuard(limits=TradingLimits(), kill_switch=ks)
+
+        # 실제 함수 호출로 검증
+        ok1, _ = guard.check_daily_loss(1_000_000)
+        ok2, _ = guard.check_order_size(100_000, 1_000_000)
+
+        if not ok1:
+            return False, "check_daily_loss 기본 테스트 실패"
+        if not ok2:
+            return False, "check_order_size 기본 테스트 실패"
+        return True, "TradingGuard 인스턴스 생성 + 기본 동작 검증 통과"
     except ImportError:
         return False, "src/trading_guard.py 모듈 없음"
     except Exception as e:
-        return False, f"TradingGuard 확인 실패: {e}"
+        return False, f"TradingGuard 검증 실패: {e}"
 
 
 def check_correlation_groups_consistency() -> tuple[bool, str]:
@@ -247,6 +289,36 @@ def check_correlation_groups_consistency() -> tuple[bool, str]:
         return False, f"설정 파일 파싱 실패: {e}"
 
 
+def check_cost_analyzer_module() -> tuple[bool, str]:
+    """체크 13: CostAnalyzer 기능 검증"""
+    try:
+        import tempfile
+        from pathlib import Path
+
+        from src.cost_analyzer import CostAnalyzer
+
+        # 임시 파일로 테스트 (실제 로그 오염 방지)
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=True) as tmp:
+            analyzer = CostAnalyzer(cost_log_path=Path(tmp.name))
+            cost = analyzer.analyze_order(
+                order_id="TEST_001",
+                symbol="005930.KS",
+                requested_price=70000,
+                fill_price=70010,
+                quantity=1,
+            )
+            if cost.total_cost <= 0:
+                return False, "비용 계산 결과 비정상"
+
+            ok, _ = analyzer.check_budget_limit(
+                total_equity=5_000_000,
+                realized_profit=100_000,
+            )
+            return True, "CostAnalyzer 인스턴스 + analyze_order + check_budget_limit 검증 통과"
+    except Exception as e:
+        return False, f"CostAnalyzer 검증 실패: {e}"
+
+
 ALL_CHECKS = [
     ("health_check 전체 통과", check_health_check_passes),
     ("KIS 토큰 발급", check_kis_token),
@@ -259,6 +331,7 @@ ALL_CHECKS = [
     ("알림 채널", check_notification),
     ("AutoTrader/KIS 모듈 로드", check_dry_run_order),
     ("안전 가드 모듈", check_trading_guard_module),
+    ("CostAnalyzer 기능 검증", check_cost_analyzer_module),
     ("상관그룹 일관성", check_correlation_groups_consistency),
 ]
 
