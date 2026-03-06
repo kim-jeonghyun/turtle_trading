@@ -495,3 +495,28 @@ class TestUniverseExpansion:
         assert actual_us_equity == expected_us_equity, (
             f"Unexpected US_EQUITY symbols: {actual_us_equity - expected_us_equity}"
         )
+
+
+class TestRealConfigConsistency:
+    """실제 설정 파일 간 일관성 검증"""
+
+    def test_all_universe_symbols_in_correlation_groups(self):
+        """universe.yaml의 모든 심볼이 correlation_groups.yaml에 존재"""
+        import yaml
+
+        with open("/Users/momo/dev/turtle_trading/config/universe.yaml") as f:
+            universe = yaml.safe_load(f)
+        with open("/Users/momo/dev/turtle_trading/config/correlation_groups.yaml") as f:
+            corr = yaml.safe_load(f)
+
+        universe_symbols = set()
+        for market_list in universe["symbols"].values():
+            for entry in market_list:
+                universe_symbols.add(str(entry["symbol"]))
+
+        corr_symbols = set()
+        for members in corr["groups"].values():
+            corr_symbols.update(str(s) for s in members)
+
+        missing = universe_symbols - corr_symbols
+        assert not missing, f"Symbols in universe but not in correlation_groups: {missing}"

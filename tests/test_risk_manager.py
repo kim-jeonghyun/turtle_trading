@@ -348,6 +348,72 @@ class TestInputValidation:
         assert risk_manager.state.total_n_exposure == pytest.approx(prev_n)
 
 
+class TestExpandedUniverseRiskLimits:
+    """확장 유니버스의 상관군 한도 검증"""
+
+    def test_independent_groups_have_separate_limits(self):
+        """비상관 자산군은 독립적 한도를 가진다"""
+        symbol_groups = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "MCHI": AssetGroup.CHINA_EQUITY,
+            "VGK": AssetGroup.EU_EQUITY,
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+            "BITO": AssetGroup.CRYPTO,
+            "UUP": AssetGroup.CURRENCY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for symbol in symbol_groups:
+            ok, msg = rm.can_add_position(symbol, 1, 0.5, Direction.LONG)
+            assert ok, f"{symbol} should be allowed: {msg}"
+            rm.add_position(symbol, 1, 0.5, Direction.LONG)
+
+        assert rm.state.long_units == 10
+
+    def test_correlated_group_limit_enforced(self):
+        """같은 상관군 내 종목은 6 unit 한도 공유"""
+        symbol_groups = {
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "EWT": AssetGroup.ASIA_EQUITY,
+            "EWA": AssetGroup.ASIA_EQUITY,
+            "VNM": AssetGroup.ASIA_EQUITY,
+            "EEM": AssetGroup.ASIA_EQUITY,
+            "INDA": AssetGroup.ASIA_EQUITY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for sym in list(symbol_groups.keys())[:6]:
+            rm.add_position(sym, 1, 0.1, Direction.LONG)
+
+        ok, msg = rm.can_add_position("EWJ", 1, 0.1, Direction.LONG)
+        assert not ok
+        assert "그룹" in msg
+
+    def test_n_exposure_cap_with_many_groups(self):
+        """N-exposure 10.0 캡은 다수 그룹에서도 작동"""
+        symbol_groups = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "GLD": AssetGroup.COMMODITY,
+            "TLT": AssetGroup.BOND,
+            "VNQ": AssetGroup.REIT,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        # 4 symbols × 1 unit × n_value=2.5 = 10.0 → exactly at limit
+        for sym in list(symbol_groups.keys())[:4]:
+            rm.add_position(sym, 1, 2.5, Direction.LONG)
+
+        # 5th would exceed N-exposure
+        ok, msg = rm.can_add_position("VNQ", 1, 2.5, Direction.LONG)
+        assert not ok
+        assert "N 노출" in msg
+
+
 class TestShortDirectionLimit:
     """숏 방향 한도: 12 Units (lines 64-65)"""
 
