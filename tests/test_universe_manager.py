@@ -412,3 +412,86 @@ symbols:
                 assert um.assets["AAPL"].short_restricted is True
             finally:
                 os.unlink(f.name)
+
+
+class TestUniverseExpansion:
+    """확장된 42개 심볼 유니버스 테스트"""
+
+    YAML_PATH = "/Users/momo/dev/turtle_trading/config/universe.yaml"
+
+    def _load(self) -> UniverseManager:
+        return UniverseManager(yaml_path=self.YAML_PATH)
+
+    def test_total_symbol_count(self):
+        """총 심볼 수 42개 검증"""
+        um = self._load()
+        assert len(um.get_enabled_symbols()) == 42
+
+    def test_all_new_symbols_present(self):
+        """신규 추가된 24개 심볼 존재 확인"""
+        um = self._load()
+        symbols = set(um.get_enabled_symbols())
+        new_symbols = [
+            # kr_equity 신규
+            "069500.KS", "229200.KS",
+            # asia_equity
+            "EWJ", "EWT", "EWA", "VNM", "EEM", "INDA",
+            # china_equity
+            "MCHI", "ASHR",
+            # eu_equity
+            "VGK",
+            # commodity
+            "SLV",
+            # commodity_industrial
+            "COPX",
+            # commodity_energy
+            "USO", "UNG",
+            # commodity_agri
+            "DBA",
+            # bond
+            "SHY", "TIP",
+            # currency
+            "UUP", "FXY",
+            # reit
+            "VNQ",
+            # alternatives
+            "DBMF",
+            # crypto
+            "BITO", "ETHA",
+        ]
+        for sym in new_symbols:
+            assert sym in symbols, f"{sym} not found in universe"
+
+    def test_new_group_assignments(self):
+        """신규 그룹 매핑 검증"""
+        um = self._load()
+        mapping = um.get_group_mapping()
+        assert mapping["EWJ"] == AssetGroup.ASIA_EQUITY
+        assert mapping["VGK"] == AssetGroup.EU_EQUITY
+        assert mapping["MCHI"] == AssetGroup.CHINA_EQUITY
+        assert mapping["USO"] == AssetGroup.COMMODITY_ENERGY
+        assert mapping["DBA"] == AssetGroup.COMMODITY_AGRI
+        assert mapping["VNQ"] == AssetGroup.REIT
+        assert mapping["DBMF"] == AssetGroup.ALTERNATIVES
+        assert mapping["BITO"] == AssetGroup.CRYPTO
+        assert mapping["UUP"] == AssetGroup.CURRENCY
+        assert mapping["COPX"] == AssetGroup.COMMODITY
+
+    def test_existing_symbols_unchanged(self):
+        """기존 심볼 그룹 변경 없음 검증"""
+        um = self._load()
+        mapping = um.get_group_mapping()
+        assert mapping["SPY"] == AssetGroup.US_EQUITY
+        assert mapping["005930.KS"] == AssetGroup.KR_EQUITY
+        assert mapping["GLD"] == AssetGroup.COMMODITY
+        assert mapping["TLT"] == AssetGroup.BOND
+        assert mapping["SH"] == AssetGroup.INVERSE
+
+    def test_no_silent_fallback_to_default_group(self):
+        """US_EQUITY로 fallback된 심볼이 실제 us_equity 카테고리 심볼만인지 검증"""
+        um = self._load()
+        expected_us_equity = {"SPY", "QQQ", "DIA", "IWM", "AAPL", "NVDA", "TSLA", "MSFT"}
+        actual_us_equity = set(um.get_symbols_by_group(AssetGroup.US_EQUITY))
+        assert actual_us_equity == expected_us_equity, (
+            f"Unexpected US_EQUITY symbols: {actual_us_equity - expected_us_equity}"
+        )

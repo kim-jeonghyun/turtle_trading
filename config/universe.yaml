@@ -1,4 +1,4 @@
-# 거래 유니버스 설정
+# 거래 유니버스 설정 - 총 42개 심볼 (2026-03-06 확장)
 # 모든 거래 스크립트가 이 파일을 단일 심볼 소스로 사용
 
 symbols:
@@ -15,10 +15,44 @@ symbols:
     - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
     - {symbol: "000660.KS", name: "SK하이닉스", group: kr_equity, short_restricted: true}
     - {symbol: "035420.KS", name: "NAVER", group: kr_equity, short_restricted: true}
+    - {symbol: "069500.KS", name: "KODEX 200", group: kr_equity, short_restricted: true}
+    - {symbol: "229200.KS", name: "KODEX 코스닥150", group: kr_equity, short_restricted: true}
+  asia_equity:
+    - {symbol: EWJ, name: "Japan ETF", group: asia_equity, short_restricted: false}
+    - {symbol: EWT, name: "Taiwan ETF", group: asia_equity, short_restricted: false}
+    - {symbol: EWA, name: "Australia ETF", group: asia_equity, short_restricted: false}
+    - {symbol: VNM, name: "Vietnam ETF", group: asia_equity, short_restricted: false}
+    - {symbol: EEM, name: "Emerging Markets ETF", group: asia_equity, short_restricted: false}
+    - {symbol: INDA, name: "India ETF", group: asia_equity, short_restricted: false}
+  china_equity:
+    - {symbol: MCHI, name: "China ETF", group: china_equity, short_restricted: false}
+    - {symbol: ASHR, name: "China A-Shares ETF", group: china_equity, short_restricted: false}
+  eu_equity:
+    - {symbol: VGK, name: "Europe ETF", group: eu_equity, short_restricted: false}
   commodity:
     - {symbol: GLD, name: "Gold ETF", group: commodity, short_restricted: false}
+    - {symbol: SLV, name: "Silver ETF", group: commodity, short_restricted: false}
+  commodity_industrial:
+    - {symbol: COPX, name: "Copper Miners ETF", group: commodity_industrial, short_restricted: false}
+  commodity_energy:
+    - {symbol: USO, name: "Oil ETF", group: commodity_energy, short_restricted: false}
+    - {symbol: UNG, name: "Natural Gas ETF", group: commodity_energy, short_restricted: false}
+  commodity_agri:
+    - {symbol: DBA, name: "Agriculture ETF", group: commodity_agri, short_restricted: false}
   bond:
     - {symbol: TLT, name: "Treasury 20+ ETF", group: bond, short_restricted: false}
+    - {symbol: SHY, name: "Treasury 1-3yr ETF", group: bond, short_restricted: false}
+    - {symbol: TIP, name: "TIPS ETF", group: bond, short_restricted: false}
+  currency:
+    - {symbol: UUP, name: "USD ETF", group: currency, short_restricted: false}
+    - {symbol: FXY, name: "Yen ETF", group: currency, short_restricted: false}
+  reit:
+    - {symbol: VNQ, name: "Real Estate ETF", group: reit, short_restricted: false}
+  alternatives:
+    - {symbol: DBMF, name: "Managed Futures ETF", group: alternatives, short_restricted: false}
+  crypto:
+    - {symbol: BITO, name: "Bitcoin ETF", group: crypto, short_restricted: false}
+    - {symbol: ETHA, name: "Ethereum ETF", group: crypto, short_restricted: false}
   inverse:
     - {symbol: SH, name: "S&P 500 Inverse", group: inverse, underlying: SPY, short_restricted: false}
     - {symbol: PSQ, name: "Nasdaq Inverse", group: inverse, underlying: QQQ, short_restricted: false}
