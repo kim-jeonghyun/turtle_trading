@@ -33,13 +33,23 @@ logger = logging.getLogger(__name__)
 # us_etf, crypto: 현재 YAML에 없으나 향후 그룹 추가 시 호환용 placeholder
 _GROUP_MAPPING: dict[str, AssetGroup] = {
     "us_equity": AssetGroup.US_EQUITY,
-    "us_etf": AssetGroup.US_EQUITY,  # placeholder — YAML 미사용
+    "us_etf": AssetGroup.US_EQUITY,
     "us_tech": AssetGroup.US_EQUITY,
     "kr_equity": AssetGroup.KR_EQUITY,
-    "crypto": AssetGroup.CRYPTO,  # placeholder — YAML 미사용
+    "asia_equity": AssetGroup.ASIA_EQUITY,
+    "china_equity": AssetGroup.CHINA_EQUITY,
+    "eu_equity": AssetGroup.EU_EQUITY,
+    "crypto": AssetGroup.CRYPTO,
     "commodity": AssetGroup.COMMODITY,
+    "commodity_metal": AssetGroup.COMMODITY,
+    "commodity_industrial": AssetGroup.COMMODITY,
+    "commodity_energy": AssetGroup.COMMODITY_ENERGY,
+    "commodity_agri": AssetGroup.COMMODITY_AGRI,
     "bond": AssetGroup.BOND,
     "inverse": AssetGroup.INVERSE,
+    "currency": AssetGroup.CURRENCY,
+    "reit": AssetGroup.REIT,
+    "alternatives": AssetGroup.ALTERNATIVES,
 }
 
 
