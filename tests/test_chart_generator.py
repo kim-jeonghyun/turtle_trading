@@ -127,13 +127,52 @@ class TestScriptEntryPoint:
     """scripts/fetch_universe_charts.py CLI 테스트"""
 
     @patch("src.local_chart_renderer.yf.download")
-    def test_script_imports_and_runs(self, mock_download, tmp_path):
-        """스크립트가 import 가능하고 main()이 정상 실행된다"""
+    def test_main_creates_output_directory_and_charts(self, mock_download, tmp_path, monkeypatch):
+        """main()이 출력 디렉토리를 생성하고 차트를 렌더링한다"""
         mock_download.return_value = _make_ohlcv()
 
-        import importlib
         import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        mod = importlib.import_module("scripts.fetch_universe_charts")
-        assert hasattr(mod, "main")
+        from scripts.fetch_universe_charts import main
+
+        # argv를 --limit 1로 패치하고 출력 디렉토리를 tmp_path로 리디렉션
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts", "--limit", "1"])
+        monkeypatch.setattr(
+            "scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path
+        )
+        # universe.yaml 준비
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        yaml_content = {
+            "symbols": {
+                "us_equity": [
+                    {"symbol": "SPY", "name": "S&P 500 ETF", "group": "us_equity", "short_restricted": False},
+                ],
+            }
+        }
+        (config_dir / "universe.yaml").write_text(yaml.dump(yaml_content))
+
+        main()
+
+        # data/charts/YYYY-MM-DD/ 디렉토리가 생성되었는지 확인
+        charts_dir = tmp_path / "data" / "charts"
+        assert charts_dir.exists()
+        date_dirs = list(charts_dir.iterdir())
+        assert len(date_dirs) == 1
+        png_files = list(date_dirs[0].glob("*.png"))
+        assert len(png_files) == 1
+
+    def test_main_exits_on_missing_config(self, tmp_path, monkeypatch):
+        """universe.yaml이 없으면 sys.exit(1)"""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.fetch_universe_charts import main
+
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts"])
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
