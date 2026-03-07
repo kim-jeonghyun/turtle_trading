@@ -137,8 +137,16 @@ class TestAssetGroup:
         assert "asia_equity" in groups
         assert "currency" in groups
 
+    def test_new_asset_groups_exist(self):
+        assert AssetGroup("eu_equity") == AssetGroup.EU_EQUITY
+        assert AssetGroup("china_equity") == AssetGroup.CHINA_EQUITY
+        assert AssetGroup("commodity_energy") == AssetGroup.COMMODITY_ENERGY
+        assert AssetGroup("commodity_agri") == AssetGroup.COMMODITY_AGRI
+        assert AssetGroup("reit") == AssetGroup.REIT
+        assert AssetGroup("alternatives") == AssetGroup.ALTERNATIVES
+
     def test_count(self):
-        assert len(list(AssetGroup)) == 8
+        assert len(list(AssetGroup)) == 14
 
     def test_from_value(self):
         assert AssetGroup("us_equity") == AssetGroup.US_EQUITY

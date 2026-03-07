@@ -39,9 +39,9 @@ def get_market_type(symbol: str) -> MarketType:
         return MarketType.CRYPTO
     if symbol.isdigit() or symbol.endswith(".KS") or symbol.endswith(".KQ"):
         return MarketType.KR_STOCK
-    if symbol in ["GLD", "SLV", "USO", "UNG", "DBA", "DBC"]:
+    if symbol in ["GLD", "SLV", "USO", "UNG", "DBA", "DBC", "COPX"]:
         return MarketType.COMMODITY
-    if symbol in ["TLT", "IEF", "SHY", "BND", "AGG", "LQD"]:
+    if symbol in ["TLT", "IEF", "SHY", "BND", "AGG", "LQD", "TIP"]:
         return MarketType.BOND
     return MarketType.US_STOCK
 

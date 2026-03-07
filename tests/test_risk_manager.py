@@ -348,6 +348,169 @@ class TestInputValidation:
         assert risk_manager.state.total_n_exposure == pytest.approx(prev_n)
 
 
+class TestExpandedUniverseRiskLimits:
+    """확장 유니버스의 상관군 한도 검증"""
+
+    def test_independent_groups_have_separate_limits(self):
+        """비상관 자산군은 독립적 한도를 가진다"""
+        symbol_groups = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "MCHI": AssetGroup.CHINA_EQUITY,
+            "VGK": AssetGroup.EU_EQUITY,
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+            "BITO": AssetGroup.CRYPTO,
+            "UUP": AssetGroup.CURRENCY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for symbol in symbol_groups:
+            ok, msg = rm.can_add_position(symbol, 1, 0.5, Direction.LONG)
+            assert ok, f"{symbol} should be allowed: {msg}"
+            rm.add_position(symbol, 1, 0.5, Direction.LONG)
+
+        assert rm.state.long_units == 10
+
+    def test_correlated_group_limit_enforced(self):
+        """같은 상관군 내 종목은 6 unit 한도 공유"""
+        symbol_groups = {
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "EWT": AssetGroup.ASIA_EQUITY,
+            "EWA": AssetGroup.ASIA_EQUITY,
+            "VNM": AssetGroup.ASIA_EQUITY,
+            "EEM": AssetGroup.ASIA_EQUITY,
+            "INDA": AssetGroup.ASIA_EQUITY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for sym in list(symbol_groups.keys())[:6]:
+            rm.add_position(sym, 1, 0.1, Direction.LONG)
+
+        ok, msg = rm.can_add_position("EWJ", 1, 0.1, Direction.LONG)
+        assert not ok
+        assert "그룹" in msg
+
+    def test_n_exposure_cap_with_many_groups(self):
+        """N-exposure 10.0 캡은 다수 그룹에서도 작동"""
+        symbol_groups = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "GLD": AssetGroup.COMMODITY,
+            "TLT": AssetGroup.BOND,
+            "VNQ": AssetGroup.REIT,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        # 4 symbols × 1 unit × n_value=2.5 = 10.0 → exactly at limit
+        for sym in list(symbol_groups.keys())[:4]:
+            rm.add_position(sym, 1, 2.5, Direction.LONG)
+
+        # 5th would exceed N-exposure
+        ok, msg = rm.can_add_position("VNQ", 1, 2.5, Direction.LONG)
+        assert not ok
+        assert "N 노출" in msg
+
+
+class TestSingleSymbolGroupBoundary:
+    """단일 심볼 그룹(VGK, COPX 등)에서 per-market 4유닛 한도와 그룹 6유닛 한도 상호작용"""
+
+    def test_single_symbol_group_capped_at_market_limit(self):
+        """단일 심볼 그룹에서는 per-market 4유닛이 그룹 6유닛보다 먼저 제한"""
+        symbol_groups = {"VGK": AssetGroup.EU_EQUITY}
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for _ in range(4):
+            rm.add_position("VGK", 1, 0.5, Direction.LONG)
+
+        # 5th unit blocked by per-market limit (4), not group limit (6)
+        ok, msg = rm.can_add_position("VGK", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "단일종목" in msg
+
+    def test_multi_symbol_group_reaches_group_limit(self):
+        """다중 심볼 그룹에서 개별 종목은 4유닛 이내지만 그룹 합계 6유닛 초과"""
+        symbol_groups = {
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "UNG": AssetGroup.COMMODITY_ENERGY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        rm.add_position("USO", 4, 0.5, Direction.LONG)  # 4 units (at market limit)
+        rm.add_position("UNG", 2, 0.5, Direction.LONG)  # 2 units (group total: 6)
+
+        # USO already at per-market limit
+        ok, msg = rm.can_add_position("USO", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "단일종목" in msg
+
+        # UNG blocked by group limit (6 total)
+        ok, msg = rm.can_add_position("UNG", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "그룹" in msg
+
+    def test_direction_limit_binds_across_many_single_symbol_groups(self):
+        """다수 단일 심볼 그룹 동시 시그널 시 12유닛 방향 한도 도달"""
+        symbol_groups = {
+            "VGK": AssetGroup.EU_EQUITY,
+            "COPX": AssetGroup.COMMODITY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+        }
+        limits = RiskLimits(max_total_n_exposure=50.0)  # relax N cap
+        rm = PortfolioRiskManager(limits=limits, symbol_groups=symbol_groups)
+
+        # 5 symbols × 2 units = 10 long units
+        for sym in symbol_groups:
+            rm.add_position(sym, 2, 0.1, Direction.LONG)
+
+        assert rm.state.long_units == 10
+
+        # Add 2 more → 12 (at direction limit)
+        rm.add_position("VGK", 2, 0.1, Direction.LONG)  # VGK: 4 (at market limit)
+        assert rm.state.long_units == 12
+
+        # 13th unit blocked by direction limit
+        ok, msg = rm.can_add_position("COPX", 1, 0.1, Direction.LONG)
+        assert not ok
+        assert "롱" in msg
+
+
+class TestRealConfigGroupMapping:
+    """실제 correlation_groups.yaml → setup_risk_manager() 매핑 통합 검증"""
+
+    def test_representative_symbols_mapped_correctly(self):
+        """대표 심볼들이 실제 config 로드 시 기대 AssetGroup으로 매핑되는지 검증"""
+        from src.script_helpers import setup_risk_manager
+
+        rm = setup_risk_manager()
+
+        expected = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "MCHI": AssetGroup.CHINA_EQUITY,
+            "VGK": AssetGroup.EU_EQUITY,
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "UUP": AssetGroup.CURRENCY,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+            "BITO": AssetGroup.CRYPTO,
+            "COPX": AssetGroup.COMMODITY,
+            "TLT": AssetGroup.BOND,
+            "SH": AssetGroup.INVERSE,
+        }
+
+        for symbol, expected_group in expected.items():
+            actual = rm.symbol_groups.get(symbol)
+            assert actual == expected_group, (
+                f"{symbol}: expected {expected_group}, got {actual}"
+            )
+
+
 class TestShortDirectionLimit:
     """숏 방향 한도: 12 Units (lines 64-65)"""
 

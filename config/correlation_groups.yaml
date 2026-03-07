@@ -1,5 +1,12 @@
 # Asset correlation groups for portfolio risk management
 # Each symbol maps to a group - grouped assets share the correlated group limit (6 units)
+# Redesigned 2026-03-06: 6 → 16 groups for universe expansion (18 → 42 symbols)
+#
+# Cross-group correlation warnings (|r| >= 0.75, 1Y):
+#   EEM ↔ EWT (0.873), MCHI (0.836), VGK (0.803) — broad EM overlaps multiple regions
+#   EWA ↔ SPY (0.785), VGK (0.849) — Australia tracks global risk-on
+#   COPX ↔ EEM (0.750) — copper miners are equity-like
+#   TIP ↔ TLT (0.821) — both are treasuries, different inflation sensitivity
 
 groups:
   us_equity:
@@ -16,10 +23,44 @@ groups:
     - "005930.KS"
     - "000660.KS"
     - "035420.KS"
-  commodity:
+    - "069500.KS"
+    - "229200.KS"
+  asia_equity:
+    - EWJ
+    - EWT
+    - EWA
+    - VNM
+    - EEM
+    - INDA
+  china_equity:
+    - MCHI
+    - ASHR
+  eu_equity:
+    - VGK
+  commodity_metal:
     - GLD
+    - SLV
+  commodity_industrial:
+    - COPX
+  commodity_energy:
+    - USO
+    - UNG
+  commodity_agri:
+    - DBA
   bond:
     - TLT
+    - SHY
+    - TIP
+  currency:
+    - UUP
+    - FXY
+  reit:
+    - VNQ
+  alternatives:
+    - DBMF
+  crypto:
+    - BITO
+    - ETHA
   inverse:
     - SH
     - PSQ

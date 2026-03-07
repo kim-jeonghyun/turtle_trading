@@ -398,3 +398,30 @@ class TestFetchRouting:
         with patch.object(fetcher, "_get_ccxt_exchange", return_value=None):
             df = fetcher.fetch("BTC/USDT")
         assert isinstance(df, pd.DataFrame)
+
+
+class TestGetMarketTypeExpanded:
+    """확장 유니버스 심볼의 MarketType 분류 검증"""
+
+    def test_new_commodity_symbols(self):
+        assert get_market_type("COPX") == MarketType.COMMODITY
+        assert get_market_type("DBA") == MarketType.COMMODITY
+
+    def test_new_bond_symbols(self):
+        assert get_market_type("TIP") == MarketType.BOND
+
+    def test_crypto_etfs_are_us_stock(self):
+        """BITO/ETHA는 US-listed ETF이므로 US_STOCK (CRYPTO가 아님)"""
+        assert get_market_type("BITO") == MarketType.US_STOCK
+        assert get_market_type("ETHA") == MarketType.US_STOCK
+
+    def test_currency_etfs_are_us_stock(self):
+        """통화 ETF는 US-listed이므로 US_STOCK"""
+        assert get_market_type("UUP") == MarketType.US_STOCK
+        assert get_market_type("FXY") == MarketType.US_STOCK
+
+    def test_existing_classifications_unchanged(self):
+        assert get_market_type("GLD") == MarketType.COMMODITY
+        assert get_market_type("TLT") == MarketType.BOND
+        assert get_market_type("005930.KS") == MarketType.KR_STOCK
+        assert get_market_type("SPY") == MarketType.US_STOCK

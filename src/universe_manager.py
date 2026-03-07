@@ -56,12 +56,19 @@ class UniverseManager:
         group_mapping = {
             "us_equity": AssetGroup.US_EQUITY,
             "kr_equity": AssetGroup.KR_EQUITY,
+            "asia_equity": AssetGroup.ASIA_EQUITY,
+            "eu_equity": AssetGroup.EU_EQUITY,
+            "china_equity": AssetGroup.CHINA_EQUITY,
             "crypto": AssetGroup.CRYPTO,
             "commodity": AssetGroup.COMMODITY,
+            "commodity_industrial": AssetGroup.COMMODITY,
+            "commodity_energy": AssetGroup.COMMODITY_ENERGY,
+            "commodity_agri": AssetGroup.COMMODITY_AGRI,
             "bond": AssetGroup.BOND,
             "inverse": AssetGroup.INVERSE,
-            "asia_equity": AssetGroup.ASIA_EQUITY,
             "currency": AssetGroup.CURRENCY,
+            "reit": AssetGroup.REIT,
+            "alternatives": AssetGroup.ALTERNATIVES,
         }
 
         for category, items in config["symbols"].items():
