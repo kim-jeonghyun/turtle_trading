@@ -179,9 +179,7 @@ class TestBatchChartRenderer:
         """yfinance MultiIndex 컬럼 처리 검증"""
         flat_df = self._make_mock_df()
         multi_df = flat_df.copy()
-        multi_df.columns = pd.MultiIndex.from_tuples(
-            [(c, "SPY") for c in flat_df.columns]
-        )
+        multi_df.columns = pd.MultiIndex.from_tuples([(c, "SPY") for c in flat_df.columns])
         mock_download.return_value = multi_df
 
         renderer = BatchChartRenderer(mock_universe)

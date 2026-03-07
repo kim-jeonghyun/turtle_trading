@@ -81,14 +81,10 @@ def render_chart(
             hist = df["macd_hist"]
             hist_pos = hist.where(hist >= 0, 0)
             hist_neg = hist.where(hist < 0, 0)
-            addplots.append(
-                mpf.make_addplot(hist_pos, type="bar", panel=2, color="#ef5350", ylabel="MACD")
-            )
+            addplots.append(mpf.make_addplot(hist_pos, type="bar", panel=2, color="#ef5350", ylabel="MACD"))
             addplots.append(mpf.make_addplot(hist_neg, type="bar", panel=2, color="#2196f3"))
             addplots.append(mpf.make_addplot(df["macd"], panel=2, color="#2196f3", width=0.8))
-            addplots.append(
-                mpf.make_addplot(df["macd_signal"], panel=2, color="#ff9800", width=0.8)
-            )
+            addplots.append(mpf.make_addplot(df["macd_signal"], panel=2, color="#ff9800", width=0.8))
 
         # 스타일: 한국형 (양봉 빨강, 음봉 파랑)
         mc = mpf.make_marketcolors(

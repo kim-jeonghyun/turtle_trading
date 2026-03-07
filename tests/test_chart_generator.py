@@ -138,9 +138,7 @@ class TestScriptEntryPoint:
 
         # argv를 --limit 1로 패치하고 출력 디렉토리를 tmp_path로 리디렉션
         monkeypatch.setattr("sys.argv", ["fetch_universe_charts", "--limit", "1"])
-        monkeypatch.setattr(
-            "scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path
-        )
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
         # universe.yaml 준비
         config_dir = tmp_path / "config"
         config_dir.mkdir()
