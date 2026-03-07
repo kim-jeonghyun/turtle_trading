@@ -5,7 +5,6 @@
 - 실제 유니버스 설정 연동
 """
 
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +13,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from src.local_chart_renderer import BatchChartRenderer, calculate_indicators, render_chart
+from src.local_chart_renderer import BatchChartRenderer
 from src.universe_manager import UniverseManager
 
 

@@ -16,8 +16,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-from src.local_chart_renderer import BatchChartRenderer
-from src.universe_manager import UniverseManager
+from src.local_chart_renderer import BatchChartRenderer  # noqa: E402
+from src.universe_manager import UniverseManager  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

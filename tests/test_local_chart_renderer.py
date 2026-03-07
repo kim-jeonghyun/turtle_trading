@@ -7,12 +7,11 @@ local_chart_renderer.py 단위 테스트
 """
 
 import os
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
-
-from unittest.mock import patch
 
 from src.local_chart_renderer import BatchChartRenderer, calculate_indicators, render_chart
 from src.universe_manager import UniverseManager
