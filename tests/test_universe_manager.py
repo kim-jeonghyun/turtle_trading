@@ -9,6 +9,7 @@ universe_manager.py 단위 테스트
 
 import os
 import tempfile
+from pathlib import Path
 
 from src.types import AssetGroup
 from src.universe_manager import Asset, UniverseManager
@@ -417,7 +418,7 @@ symbols:
 class TestUniverseExpansion:
     """확장된 42개 심볼 유니버스 테스트"""
 
-    YAML_PATH = "/Users/momo/dev/turtle_trading/config/universe.yaml"
+    YAML_PATH = str(Path(__file__).parent.parent / "config" / "universe.yaml")
 
     def _load(self) -> UniverseManager:
         return UniverseManager(yaml_path=self.YAML_PATH)
@@ -504,9 +505,10 @@ class TestRealConfigConsistency:
         """universe.yaml의 모든 심볼이 correlation_groups.yaml에 존재"""
         import yaml
 
-        with open("/Users/momo/dev/turtle_trading/config/universe.yaml") as f:
+        config_dir = Path(__file__).parent.parent / "config"
+        with open(config_dir / "universe.yaml") as f:
             universe = yaml.safe_load(f)
-        with open("/Users/momo/dev/turtle_trading/config/correlation_groups.yaml") as f:
+        with open(config_dir / "correlation_groups.yaml") as f:
             corr = yaml.safe_load(f)
 
         universe_symbols = set()

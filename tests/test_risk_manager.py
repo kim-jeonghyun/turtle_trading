@@ -479,6 +479,38 @@ class TestSingleSymbolGroupBoundary:
         assert "롱" in msg
 
 
+class TestRealConfigGroupMapping:
+    """실제 correlation_groups.yaml → setup_risk_manager() 매핑 통합 검증"""
+
+    def test_representative_symbols_mapped_correctly(self):
+        """대표 심볼들이 실제 config 로드 시 기대 AssetGroup으로 매핑되는지 검증"""
+        from src.script_helpers import setup_risk_manager
+
+        rm = setup_risk_manager()
+
+        expected = {
+            "SPY": AssetGroup.US_EQUITY,
+            "EWJ": AssetGroup.ASIA_EQUITY,
+            "MCHI": AssetGroup.CHINA_EQUITY,
+            "VGK": AssetGroup.EU_EQUITY,
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "UUP": AssetGroup.CURRENCY,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+            "BITO": AssetGroup.CRYPTO,
+            "COPX": AssetGroup.COMMODITY,
+            "TLT": AssetGroup.BOND,
+            "SH": AssetGroup.INVERSE,
+        }
+
+        for symbol, expected_group in expected.items():
+            actual = rm.symbol_groups.get(symbol)
+            assert actual == expected_group, (
+                f"{symbol}: expected {expected_group}, got {actual}"
+            )
+
+
 class TestShortDirectionLimit:
     """숏 방향 한도: 12 Units (lines 64-65)"""
 
