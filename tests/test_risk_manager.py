@@ -414,6 +414,71 @@ class TestExpandedUniverseRiskLimits:
         assert "N 노출" in msg
 
 
+class TestSingleSymbolGroupBoundary:
+    """단일 심볼 그룹(VGK, COPX 등)에서 per-market 4유닛 한도와 그룹 6유닛 한도 상호작용"""
+
+    def test_single_symbol_group_capped_at_market_limit(self):
+        """단일 심볼 그룹에서는 per-market 4유닛이 그룹 6유닛보다 먼저 제한"""
+        symbol_groups = {"VGK": AssetGroup.EU_EQUITY}
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        for _ in range(4):
+            rm.add_position("VGK", 1, 0.5, Direction.LONG)
+
+        # 5th unit blocked by per-market limit (4), not group limit (6)
+        ok, msg = rm.can_add_position("VGK", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "단일종목" in msg
+
+    def test_multi_symbol_group_reaches_group_limit(self):
+        """다중 심볼 그룹에서 개별 종목은 4유닛 이내지만 그룹 합계 6유닛 초과"""
+        symbol_groups = {
+            "USO": AssetGroup.COMMODITY_ENERGY,
+            "UNG": AssetGroup.COMMODITY_ENERGY,
+        }
+        rm = PortfolioRiskManager(symbol_groups=symbol_groups)
+
+        rm.add_position("USO", 4, 0.5, Direction.LONG)  # 4 units (at market limit)
+        rm.add_position("UNG", 2, 0.5, Direction.LONG)  # 2 units (group total: 6)
+
+        # USO already at per-market limit
+        ok, msg = rm.can_add_position("USO", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "단일종목" in msg
+
+        # UNG blocked by group limit (6 total)
+        ok, msg = rm.can_add_position("UNG", 1, 0.5, Direction.LONG)
+        assert not ok
+        assert "그룹" in msg
+
+    def test_direction_limit_binds_across_many_single_symbol_groups(self):
+        """다수 단일 심볼 그룹 동시 시그널 시 12유닛 방향 한도 도달"""
+        symbol_groups = {
+            "VGK": AssetGroup.EU_EQUITY,
+            "COPX": AssetGroup.COMMODITY,
+            "DBA": AssetGroup.COMMODITY_AGRI,
+            "VNQ": AssetGroup.REIT,
+            "DBMF": AssetGroup.ALTERNATIVES,
+        }
+        limits = RiskLimits(max_total_n_exposure=50.0)  # relax N cap
+        rm = PortfolioRiskManager(limits=limits, symbol_groups=symbol_groups)
+
+        # 5 symbols × 2 units = 10 long units
+        for sym in symbol_groups:
+            rm.add_position(sym, 2, 0.1, Direction.LONG)
+
+        assert rm.state.long_units == 10
+
+        # Add 2 more → 12 (at direction limit)
+        rm.add_position("VGK", 2, 0.1, Direction.LONG)  # VGK: 4 (at market limit)
+        assert rm.state.long_units == 12
+
+        # 13th unit blocked by direction limit
+        ok, msg = rm.can_add_position("COPX", 1, 0.1, Direction.LONG)
+        assert not ok
+        assert "롱" in msg
+
+
 class TestShortDirectionLimit:
     """숏 방향 한도: 12 Units (lines 64-65)"""
 
