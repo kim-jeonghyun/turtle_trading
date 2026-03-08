@@ -7,6 +7,7 @@
 """
 
 import argparse
+import asyncio
 import logging
 import sys
 from datetime import datetime
@@ -17,6 +18,8 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from src.local_chart_renderer import BatchChartRenderer  # noqa: E402
+from src.notifier import NotificationLevel, NotificationMessage  # noqa: E402
+from src.script_helpers import load_config, setup_notifier  # noqa: E402
 from src.universe_manager import UniverseManager  # noqa: E402
 
 logging.basicConfig(
@@ -25,6 +28,20 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("ChartBatch")
+
+
+def _send_notification(title: str, body: str, level: NotificationLevel):
+    """설정된 채널(Telegram/Discord/Email)로 알림을 발송한다."""
+    try:
+        config = load_config()
+        notifier = setup_notifier(config)
+        if not notifier.channels:
+            logger.info("알림 채널 미설정, 알림 스킵")
+            return
+        msg = NotificationMessage(title=title, body=body, level=level)
+        asyncio.run(notifier.send_message(msg))
+    except Exception as e:
+        logger.warning(f"알림 발송 실패: {e}")
 
 
 def main():
@@ -50,6 +67,11 @@ def main():
         logger.info(f"총 {total}개 활성 심볼 감지")
     except Exception as e:
         logger.error(f"Universe 로드 실패: {e}")
+        _send_notification(
+            "주간 차트 생성 실패",
+            f"Universe 로드 실패: {e}",
+            NotificationLevel.ERROR,
+        )
         sys.exit(1)
 
     # 3. 배치 렌더링
@@ -65,6 +87,11 @@ def main():
     logger.info(f"배치 완료: 성공 {len(successes)} / 실패 {len(failures)}")
     if failures:
         logger.warning(f"실패 종목: {', '.join(failures)}")
+        _send_notification(
+            "주간 차트 생성 부분 실패",
+            f"성공 {len(successes)} / 실패 {len(failures)}\n실패 종목: {', '.join(failures)}",
+            NotificationLevel.WARNING,
+        )
     logger.info("=" * 40)
 
 
