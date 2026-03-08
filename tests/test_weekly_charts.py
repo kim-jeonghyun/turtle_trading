@@ -45,12 +45,17 @@ class TestWeeklyChartsWrapper:
         content = WRAPPER_SCRIPT.read_text()
         assert "-mtime +30 -delete" in content
 
-    def test_wrapper_has_notification_on_failure(self):
-        """래퍼 스크립트가 실패 시 notifier를 호출한다"""
+    def test_wrapper_delegates_notification_to_python(self):
+        """래퍼 스크립트는 알림을 Python 스크립트에 위임한다 (직접 알림 코드 없음)"""
         content = WRAPPER_SCRIPT.read_text()
-        assert "send_failure_notification" in content
-        assert "NotificationManager" in content
-        assert "NotificationLevel.ERROR" in content
+        # 래퍼에는 알림 코드가 없어야 함 (Python 스크립트가 처리)
+        assert "NotificationManager" not in content
+        assert "NotificationLevel" not in content
+        # 대신 Python 스크립트에 알림 로직이 존재해야 함
+        chart_content = CHART_SCRIPT.read_text()
+        assert "load_config" in chart_content
+        assert "setup_notifier" in chart_content
+        assert "_send_notification" in chart_content
 
 
 class TestWrapperExecution:
