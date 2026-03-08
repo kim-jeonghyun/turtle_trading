@@ -14,6 +14,8 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `toggle_trading.py` | Trading | Kill switch — enable/disable trading | Manual |
 | `daily_report.py` | Reporting | Daily summary with positions, signals, and risk | Daily 08:00 cron |
 | `weekly_report.py` | Reporting | Weekly performance summary with trade analysis | Saturday 09:00 cron |
+| `fetch_universe_charts.py` | Chart | mplfinance chart generation for all universe symbols | Saturday 06:00 cron |
+| `weekly_charts.sh` | Chart | Bash wrapper for local cron (logging, notification) | Saturday 06:00 cron |
 | `performance_review.py` | Reporting | Historical performance analysis with statistics | Manual |
 | `run_backtest.py` | Reporting | Strategy backtesting with equity curves | Manual |
 | `health_check.py` | Operations | System health verification (core + external APIs) | Every 4 hours cron |
@@ -391,6 +393,64 @@ python scripts/run_backtest.py --symbols AAPL NVDA TSLA --capital 500000 --risk 
 | `--verbose` | Verbose logging |
 
 > Full argument list: `python scripts/run_backtest.py --help`
+
+---
+
+### Chart Generation
+
+#### fetch_universe_charts.py
+
+mplfinance-based chart generation for all active universe symbols. Produces 3-panel PNG charts (candlestick + MA, volume, MACD) for each symbol.
+
+##### Usage
+
+```bash
+# Generate charts for all universe symbols
+python scripts/fetch_universe_charts.py
+
+# Limit to first 5 symbols
+python scripts/fetch_universe_charts.py --limit 5
+```
+
+##### Key Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--limit INT` | Maximum number of symbols to render (default: all) |
+
+> Output directory: `data/charts/YYYY-MM-DD/`
+
+##### Cron Schedule
+
+```
+0 6 * * 6  # Saturday 06:00 KST (after US Friday close)
+```
+
+> See [cron 작업 스케줄](../docs/operations-guide.md#cron-작업-스케줄) for the full schedule.
+
+---
+
+#### weekly_charts.sh
+
+Bash wrapper for local (non-Docker) cron execution of `fetch_universe_charts.py`. Adds logging, venv validation, failure notification via notifier, and automatic log cleanup (30 days).
+
+##### Usage
+
+```bash
+# Direct execution
+bash scripts/weekly_charts.sh
+
+# Cron registration (local host)
+crontab -e
+# Add: 0 6 * * 6 /path/to/turtle_trading/scripts/weekly_charts.sh
+```
+
+##### Notes
+
+- Docker environment uses `crontab` file directly (supercronic)
+- Local environment uses this wrapper for logging and notification
+- Logs are saved to `logs/weekly_charts/YYYY-MM-DD_HHMMSS.log`
+- On failure, sends ERROR notification via configured channels (Telegram/Discord/Email)
 
 ---
 

@@ -52,6 +52,9 @@ PYTHONPATH=/app
 0 23 * * 1-5 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
 0 0-6 * * 2-6 cd /app && python scripts/check_risk_limits.py >> /app/logs/risk_check.log 2>&1
 
+# 주간 차트 생성 (매주 토요일 06:00, 금요일 미국장 종가 반영)
+0 6 * * 6 cd /app && python scripts/fetch_universe_charts.py >> /app/logs/weekly_charts.log 2>&1
+
 # 주간 리포트 (매주 토요일 09:00)
 0 9 * * 6 cd /app && python scripts/weekly_report.py --send >> /app/logs/weekly_report.log 2>&1
 
