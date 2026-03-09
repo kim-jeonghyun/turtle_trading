@@ -10,11 +10,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.types import Direction, SignalType
+from src.types import AssetGroup, Direction, SignalType
 
 from .indicators import add_turtle_indicators, calculate_unit_size
 from .position_sizer import AccountState
 from .pyramid_manager import PyramidManager
+from .risk_manager import PortfolioRiskManager
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,15 @@ class BacktestResult:
 
 
 class TurtleBacktester:
-    def __init__(self, config: BacktestConfig):
+    def __init__(self, config: BacktestConfig, symbol_groups: Optional[Dict[str, AssetGroup]] = None):
         self.config = config
         self.account = AccountState(initial_capital=config.initial_capital)
         self.pyramid_manager = PyramidManager(max_units=config.max_units, pyramid_interval_n=config.pyramid_interval_n)
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
+        self._use_risk_limits = symbol_groups is not None
+        self.risk_manager = PortfolioRiskManager(symbol_groups=symbol_groups or {}) if self._use_risk_limits else None
 
     def _get_entry_exit_columns(self) -> Tuple[str, str, str, str]:
         if self.config.system == 1:
@@ -186,18 +189,36 @@ class TurtleBacktester:
         if unit_size <= 0:
             return
 
+        if self._use_risk_limits:
+            can_add, reason = self.risk_manager.can_add_position(
+                symbol=symbol, units=1, n_value=n_value, direction=direction
+            )
+            if not can_add:
+                logger.debug(f"리스크 한도 차단: {symbol} - {reason}")
+                return
+
         cost = unit_size * price * (1 + self.config.commission_pct)
         if cost > self.account.cash:
             return
 
         self.account.cash -= cost
         self.pyramid_manager.create_position(symbol, direction, date, price, unit_size, n_value)
+        if self._use_risk_limits:
+            self.risk_manager.add_position(symbol, 1, n_value, direction)
         logger.debug(f"진입: {symbol} {direction.value} @ {price:.2f} x {unit_size}")
 
     def _add_pyramid(self, symbol: str, date: datetime, price: float, n_value: float):
         position = self.pyramid_manager.get_position(symbol)
         if not position:
             return
+
+        if self._use_risk_limits:
+            can_add, reason = self.risk_manager.can_add_position(
+                symbol=symbol, units=1, n_value=n_value, direction=position.direction
+            )
+            if not can_add:
+                logger.debug(f"리스크 한도 차단 (피라미딩): {symbol} - {reason}")
+                return
 
         unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         cost = unit_size * price * (1 + self.config.commission_pct)
@@ -206,6 +227,8 @@ class TurtleBacktester:
 
         self.account.cash -= cost
         position.add_entry(date, price, unit_size, n_value)
+        if self._use_risk_limits:
+            self.risk_manager.add_position(symbol, 1, n_value, position.direction)
         logger.debug(f"피라미딩: {symbol} @ {price:.2f} x {unit_size}")
 
     def _close_position(self, symbol: str, date: datetime, price: float, reason: str):
@@ -242,6 +265,10 @@ class TurtleBacktester:
         self.account.realized_pnl += pnl
         self.last_trade_profitable[symbol] = pnl > 0
 
+        if self._use_risk_limits:
+            num_entries = len(position.entries)
+            avg_n = sum(e.n_at_entry for e in position.entries) / num_entries if num_entries > 0 else 0
+            self.risk_manager.remove_position(symbol, num_entries, position.direction, n_value=avg_n)
         self.pyramid_manager.close_position(symbol)
         logger.debug(f"청산: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({reason})")
 
