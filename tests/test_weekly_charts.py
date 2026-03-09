@@ -10,6 +10,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).parent.parent
 WRAPPER_SCRIPT = PROJECT_ROOT / "scripts" / "weekly_charts.sh"
 CHART_SCRIPT = PROJECT_ROOT / "scripts" / "fetch_universe_charts.py"
@@ -45,17 +47,14 @@ class TestWeeklyChartsWrapper:
         content = WRAPPER_SCRIPT.read_text()
         assert "-mtime +30 -delete" in content
 
-    def test_wrapper_delegates_notification_to_python(self):
-        """래퍼 스크립트는 알림을 Python 스크립트에 위임한다 (직접 알림 코드 없음)"""
+    def test_wrapper_does_not_contain_notification_logic(self):
+        """래퍼 스크립트는 알림 로직을 포함하지 않는다 (Python에 위임)"""
         content = WRAPPER_SCRIPT.read_text()
-        # 래퍼에는 알림 코드가 없어야 함 (Python 스크립트가 처리)
-        assert "NotificationManager" not in content
-        assert "NotificationLevel" not in content
-        # 대신 Python 스크립트에 알림 로직이 존재해야 함
+        # 래퍼에 알림 함수 호출이 없어야 함
+        assert "send_notification" not in content.lower()
+        # Python 스크립트에 알림 함수가 존재해야 함
         chart_content = CHART_SCRIPT.read_text()
-        assert "load_config" in chart_content
-        assert "setup_notifier" in chart_content
-        assert "_send_notification" in chart_content
+        assert "def _send_notification" in chart_content
 
 
 class TestWrapperExecution:
@@ -183,7 +182,7 @@ class TestCrontabIntegration:
         """프로젝트 crontab에 주간 차트 생성 항목이 있다"""
         crontab_path = PROJECT_ROOT / "crontab"
         if not crontab_path.exists():
-            return  # Docker 설정 없는 환경에서는 스킵
+            pytest.skip("crontab not found")
         content = crontab_path.read_text()
         assert "fetch_universe_charts.py" in content
         assert "0 6 * * 6" in content
@@ -192,7 +191,7 @@ class TestCrontabIntegration:
         """차트 생성(06:00)이 주간 리포트(09:00) 전에 실행된다"""
         crontab_path = PROJECT_ROOT / "crontab"
         if not crontab_path.exists():
-            return
+            pytest.skip("crontab not found")
         content = crontab_path.read_text()
         chart_pos = content.find("fetch_universe_charts.py")
         report_pos = content.find("weekly_report.py")

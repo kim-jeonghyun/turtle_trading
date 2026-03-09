@@ -7,6 +7,7 @@ local_chart_renderer.py 단위 테스트
 """
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -187,3 +188,82 @@ class TestBatchChartRenderer:
         # limit=1이므로 첫 번째 심볼만 처리, MultiIndex가 정상 처리되면 True
         assert len(results) == 1
         assert list(results.values())[0] is True
+
+    @patch("src.local_chart_renderer.yf.download")
+    def test_path_traversal_in_asset_name_is_blocked(self, mock_download, tmp_path):
+        """asset.name에 .. 시퀀스가 있으면 안전하게 제거된다"""
+        import yaml
+
+        yaml_content = {
+            "symbols": {
+                "us_equity": [
+                    {
+                        "symbol": "EVIL",
+                        "name": "../../etc/cron.d/malicious",
+                        "group": "us_equity",
+                        "short_restricted": False,
+                    },
+                ],
+            }
+        }
+        yaml_path = tmp_path / "universe.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content))
+        um = UniverseManager(yaml_path=str(yaml_path))
+
+        mock_download.return_value = self._make_mock_df()
+        renderer = BatchChartRenderer(um)
+        output_dir = tmp_path / "charts"
+        output_dir.mkdir()
+        results = renderer.render_all(output_dir=str(output_dir))
+
+        assert results["EVIL"] is True
+        # 생성된 파일이 output_dir 내부에만 존재
+        for png in Path(str(output_dir)).rglob("*.png"):
+            resolved = png.resolve()
+            assert str(resolved).startswith(str(output_dir.resolve()))
+        # .. 이 파일명에 포함되지 않음
+        for png in output_dir.glob("*.png"):
+            assert ".." not in png.name
+
+
+class TestRenderChartBoundary:
+    """render_chart 경계값 테스트"""
+
+    def test_exactly_4_rows_returns_false(self, tmp_path):
+        """정확히 4행 데이터는 False 반환 (최소 5행 필요)"""
+        np.random.seed(42)
+        dates = pd.date_range("2026-01-01", periods=4, freq="B")
+        close = 100 + np.cumsum(np.random.randn(4))
+        df = pd.DataFrame(
+            {
+                "Open": close - 1,
+                "High": close + 2,
+                "Low": close - 2,
+                "Close": close,
+                "Volume": np.random.randint(1_000_000, 10_000_000, 4),
+            },
+            index=dates,
+        )
+        df = calculate_indicators(df)
+        output = str(tmp_path / "boundary.png")
+        assert render_chart(df, "BOUND", "Boundary", output) is False
+
+    def test_exactly_5_rows_renders_successfully(self, tmp_path):
+        """정확히 5행 데이터는 렌더링 성공"""
+        np.random.seed(42)
+        dates = pd.date_range("2026-01-01", periods=5, freq="B")
+        close = 100 + np.cumsum(np.random.randn(5))
+        df = pd.DataFrame(
+            {
+                "Open": close - 1,
+                "High": close + 2,
+                "Low": close - 2,
+                "Close": close,
+                "Volume": np.random.randint(1_000_000, 10_000_000, 5),
+            },
+            index=dates,
+        )
+        df = calculate_indicators(df)
+        output = str(tmp_path / "five.png")
+        assert render_chart(df, "FIVE", "Five Rows", output) is True
+        assert os.path.exists(output)
