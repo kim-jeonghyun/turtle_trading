@@ -1,5 +1,7 @@
 # Turtle Trading System
 
+> **v3.8.1** | Python 3.12 | MIT License
+
 터틀 트레이딩 전략을 기반으로 한 반자동 멀티마켓 매매 시스템입니다.
 
 ## 주요 기능
@@ -22,14 +24,26 @@
 
 ### 지원 시장
 
-- 미국 주식 (yfinance)
-- 한국 주식 (FinanceDataReader, KIS OpenAPI)
-- 암호화폐 (ccxt/Binance)
-- 원자재/채권 ETF
+14개 자산그룹, 42종목 유니버스:
+
+- 미국 주식/ETF (SPY, QQQ, NVDA 등)
+- 한국 주식 (삼성전자, SK하이닉스 등 — KIS OpenAPI)
+- 유럽/중국 ETF (VGK, MCHI 등)
+- 원자재 ETF (GLD, SLV, USO, DBA 등)
+- 채권 ETF (TLT, HYG 등)
+- 암호화폐 ETF (BITO, ETHA)
+- REIT (VNQ, VNQI)
+- 대체투자 (MNA)
 
 ### 알림 시스템
 
 - Telegram, Discord, Email (재시도 + 에스컬레이션 로직 포함)
+
+### 주간 차트 자동 생성
+
+- mplfinance 기반 3-panel 차트 (캔들+MA, 거래량, MACD)
+- 전 유니버스 42종목 자동 렌더링 (토요일 06:00 KST)
+- 이동평균 4종 (5/20/60/120일) + MACD(12,26,9)
 
 ## 빠른 시작
 
@@ -145,18 +159,25 @@ turtle_trading/
 │   ├── pyramid_manager.py      # 피라미딩 상태 전이
 │   ├── position_tracker.py     # 포지션 생애주기/손익 계산
 │   ├── inverse_filter.py       # Inverse ETF 디케이 감시
+│   ├── kill_switch.py             # 시스템 거래 정지 스위치
 │   ├── universe_manager.py     # 심볼/그룹 관리
 │   ├── kis_api.py              # 한국투자증권 주문/조회
+│   ├── local_chart_renderer.py    # mplfinance 차트 렌더링
 │   ├── auto_trader.py          # 주문 라우팅, 상태 동기화
 │   ├── backtester.py           # 전략 검증 파이프라인
+│   ├── cost_analyzer.py           # 슬리피지/수수료 측정, 비용 예산 관리
 │   ├── notifier.py             # 알림 발송 (Telegram/Discord/Email)
+│   ├── paper_trader.py            # 모의투자 시뮬레이션
+│   ├── position_sync.py           # KIS 잔고 vs 로컬 포지션 동기화
 │   ├── script_helpers.py       # 스크립트 공통 유틸리티
 │   ├── analytics.py            # 거래 성과 분석 (R-배수, Sortino 등)
 │   ├── market_calendar.py      # 시장 영업일/상태 판단
 │   ├── security.py             # 보안 검증 유틸리티
 │   ├── monitor_state.py        # 장중 모니터링 알림 상태 관리
 │   ├── spot_price.py           # 실시간 가격 조회 (KIS API)
-│   └── utils.py                # 공유 유틸 (atomic write, retry, 심볼 검증)
+│   ├── trading_guard.py           # 주문 전 안전 검증 (일일 손실 한도)
+│   ├── utils.py                # 공유 유틸 (atomic write, retry, 심볼 검증)
+│   └── vi_cb_detector.py          # VI/CB 상태 탐지
 │
 ├── scripts/                    # 운영 스크립트
 │   ├── check_positions.py      # 포지션 상태/시그널/스톱 점검
@@ -175,16 +196,25 @@ turtle_trading/
 │   ├── validate_data.py        # 데이터 정합성 검증
 │   ├── test_notifications.py   # 알림 채널 테스트
 │   ├── backup_data.sh          # 데이터 백업
+│   ├── check_overfitting.py       # 백테스트 과적합 점검
+│   ├── fetch_universe_charts.py   # 유니버스 전종목 차트 수집
+│   ├── go_live_check.py           # 실거래 전 사전 검증
+│   ├── paper_trade_report.py      # 모의투자 성과 리포트
+│   ├── sync_positions.py          # KIS 잔고 동기화
+│   ├── toggle_trading.py          # 킬스위치 CLI
+│   ├── weekly_charts.sh           # 주간 차트 자동 생성 (cron)
 │   └── deploy-v3.2.1.sh        # v3.2.1 배포 (Legacy)
 │
 ├── config/                     # 설정 파일
 │   ├── universe.yaml           # 거래 유니버스 (심볼 단일 원본)
 │   ├── correlation_groups.yaml # 상관군/최대 노출 정책
 │   ├── notifications.yaml.example  # 알림 채널/이벤트 설정
-│   └── ohlcv_collection.yaml   # OHLCV 수집 대상 (KOSPI 200 + KOSDAQ 150)
+│   ├── ohlcv_collection.yaml   # OHLCV 수집 대상 (KOSPI 200 + KOSDAQ 150)
+│   └── system_status.yaml     # 킬스위치 상태
 │
 ├── data/                       # 런타임 데이터 (gitignore)
 │   ├── cache/                  # OHLCV Parquet 캐시
+│   ├── charts/                # 주간 차트 PNG
 │   ├── trades/                 # 거래 기록 JSON
 │   ├── signals/                # 시그널 기록
 │   └── ohlcv/                  # 일별 OHLCV 축적 데이터 (KOSPI 200 + KOSDAQ 150)
