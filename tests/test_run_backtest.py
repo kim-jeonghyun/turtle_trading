@@ -385,5 +385,21 @@ class TestCLIRiskWiring:
         assert kwargs["symbol_groups"] is None
 
 
+class TestPathResolution:
+    """경로 해석 회귀 테스트"""
+
+    def test_universe_yaml_path_is_absolute(self):
+        """run_backtest.py가 Path(__file__) 기반 절대경로로 universe.yaml을 참조하는지 검증"""
+        import inspect
+
+        from scripts import run_backtest as rb
+
+        source = inspect.getsource(rb.run_backtest)
+        # 상대경로 "config/universe.yaml" 리터럴이 없어야 함
+        assert 'yaml_path="config/universe.yaml"' not in source
+        # Path(__file__) 기반 패턴이 존재해야 함
+        assert "Path(__file__)" in source
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
