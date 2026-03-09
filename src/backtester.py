@@ -73,8 +73,13 @@ class TurtleBacktester:
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
-        self._use_risk_limits = symbol_groups is not None
-        self.risk_manager = PortfolioRiskManager(symbol_groups=symbol_groups or {}) if self._use_risk_limits else None
+        self.risk_manager: Optional[PortfolioRiskManager] = (
+            PortfolioRiskManager(symbol_groups=symbol_groups or {}) if symbol_groups is not None else None
+        )
+
+    @property
+    def _use_risk_limits(self) -> bool:
+        return self.risk_manager is not None
 
     def _get_entry_exit_columns(self) -> Tuple[str, str, str, str]:
         if self.config.system == 1:
@@ -189,7 +194,7 @@ class TurtleBacktester:
         if unit_size <= 0:
             return
 
-        if self._use_risk_limits:
+        if self.risk_manager is not None:
             can_add, reason = self.risk_manager.can_add_position(
                 symbol=symbol, units=1, n_value=n_value, direction=direction
             )
@@ -203,7 +208,7 @@ class TurtleBacktester:
 
         self.account.cash -= cost
         self.pyramid_manager.create_position(symbol, direction, date, price, unit_size, n_value)
-        if self._use_risk_limits:
+        if self.risk_manager is not None:
             self.risk_manager.add_position(symbol, 1, n_value, direction)
         logger.debug(f"진입: {symbol} {direction.value} @ {price:.2f} x {unit_size}")
 
@@ -212,7 +217,7 @@ class TurtleBacktester:
         if not position:
             return
 
-        if self._use_risk_limits:
+        if self.risk_manager is not None:
             can_add, reason = self.risk_manager.can_add_position(
                 symbol=symbol, units=1, n_value=n_value, direction=position.direction
             )
@@ -227,7 +232,7 @@ class TurtleBacktester:
 
         self.account.cash -= cost
         position.add_entry(date, price, unit_size, n_value)
-        if self._use_risk_limits:
+        if self.risk_manager is not None:
             self.risk_manager.add_position(symbol, 1, n_value, position.direction)
         logger.debug(f"피라미딩: {symbol} @ {price:.2f} x {unit_size}")
 
@@ -265,7 +270,7 @@ class TurtleBacktester:
         self.account.realized_pnl += pnl
         self.last_trade_profitable[symbol] = pnl > 0
 
-        if self._use_risk_limits:
+        if self.risk_manager is not None:
             for entry in position.entries:
                 self.risk_manager.remove_position(symbol, 1, position.direction, n_value=entry.n_at_entry)
 

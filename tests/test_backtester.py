@@ -376,3 +376,73 @@ class TestBacktesterRiskIntegration:
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
         assert bt.risk_manager.state.long_units == 0
         assert abs(bt.risk_manager.state.total_n_exposure) < 0.01
+
+    @staticmethod
+    def _make_breakout_data(n_symbols: int) -> dict:
+        """System 2 브레이크아웃 시그널을 유발하는 합성 OHLCV 데이터 생성
+
+        설계 제약:
+        - price ~10, spread ±0.5 → ATR≈1.0, N≈1.0
+        - unit_size = equity*0.01/1.0, cost = unit_size*10
+        - N-exposure: 7 × 1.0 = 7.0 < 10.0 (N-cap 미초과)
+        - cash: 500M 기준 7종목 진입 가능
+        """
+        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
+        data = {}
+        for i in range(n_symbols):
+            base = 10.0 + i * 0.5
+            prices = []
+            for j in range(len(dates)):
+                if j < 60:
+                    price = base + np.sin(j * 0.1) * 0.3
+                else:
+                    price = base + 1.0 + (j - 60) * 0.1
+                prices.append(price)
+            df = pd.DataFrame({
+                "date": dates,
+                "open": prices,
+                "high": [p + 0.5 for p in prices],
+                "low": [p - 0.5 for p in prices],
+                "close": prices,
+                "volume": [1000000] * len(dates),
+            })
+            data[f"SYM{i}"] = df
+        return data
+
+    def test_run_with_risk_limits_blocks_excess_entries(self):
+        """run() 레벨: 7종목 US_EQUITY 그룹에서 6 Units 한도 적용"""
+        groups = {f"SYM{i}": AssetGroup.US_EQUITY for i in range(7)}
+        # ATR≈2.0, unit_size≈50,000, cost≈$5M/entry → 7종목=$35M 필요
+        config = BacktestConfig(
+            initial_capital=500_000_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config, symbol_groups=groups)
+        data = self._make_breakout_data(7)
+        bt.run(data)
+
+        # 시그널이 발생했는지 확인 (trades + open positions)
+        symbols_traded = (
+            set(t.symbol for t in bt.trades)
+            | set(bt.pyramid_manager.positions.keys())
+        )
+        assert len(symbols_traded) > 0, "시그널이 발생하지 않음"
+        assert len(symbols_traded) <= 6, f"그룹 한도 6 초과: {len(symbols_traded)}개 종목 진입"
+
+    def test_run_without_risk_limits_allows_all_entries(self):
+        """run() 레벨: symbol_groups 없으면 모든 종목 진입 허용"""
+        config = BacktestConfig(
+            initial_capital=500_000_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)  # symbol_groups=None
+        data = self._make_breakout_data(7)
+        bt.run(data)
+
+        symbols_traded = (
+            set(t.symbol for t in bt.trades)
+            | set(bt.pyramid_manager.positions.keys())
+        )
+        assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"

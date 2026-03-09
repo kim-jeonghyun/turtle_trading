@@ -21,6 +21,7 @@ import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.data_fetcher import DataFetcher
+from src.universe_manager import UniverseManager
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk", type=float, default=0.01, help="유닛당 리스크 비율 (0.01 = 1%%)")
     parser.add_argument("--commission", type=float, default=0.001, help="수수료 비율 (0.001 = 0.1%%)")
     parser.add_argument("--no-filter", action="store_true", help="System 1 필터 비활성화")
+    parser.add_argument("--no-risk-limits", action="store_true", help="포트폴리오 리스크 한도 비활성화")
 
     # 출력 옵션
     parser.add_argument("--plot", action="store_true", help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)")
@@ -100,7 +102,21 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
 
     logger.info(f"백테스트 시작 - System {config.system}, 초기 자본: ${config.initial_capital:,.0f}")
 
-    backtester = TurtleBacktester(config)
+    symbol_groups = None
+    if not args.no_risk_limits:
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        full_mapping = um.get_group_mapping()
+        symbol_groups = {s: full_mapping[s] for s in data.keys() if s in full_mapping}
+        if not symbol_groups:
+            logger.warning("심볼이 universe.yaml에 없어 리스크 한도 미적용")
+            symbol_groups = None
+
+    if symbol_groups:
+        logger.info(f"리스크 한도 적용: {len(symbol_groups)}개 종목")
+    else:
+        logger.info("리스크 한도 미적용 (--no-risk-limits 또는 미등록 종목)")
+
+    backtester = TurtleBacktester(config, symbol_groups=symbol_groups)
     result = backtester.run(data)
 
     return result
