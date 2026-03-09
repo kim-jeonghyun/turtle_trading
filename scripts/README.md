@@ -1,4 +1,4 @@
-# Turtle Trading Scripts Reference (v2.0)
+# Turtle Trading Scripts Reference (v2.1)
 
 Complete reference for all operational scripts in the Turtle Trading system.
 
@@ -13,6 +13,9 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `auto_trade.py` | Trading | Automated order execution (dry-run default) | Manual |
 | `toggle_trading.py` | Trading | Kill switch — enable/disable trading | Manual |
 | `daily_report.py` | Reporting | Daily summary with positions, signals, and risk | Daily 08:00 cron |
+| `check_overfitting.py` | Reporting | Auto-check backtest results for overfitting risk | Manual |
+| `paper_trade_report.py` | Reporting | Paper trading performance analysis (returns, MDD, win rate) | Manual |
+| `sync_positions.py` | Operations | KIS account balance vs local positions reconciliation | Manual |
 | `weekly_report.py` | Reporting | Weekly performance summary with trade analysis | Saturday 09:00 cron |
 | `fetch_universe_charts.py` | Chart | mplfinance chart generation for all universe symbols | Saturday 06:00 cron |
 | `weekly_charts.sh` | Chart | Bash wrapper for local cron (logging, notification) | Saturday 06:00 cron |
@@ -230,7 +233,7 @@ python scripts/auto_trade.py --max-amount 1000000 --verbose
 
 Kill switch CLI — enable/disable all new trading entries. When disabled, BUY orders are blocked system-wide while SELL/exit orders (stop-loss, position closure) proceed normally.
 
-> **Note**: This script is introduced in the kill switch feature (PR #110). It will be available after that PR merges to main.
+> **Note**: State is persisted in `config/system_status.yaml` via `KillSwitch` class.
 
 ##### Usage
 
@@ -261,7 +264,7 @@ python scripts/toggle_trading.py --status
 ##### Notes
 
 - State is persisted in `config/system_status.yaml` via `KillSwitch` class in `src/kill_switch.py`
-- Kill switch behavior and fail-open policy는 PR #110 머지 후 [운영 가이드](../docs/operations-guide.md)에 추가 예정
+- Kill switch behavior and fail-open policy는 [운영 가이드](../docs/operations-guide.md)를 참조
 
 ---
 
@@ -739,5 +742,6 @@ rm -f /tmp/collect_daily_ohlcv.lock
 
 ## Version History
 
+- **v2.1** (2026-03-09): Added check_overfitting, paper_trade_report, sync_positions; updated toggle_trading note
 - **v2.0** (2026-03-03): Complete overhaul -- all 18 scripts documented, categorical organization, Docker integration
 - **v1.0** (2026-02-17): Initial version -- 4 scripts documented
