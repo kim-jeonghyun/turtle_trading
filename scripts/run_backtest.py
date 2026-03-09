@@ -104,7 +104,7 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
 
     symbol_groups = None
     if not args.no_risk_limits:
-        um = UniverseManager(yaml_path="config/universe.yaml")
+        um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
         full_mapping = um.get_group_mapping()
         symbol_groups = {s: full_mapping[s] for s in data.keys() if s in full_mapping}
         unmapped = set(data.keys()) - set(full_mapping.keys())
