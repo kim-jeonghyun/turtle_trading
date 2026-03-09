@@ -9,9 +9,32 @@
 
 ## [Unreleased]
 
+### Added
+- PR #164: `config/universe.yaml` 유니버스 18→42종목 확장 (14 AssetGroup, 6개 신규 enum)
+- PR #164: `config/correlation_groups.yaml` 상관군 16그룹으로 확장
+- PR #164: `src/universe_manager.py`, `src/types.py` 신규 자산군 지원 (EU_EQUITY, CHINA_EQUITY, COMMODITY_ENERGY, COMMODITY_AGRI, REIT, ALTERNATIVES)
+- PR #169: `src/local_chart_renderer.py` — mplfinance 기반 3-panel 로컬 차트 렌더러 (캔들+MA, 거래량, MACD)
+- PR #169: `tests/test_local_chart_renderer.py`, `tests/test_chart_generator.py` — 차트 렌더러 테스트
+- PR #171: `scripts/weekly_charts.sh` — 주간 차트 자동 생성 래퍼 스크립트
+- PR #171: `tests/test_weekly_charts.py` — 주간 차트 래퍼 테스트
+- PR #172: crontab에 주간 차트 스케줄 추가 (토요일 06:00 KST)
+- PR #175: 주간 차트 테스트 커버리지 강화 — notification 경로, 에러 핸들링, 경계값 테스트
+- PR #175: `src/local_chart_renderer.py` 파일명 특수문자/`..` 제거 (sanitization)
+
 ### Changed
 - supercronic v0.2.33 → v0.2.43 업그레이드: PID 1 fork exec 버그 수정 (aptible/supercronic#177)
 - `docker-compose.yaml`에 `init: true` 추가 (defense-in-depth)
+- PR #164: `src/script_helpers.py` `_GROUP_MAPPING` 18개 항목으로 확장
+- PR #172: `scripts/weekly_charts.sh` notifier 연동 + 에러 처리 강화
+- PR #177: `CLAUDE.md`, `README.md`, `scripts/README.md` 문서 완전성 업데이트
+
+### Fixed
+- PR #173: Docker 실행 경로에서 알림 누락 수정 — `NotificationManager` no-op 모드 정상화
+- PR #172: 주간 차트 스케줄링 리뷰 반영 — notifier 연동, crontab 설정 보정
+- PR #175: `scripts/fetch_universe_charts.py` 알림 메시지에서 내부 경로 노출 제거 (보안)
+
+### Removed
+- PR #161: `research/readings/` Obsidian vault로 이관 완료, 프로젝트에서 제거
 
 ---
 
