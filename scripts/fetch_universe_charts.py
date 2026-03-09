@@ -69,7 +69,7 @@ def main():
         logger.error(f"Universe 로드 실패: {e}")
         _send_notification(
             "주간 차트 생성 실패",
-            f"Universe 로드 실패: {e}",
+            "Universe 설정 파일 로드 중 오류가 발생했습니다. 서버 로그를 확인하세요.",
             NotificationLevel.ERROR,
         )
         sys.exit(1)
@@ -85,13 +85,33 @@ def main():
 
     logger.info("=" * 40)
     logger.info(f"배치 완료: 성공 {len(successes)} / 실패 {len(failures)}")
-    if failures:
+
+    if len(failures) == len(results):
+        # 전체 실패 → ERROR + 비정상 종료
+        logger.error(f"전체 종목 실패: {', '.join(failures)}")
+        _send_notification(
+            "주간 차트 생성 전체 실패",
+            f"전체 {len(failures)}개 종목 차트 생성 실패",
+            NotificationLevel.ERROR,
+        )
+        logger.info("=" * 40)
+        sys.exit(1)
+    elif failures:
+        # 부분 실패 → WARNING
         logger.warning(f"실패 종목: {', '.join(failures)}")
         _send_notification(
             "주간 차트 생성 부분 실패",
             f"성공 {len(successes)} / 실패 {len(failures)}\n실패 종목: {', '.join(failures)}",
             NotificationLevel.WARNING,
         )
+    else:
+        # 전체 성공 → INFO
+        _send_notification(
+            "주간 차트 생성 완료",
+            f"전체 {len(successes)}개 종목 차트 생성 성공",
+            NotificationLevel.INFO,
+        )
+
     logger.info("=" * 40)
 
 

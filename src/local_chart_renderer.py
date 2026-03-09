@@ -7,6 +7,7 @@ mplfinance 기반 로컬 차트 렌더링 모듈
 
 import logging
 import re
+from pathlib import Path
 from typing import Optional
 
 import matplotlib
@@ -165,8 +166,8 @@ class BatchChartRenderer:
 
                 df = calculate_indicators(df)
 
-                safe_name = re.sub(r'[\\/*?:"<>|]', "", asset.name).replace(" ", "_")
-                output_path = f"{output_dir}/{safe_name}_{symbol}.png"
+                safe_name = re.sub(r'[\\/*?:"<>|\x00]', "", asset.name).replace("..", "").replace(" ", "_")
+                output_path = str(Path(output_dir) / f"{safe_name}_{symbol}.png")
 
                 results[symbol] = render_chart(df, symbol, asset.name, output_path)
 

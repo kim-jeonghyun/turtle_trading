@@ -6,7 +6,7 @@
 """
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from src.local_chart_renderer import BatchChartRenderer
+from src.notifier import NotificationLevel
 from src.universe_manager import UniverseManager
 
 
@@ -174,3 +175,177 @@ class TestScriptEntryPoint:
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
+
+    @patch("scripts.fetch_universe_charts._send_notification")
+    def test_main_sends_error_on_universe_load_failure(self, mock_notify, tmp_path, monkeypatch):
+        """Universe 로드 실패 시 ERROR 알림이 발송된다"""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.fetch_universe_charts import main
+
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts"])
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "universe.yaml").write_text("invalid: yaml: content: [}")
+
+        with pytest.raises(SystemExit):
+            main()
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == NotificationLevel.ERROR
+
+    @patch("scripts.fetch_universe_charts._send_notification")
+    @patch("src.local_chart_renderer.yf.download")
+    def test_main_sends_warning_on_partial_failure(self, mock_download, mock_notify, tmp_path, monkeypatch):
+        """일부 종목만 실패 시 WARNING 알림이 발송된다"""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.fetch_universe_charts import main
+
+        # 첫 번째 종목 실패, 두 번째 성공 (진짜 partial failure)
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return pd.DataFrame()
+            return _make_ohlcv()
+
+        mock_download.side_effect = side_effect
+
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts", "--limit", "2"])
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        yaml_content = {
+            "symbols": {
+                "us_equity": [
+                    {"symbol": "SPY", "name": "S&P 500 ETF", "group": "us_equity", "short_restricted": False},
+                    {"symbol": "QQQ", "name": "Nasdaq 100 ETF", "group": "us_equity", "short_restricted": False},
+                ],
+            }
+        }
+        (config_dir / "universe.yaml").write_text(yaml.dump(yaml_content))
+
+        main()
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == NotificationLevel.WARNING
+
+    @patch("scripts.fetch_universe_charts._send_notification")
+    @patch("src.local_chart_renderer.yf.download")
+    def test_main_sends_error_on_all_failures(self, mock_download, mock_notify, tmp_path, monkeypatch):
+        """전체 종목 실패 시 ERROR 알림 + sys.exit(1)"""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.fetch_universe_charts import main
+
+        mock_download.return_value = pd.DataFrame()
+
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts", "--limit", "2"])
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        yaml_content = {
+            "symbols": {
+                "us_equity": [
+                    {"symbol": "SPY", "name": "S&P 500", "group": "us_equity", "short_restricted": False},
+                    {"symbol": "QQQ", "name": "Nasdaq 100", "group": "us_equity", "short_restricted": False},
+                ],
+            }
+        }
+        (config_dir / "universe.yaml").write_text(yaml.dump(yaml_content))
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == NotificationLevel.ERROR
+
+    @patch("scripts.fetch_universe_charts._send_notification")
+    @patch("src.local_chart_renderer.yf.download")
+    def test_main_sends_info_on_full_success(self, mock_download, mock_notify, tmp_path, monkeypatch):
+        """전체 성공 시 INFO 알림 발송"""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from scripts.fetch_universe_charts import main
+
+        mock_download.return_value = _make_ohlcv()
+
+        monkeypatch.setattr("sys.argv", ["fetch_universe_charts", "--limit", "1"])
+        monkeypatch.setattr("scripts.fetch_universe_charts.PROJECT_ROOT", tmp_path)
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        yaml_content = {
+            "symbols": {
+                "us_equity": [
+                    {"symbol": "SPY", "name": "S&P 500", "group": "us_equity", "short_restricted": False},
+                ],
+            }
+        }
+        (config_dir / "universe.yaml").write_text(yaml.dump(yaml_content))
+
+        main()
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][2] == NotificationLevel.INFO
+
+
+class TestSendNotification:
+    """_send_notification() 단위 테스트"""
+
+    @patch("scripts.fetch_universe_charts.setup_notifier")
+    @patch("scripts.fetch_universe_charts.load_config")
+    def test_sends_message_when_channels_configured(self, mock_config, mock_setup):
+        """채널이 설정되면 send_message가 호출된다"""
+        from scripts.fetch_universe_charts import _send_notification
+
+        mock_config.return_value = {"discord_webhook": "https://discord.com/api/webhooks/test"}
+        mock_notifier = MagicMock()
+        mock_notifier.channels = [MagicMock()]
+        mock_notifier.send_message = AsyncMock()
+        mock_setup.return_value = mock_notifier
+
+        _send_notification("테스트 제목", "테스트 본문", NotificationLevel.ERROR)
+
+        mock_config.assert_called_once()
+        mock_setup.assert_called_once()
+        mock_notifier.send_message.assert_called_once()
+        msg = mock_notifier.send_message.call_args[0][0]
+        assert msg.title == "테스트 제목"
+        assert msg.level == NotificationLevel.ERROR
+
+    @patch("scripts.fetch_universe_charts.setup_notifier")
+    @patch("scripts.fetch_universe_charts.load_config")
+    def test_skips_when_no_channels(self, mock_config, mock_setup):
+        """채널 미설정 시 send_message를 호출하지 않는다"""
+        from scripts.fetch_universe_charts import _send_notification
+
+        mock_config.return_value = {}
+        mock_notifier = MagicMock()
+        mock_notifier.channels = []
+        mock_setup.return_value = mock_notifier
+
+        _send_notification("제목", "본문", NotificationLevel.WARNING)
+
+        mock_notifier.send_message.assert_not_called()
+
+    @patch("scripts.fetch_universe_charts.load_config")
+    def test_catches_exception_without_propagating(self, mock_config):
+        """load_config 예외 시 경고 로그만 남기고 전파하지 않는다"""
+        from scripts.fetch_universe_charts import _send_notification
+
+        mock_config.side_effect = RuntimeError("config load failed")
+
+        # 예외가 전파되지 않아야 함
+        _send_notification("제목", "본문", NotificationLevel.ERROR)
