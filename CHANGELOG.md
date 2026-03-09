@@ -20,6 +20,9 @@
 - PR #172: crontab에 주간 차트 스케줄 추가 (토요일 06:00 KST)
 - PR #175: 주간 차트 테스트 커버리지 강화 — notification 경로, 에러 핸들링, 경계값 테스트
 - PR #175: `src/local_chart_renderer.py` 파일명 특수문자/`..` 제거 (sanitization)
+- PR #180: `src/backtester.py` PortfolioRiskManager 통합 — 백테스트 시 포트폴리오 리스크 한도 적용 (단일종목 4U, 그룹 6U, 방향 12U, N-exposure 10.0)
+- PR #180: `scripts/run_backtest.py` `--no-risk-limits` CLI 플래그 및 `config/universe.yaml` 연동
+- PR #180: `tests/test_backtester.py` run()-레벨 리스크 통합 테스트, CLI 연동 테스트 추가
 
 ### Changed
 - supercronic v0.2.33 → v0.2.43 업그레이드: PID 1 fork exec 버그 수정 (aptible/supercronic#177)
