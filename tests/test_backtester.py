@@ -3,6 +3,7 @@ backtester.py 단위 테스트
 - BUG-1 수정 검증 (calculate_unit_size 인자 순서)
 - BUG-2 수정 검증 (미실현 P&L 계산)
 - 백테스트 기본 동작
+- PortfolioRiskManager 통합 (#165)
 """
 
 import numpy as np
@@ -10,6 +11,7 @@ import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.indicators import calculate_unit_size
+from src.types import AssetGroup, Direction
 
 
 class TestBugFixes:
@@ -206,3 +208,241 @@ class TestBacktestEntryExitColumns:
         bt = TurtleBacktester(config)
         cols = bt._get_entry_exit_columns()
         assert cols == ("dc_high_55", "dc_low_55", "dc_low_20", "dc_high_20")
+
+
+class TestBacktesterRiskIntegration:
+    """Issue #165: PortfolioRiskManager 통합 테스트"""
+
+    def test_no_risk_check_when_groups_is_none(self):
+        """symbol_groups=None이면 리스크 체크 없이 기존 동작 유지"""
+        config = BacktestConfig(initial_capital=100000.0)
+        bt = TurtleBacktester(config)  # symbol_groups 미전달
+        assert bt._use_risk_limits is False
+        assert bt.risk_manager is None
+
+    def test_risk_manager_initialized_with_groups(self):
+        """symbol_groups 전달 시 리스크 매니저 초기화"""
+        groups = {"SPY": AssetGroup.US_EQUITY, "QQQ": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=100000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+        assert bt._use_risk_limits is True
+        assert bt.risk_manager is not None
+
+    def test_entry_blocked_by_single_symbol_limit(self):
+        """단일 종목 4 Units 한도 — 진입 1 + 피라미딩 3 후 5번째 차단"""
+        groups = {"SPY": AssetGroup.US_EQUITY}
+        # price=1.0으로 비용 최소화, N=2.0 × 4 = 8.0 < 10.0 N-exposure 한도
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
+        assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 1
+
+        for _ in range(3):
+            bt._add_pyramid("SPY", pd.Timestamp("2025-01-02"), 1.5, 2.0)
+
+        assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 4
+
+        cash_before = bt.account.cash
+        bt._add_pyramid("SPY", pd.Timestamp("2025-01-03"), 2.0, 2.0)
+        assert bt.account.cash == cash_before
+
+    def test_entry_blocked_by_group_limit(self):
+        """같은 그룹 6 Units 한도 초과 시 7번째 진입 차단"""
+        groups = {s: AssetGroup.US_EQUITY for s in ["A", "B", "C", "D", "E", "F", "G"]}
+        # N=1.5 × 6 = 9.0 < 10.0, price=1.0으로 비용 최소화
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        for sym in ["A", "B", "C", "D", "E", "F"]:
+            bt._open_position(sym, pd.Timestamp("2025-01-01"), 1.0, 1.5, Direction.LONG)
+
+        assert bt.risk_manager.state.units_by_group.get(AssetGroup.US_EQUITY, 0) == 6
+
+        cash_before = bt.account.cash
+        bt._open_position("G", pd.Timestamp("2025-01-01"), 1.0, 1.5, Direction.LONG)
+        assert bt.account.cash == cash_before
+
+    def test_entry_blocked_by_direction_limit(self):
+        """LONG 방향 12 Units 한도 초과 시 13번째 진입 차단"""
+        asset_groups = list(AssetGroup)
+        groups = {}
+        for i in range(13):
+            groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
+
+        # N=0.8 × 12 = 9.6 < 10.0, price=1.0으로 비용 최소화
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        for i in range(12):
+            bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 0.8, Direction.LONG)
+
+        assert bt.risk_manager.state.long_units == 12
+
+        cash_before = bt.account.cash
+        bt._open_position("SYM12", pd.Timestamp("2025-01-01"), 1.0, 0.8, Direction.LONG)
+        assert bt.account.cash == cash_before
+
+    def test_n_exposure_cap_enforced(self):
+        """N-exposure 10.0 상한 초과 시 진입 차단"""
+        asset_groups = list(AssetGroup)
+        groups = {}
+        for i in range(5):
+            groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
+
+        # N=3.0 × 3 = 9.0, 4번째 추가 시 12.0 > 10.0
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        for i in range(3):
+            bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
+
+        assert abs(bt.risk_manager.state.total_n_exposure - 9.0) < 0.01
+
+        cash_before = bt.account.cash
+        bt._open_position("SYM3", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
+        assert bt.account.cash == cash_before
+
+    def test_pyramid_respects_risk_limits(self):
+        """피라미딩 시 단일 종목 4 Units 한도 적용"""
+        groups = {"SPY": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        # N=2.0, price=1.0
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
+        assert bt.risk_manager.state.units_by_symbol["SPY"] == 1
+
+        for _ in range(3):
+            bt._add_pyramid("SPY", pd.Timestamp("2025-01-02"), 1.5, 2.0)
+
+        assert bt.risk_manager.state.units_by_symbol["SPY"] == 4
+
+        cash_before = bt.account.cash
+        bt._add_pyramid("SPY", pd.Timestamp("2025-01-03"), 2.0, 2.0)
+        assert bt.account.cash == cash_before
+        assert bt.risk_manager.state.units_by_symbol["SPY"] == 4
+
+    def test_close_releases_risk_capacity(self):
+        """청산 후 동일 그룹 재진입 가능"""
+        groups = {"SPY": AssetGroup.US_EQUITY, "QQQ": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        # N=2.0, price=1.0
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
+        assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 1
+        assert abs(bt.risk_manager.state.total_n_exposure - 2.0) < 0.01
+
+        bt._close_position("SPY", pd.Timestamp("2025-01-10"), 1.5, "EXIT_LONG")
+        assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
+        assert abs(bt.risk_manager.state.total_n_exposure) < 0.01
+
+        bt._open_position("QQQ", pd.Timestamp("2025-01-11"), 1.0, 2.0, Direction.LONG)
+        assert bt.risk_manager.state.units_by_symbol.get("QQQ", 0) == 1
+
+    def test_short_direction_tracked_correctly(self):
+        """SHORT 포지션 리스크 상태 추적 및 청산 후 해제"""
+        groups = {"SPY": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.SHORT)
+        assert bt.risk_manager.state.short_units == 1
+        assert bt.risk_manager.state.long_units == 0
+
+        bt._close_position("SPY", pd.Timestamp("2025-01-10"), 0.8, "EXIT_SHORT")
+        assert bt.risk_manager.state.short_units == 0
+        assert abs(bt.risk_manager.state.total_n_exposure) < 0.01
+
+    def test_multi_entry_close_removes_all_units(self):
+        """3회 피라미딩 후 청산 → 3 Units 모두 제거"""
+        groups = {"SPY": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        # 진입 + 2회 피라미딩 (3 entries, 각각 다른 N-value)
+        # N 합계 = 2.0 + 1.8 + 2.2 = 6.0 < 10.0, price=1.0
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
+        bt._add_pyramid("SPY", pd.Timestamp("2025-01-02"), 1.5, 1.8)
+        bt._add_pyramid("SPY", pd.Timestamp("2025-01-03"), 2.0, 2.2)
+
+        assert bt.risk_manager.state.units_by_symbol["SPY"] == 3
+        assert abs(bt.risk_manager.state.total_n_exposure - 6.0) < 0.01
+
+        # 청산 → avg_n = (2.0+1.8+2.2)/3 = 2.0, remove 3 × 2.0 = 6.0
+        bt._close_position("SPY", pd.Timestamp("2025-01-10"), 2.5, "EXIT_LONG")
+
+        assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
+        assert bt.risk_manager.state.long_units == 0
+        assert abs(bt.risk_manager.state.total_n_exposure) < 0.01
+
+    @staticmethod
+    def _make_breakout_data(n_symbols: int) -> dict:
+        """System 2 브레이크아웃 시그널을 유발하는 합성 OHLCV 데이터 생성
+
+        설계 제약:
+        - price ~10, spread ±0.5 → ATR≈1.0, N≈1.0
+        - unit_size = equity*0.01/1.0, cost = unit_size*10
+        - N-exposure: 7 × 1.0 = 7.0 < 10.0 (N-cap 미초과)
+        - cash: 500M 기준 7종목 진입 가능
+        """
+        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
+        data = {}
+        for i in range(n_symbols):
+            base = 10.0 + i * 0.5
+            prices = []
+            for j in range(len(dates)):
+                if j < 60:
+                    price = base + np.sin(j * 0.1) * 0.3
+                else:
+                    price = base + 1.0 + (j - 60) * 0.1
+                prices.append(price)
+            df = pd.DataFrame({
+                "date": dates,
+                "open": prices,
+                "high": [p + 0.5 for p in prices],
+                "low": [p - 0.5 for p in prices],
+                "close": prices,
+                "volume": [1000000] * len(dates),
+            })
+            data[f"SYM{i}"] = df
+        return data
+
+    def test_run_with_risk_limits_blocks_excess_entries(self):
+        """run() 레벨: 7종목 US_EQUITY 그룹에서 6 Units 한도 적용"""
+        groups = {f"SYM{i}": AssetGroup.US_EQUITY for i in range(7)}
+        # ATR≈2.0, unit_size≈50,000, cost≈$5M/entry → 7종목=$35M 필요
+        config = BacktestConfig(
+            initial_capital=500_000_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config, symbol_groups=groups)
+        data = self._make_breakout_data(7)
+        bt.run(data)
+
+        # 시그널이 발생했는지 확인 (trades + open positions)
+        symbols_traded = (
+            set(t.symbol for t in bt.trades)
+            | set(bt.pyramid_manager.positions.keys())
+        )
+        assert len(symbols_traded) > 0, "시그널이 발생하지 않음"
+        assert len(symbols_traded) <= 6, f"그룹 한도 6 초과: {len(symbols_traded)}개 종목 진입"
+
+    def test_run_without_risk_limits_allows_all_entries(self):
+        """run() 레벨: symbol_groups 없으면 모든 종목 진입 허용"""
+        config = BacktestConfig(
+            initial_capital=500_000_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)  # symbol_groups=None
+        data = self._make_breakout_data(7)
+        bt.run(data)
+
+        symbols_traded = (
+            set(t.symbol for t in bt.trades)
+            | set(bt.pyramid_manager.positions.keys())
+        )
+        assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"

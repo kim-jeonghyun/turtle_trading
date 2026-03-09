@@ -3,7 +3,7 @@ scripts/run_backtest.py 테스트
 """
 
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -15,6 +15,7 @@ from scripts.run_backtest import (
     parse_args,
     plot_equity_curve,
     print_results,
+    run_backtest,
 )
 from src.backtester import BacktestConfig, BacktestResult, Trade
 
@@ -80,6 +81,18 @@ class TestArgumentParsing:
             assert args.plot is True
             assert args.csv == "trades.csv"
             assert args.verbose is True
+
+    def test_no_risk_limits_flag(self):
+        """--no-risk-limits 플래그 파싱"""
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY", "--no-risk-limits"]):
+            args = parse_args()
+            assert args.no_risk_limits is True
+
+    def test_no_risk_limits_default_false(self):
+        """--no-risk-limits 기본값 False"""
+        with patch("sys.argv", ["run_backtest.py", "--symbols", "SPY"]):
+            args = parse_args()
+            assert args.no_risk_limits is False
 
     def test_invalid_system(self):
         """잘못된 시스템 번호"""
@@ -294,6 +307,98 @@ class TestDataFetching:
 
         with pytest.raises(SystemExit):
             fetch_data(["INVALID"], "1y", verbose=False)
+
+
+class TestCLIRiskWiring:
+    """CLI에서 symbol_groups가 TurtleBacktester에 올바르게 전달되는지 테스트"""
+
+    @pytest.fixture
+    def mock_data(self):
+        """모의 OHLCV 데이터"""
+        dates = pd.date_range("2024-01-01", periods=100, freq="B")
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100.0] * 100,
+                "high": [105.0] * 100,
+                "low": [95.0] * 100,
+                "close": [102.0] * 100,
+                "volume": [1000000] * 100,
+            }
+        )
+        return {"SPY": df, "QQQ": df.copy()}
+
+    @patch("scripts.run_backtest.TurtleBacktester")
+    @patch("scripts.run_backtest.UniverseManager")
+    def test_run_backtest_passes_symbol_groups(self, mock_um_cls, mock_bt_cls, mock_data):
+        """--no-risk-limits 미설정 시 symbol_groups가 TurtleBacktester에 전달됨"""
+        from src.types import AssetGroup
+
+        mock_um = MagicMock()
+        mock_um.get_group_mapping.return_value = {
+            "SPY": AssetGroup.US_EQUITY,
+            "QQQ": AssetGroup.US_EQUITY,
+        }
+        mock_um_cls.return_value = mock_um
+
+        mock_bt = MagicMock()
+        mock_bt.run.return_value = BacktestResult(config=BacktestConfig())
+        mock_bt_cls.return_value = mock_bt
+
+        args = MagicMock()
+        args.capital = 100000.0
+        args.risk = 0.01
+        args.system = 1
+        args.no_filter = False
+        args.commission = 0.001
+        args.no_risk_limits = False
+
+        run_backtest(mock_data, args)
+
+        # UniverseManager가 호출되었는지 확인
+        mock_um_cls.assert_called_once()
+        # TurtleBacktester에 symbol_groups가 전달되었는지 확인
+        _, kwargs = mock_bt_cls.call_args
+        assert kwargs["symbol_groups"] is not None
+        assert "SPY" in kwargs["symbol_groups"]
+        assert "QQQ" in kwargs["symbol_groups"]
+
+    @patch("scripts.run_backtest.TurtleBacktester")
+    def test_run_backtest_no_risk_limits_skips_universe(self, mock_bt_cls, mock_data):
+        """--no-risk-limits 설정 시 symbol_groups=None으로 전달됨"""
+        mock_bt = MagicMock()
+        mock_bt.run.return_value = BacktestResult(config=BacktestConfig())
+        mock_bt_cls.return_value = mock_bt
+
+        args = MagicMock()
+        args.capital = 100000.0
+        args.risk = 0.01
+        args.system = 1
+        args.no_filter = False
+        args.commission = 0.001
+        args.no_risk_limits = True
+
+        run_backtest(mock_data, args)
+
+        # TurtleBacktester에 symbol_groups=None이 전달되었는지 확인
+        _, kwargs = mock_bt_cls.call_args
+        assert kwargs["symbol_groups"] is None
+
+
+class TestPathResolution:
+    """경로 해석 회귀 테스트"""
+
+    def test_universe_yaml_path_is_absolute(self):
+        """run_backtest.py가 Path(__file__) 기반 절대경로로 universe.yaml을 참조하는지 검증"""
+        import inspect
+
+        from scripts import run_backtest as rb
+
+        source = inspect.getsource(rb.run_backtest)
+        # 상대경로 "config/universe.yaml" 리터럴이 없어야 함
+        assert 'yaml_path="config/universe.yaml"' not in source
+        # Path(__file__) 기반 패턴이 존재해야 함
+        assert "Path(__file__)" in source
 
 
 if __name__ == "__main__":
