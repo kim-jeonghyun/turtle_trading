@@ -109,7 +109,7 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 | `universe_manager.py` | 심볼·그룹 관리 (14그룹, 42종목) | 스크리닝/시그널/보고 |
 | `kis_api.py` | 주문/조회/예외 처리 | auto_trader + backtester |
 | `auto_trader.py` | 주문 라우팅, 상태 동기화 | risk/notifier/kis_api |
-| `backtester.py` | 전략 검증 파이프라인 | tests + scripts |
+| `backtester.py` | 전략 검증 파이프라인 + 리스크 한도 | indicators + position_sizer + pyramid_manager + risk_manager |
 | `local_chart_renderer.py` | mplfinance 차트 렌더링 | fetch_universe_charts |
 | `notifier.py` | 알림 발송 채널 통합 | 운영 스크립트 |
 | `kill_switch.py` | 시스템 거래 정지 스위치 (BUY만 차단) | auto_trader + trading_guard |
