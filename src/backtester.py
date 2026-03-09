@@ -266,9 +266,9 @@ class TurtleBacktester:
         self.last_trade_profitable[symbol] = pnl > 0
 
         if self._use_risk_limits:
-            num_entries = len(position.entries)
-            avg_n = sum(e.n_at_entry for e in position.entries) / num_entries if num_entries > 0 else 0
-            self.risk_manager.remove_position(symbol, num_entries, position.direction, n_value=avg_n)
+            for entry in position.entries:
+                self.risk_manager.remove_position(symbol, 1, position.direction, n_value=entry.n_at_entry)
+
         self.pyramid_manager.close_position(symbol)
         logger.debug(f"청산: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({reason})")
 

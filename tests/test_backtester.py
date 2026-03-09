@@ -341,6 +341,20 @@ class TestBacktesterRiskIntegration:
         bt._open_position("QQQ", pd.Timestamp("2025-01-11"), 1.0, 2.0, Direction.LONG)
         assert bt.risk_manager.state.units_by_symbol.get("QQQ", 0) == 1
 
+    def test_short_direction_tracked_correctly(self):
+        """SHORT 포지션 리스크 상태 추적 및 청산 후 해제"""
+        groups = {"SPY": AssetGroup.US_EQUITY}
+        config = BacktestConfig(initial_capital=10_000_000.0)
+        bt = TurtleBacktester(config, symbol_groups=groups)
+
+        bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.SHORT)
+        assert bt.risk_manager.state.short_units == 1
+        assert bt.risk_manager.state.long_units == 0
+
+        bt._close_position("SPY", pd.Timestamp("2025-01-10"), 0.8, "EXIT_SHORT")
+        assert bt.risk_manager.state.short_units == 0
+        assert abs(bt.risk_manager.state.total_n_exposure) < 0.01
+
     def test_multi_entry_close_removes_all_units(self):
         """3회 피라미딩 후 청산 → 3 Units 모두 제거"""
         groups = {"SPY": AssetGroup.US_EQUITY}
