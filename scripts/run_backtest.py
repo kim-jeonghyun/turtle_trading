@@ -107,6 +107,9 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
         um = UniverseManager(yaml_path="config/universe.yaml")
         full_mapping = um.get_group_mapping()
         symbol_groups = {s: full_mapping[s] for s in data.keys() if s in full_mapping}
+        unmapped = set(data.keys()) - set(full_mapping.keys())
+        if unmapped:
+            logger.warning(f"universe.yaml에 미등록 종목 (US_EQUITY로 기본 분류): {', '.join(sorted(unmapped))}")
         if not symbol_groups:
             logger.warning("심볼이 universe.yaml에 없어 리스크 한도 미적용")
             symbol_groups = None
