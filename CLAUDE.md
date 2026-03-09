@@ -1,6 +1,6 @@
 # Turtle Trading System - CLAUDE OPERATING GUIDE
 
-Last updated: 2026-02-23
+Last updated: 2026-03-09
 
 ## 1. 목적과 운영 원칙
 
@@ -99,6 +99,7 @@ Last updated: 2026-02-23
 | `kis_api.py` | 주문/조회/예외 처리 | auto_trader + backtester |
 | `auto_trader.py` | 주문 라우팅, 상태 동기화 | risk/notifier/kis_api |
 | `backtester.py` | 전략 검증 파이프라인 | tests + scripts |
+| `local_chart_renderer.py` | mplfinance 차트 렌더링 | fetch_universe_charts |
 | `notifier.py` | 알림 발송 채널 통합 | 운영 스크립트 |
 
 ### scripts/
@@ -112,6 +113,8 @@ Last updated: 2026-02-23
 | `run_backtest.py` | 백테스트 엔트리포인트 | 수동 |
 | `security_check.py` | 설정/키/권한 경고 | 주기적 |
 | `weekly_report.py` | 주간 성과 요약 | 주간 |
+| `fetch_universe_charts.py` | 주간 차트 생성 (mplfinance) | 토요일 06:00 cron |
+| `weekly_charts.sh` | 차트 생성 래퍼 (로컬 호스트) | 토요일 06:00 cron |
 
 ### 설정 파일
 
