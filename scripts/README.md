@@ -1,4 +1,4 @@
-# Turtle Trading Scripts Reference (v2.0)
+# Turtle Trading Scripts Reference (v2.1)
 
 Complete reference for all operational scripts in the Turtle Trading system.
 
@@ -15,7 +15,7 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `daily_report.py` | Reporting | Daily summary with positions, signals, and risk | Daily 08:00 cron |
 | `check_overfitting.py` | Reporting | Auto-check backtest results for overfitting risk | Manual |
 | `paper_trade_report.py` | Reporting | Paper trading performance analysis (returns, MDD, win rate) | Manual |
-| `sync_positions.py` | Operations | KIS account balance vs local positions reconciliation | Post-market cron |
+| `sync_positions.py` | Operations | KIS account balance vs local positions reconciliation | Manual |
 | `weekly_report.py` | Reporting | Weekly performance summary with trade analysis | Saturday 09:00 cron |
 | `fetch_universe_charts.py` | Chart | mplfinance chart generation for all universe symbols | Saturday 06:00 cron |
 | `weekly_charts.sh` | Chart | Bash wrapper for local cron (logging, notification) | Saturday 06:00 cron |

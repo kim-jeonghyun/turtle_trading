@@ -158,7 +158,7 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 
 - `config/universe.yaml`: 심볼 단일 원본
 - `config/correlation_groups.yaml`: 상관군/최대 노출 정책
-- `config/notifications.yaml`: 알림 채널/이벤트
+- `config/notifications.yaml.example`: 알림 채널/이벤트 템플릿
 - `config/system_status.yaml`: 킬스위치 상태 (enable/disable)
 
 ## 6. 명명 규칙 및 타입 규약

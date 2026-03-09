@@ -30,10 +30,10 @@
 - 한국 주식 (삼성전자, SK하이닉스 등 — KIS OpenAPI)
 - 유럽/중국 ETF (VGK, MCHI 등)
 - 원자재 ETF (GLD, SLV, USO, DBA 등)
-- 채권 ETF (TLT, HYG 등)
+- 채권 ETF (TLT, SHY, TIP)
 - 암호화폐 ETF (BITO, ETHA)
-- REIT (VNQ, VNQI)
-- 대체투자 (MNA)
+- REIT (VNQ)
+- 대체투자 (DBMF)
 
 ### 알림 시스템
 
