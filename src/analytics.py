@@ -374,7 +374,6 @@ class TradeAnalytics:
         lines += ["", "=" * 50]
         return "\n".join(lines)
 
-
     def get_per_symbol_pnl(self) -> Dict[str, Dict[str, Any]]:
         """종목별 PnL 집계.
 
@@ -400,9 +399,7 @@ class TradeAnalytics:
             }
         return result
 
-    def get_equity_curve(
-        self, initial_capital: float, max_trades: int = 10000
-    ) -> List[Dict[str, Any]]:
+    def get_equity_curve(self, initial_capital: float, max_trades: int = 10000) -> List[Dict[str, Any]]:
         """청산 완료 거래 기반 에쿼티 커브 생성.
 
         Args:
@@ -415,14 +412,11 @@ class TradeAnalytics:
         if not self.trades:
             return []
 
-        sorted_trades = sorted(
-            self.trades, key=lambda t: str(t.get("exit_date", ""))
-        )
+        sorted_trades = sorted(self.trades, key=lambda t: str(t.get("exit_date", "")))
 
         if len(sorted_trades) > max_trades:
             logger.warning(
-                f"거래 수 {len(sorted_trades)}건이 max_trades={max_trades} 초과. "
-                f"최근 {max_trades}건만 사용합니다."
+                f"거래 수 {len(sorted_trades)}건이 max_trades={max_trades} 초과. 최근 {max_trades}건만 사용합니다."
             )
             sorted_trades = sorted_trades[-max_trades:]
 
@@ -437,11 +431,13 @@ class TradeAnalytics:
                 peak = equity
             dd_pct = ((peak - equity) / peak * 100) if peak > 0 else 0.0
 
-            curve.append({
-                "date": str(trade.get("exit_date", "")),
-                "equity": round(equity, 2),
-                "drawdown_pct": round(dd_pct, 2),
-            })
+            curve.append(
+                {
+                    "date": str(trade.get("exit_date", "")),
+                    "equity": round(equity, 2),
+                    "drawdown_pct": round(dd_pct, 2),
+                }
+            )
 
         return curve
 
@@ -452,22 +448,10 @@ class TradeAnalytics:
             {"system_1_pct", "system_2_pct", "long_pct", "short_pct", "total_pnl"}
         """
         total_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades)
-        s1_pnl = sum(
-            t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 1
-        )
-        s2_pnl = sum(
-            t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 2
-        )
-        long_pnl = sum(
-            t.get("pnl", 0) or 0
-            for t in self.trades
-            if t.get("direction", "").upper() == "LONG"
-        )
-        short_pnl = sum(
-            t.get("pnl", 0) or 0
-            for t in self.trades
-            if t.get("direction", "").upper() == "SHORT"
-        )
+        s1_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 1)
+        s2_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 2)
+        long_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("direction", "").upper() == "LONG")
+        short_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("direction", "").upper() == "SHORT")
 
         abs_total = abs(total_pnl) if total_pnl != 0 else 1.0
         return {
@@ -525,12 +509,14 @@ def detect_anomalies(
     # Rule 1: 과대 손실 (R < -3.0)
     for i, r in enumerate(r_multiples):
         if r < -3.0 and i < len(recent_trades):
-            anomalies.append({
-                "type": "OVERSIZED_LOSS",
-                "severity": "ERROR",
-                "description": f"R-배수 {r:.2f} (< -3.0): {recent_trades[i].get('symbol', '?')}",
-                "trade": recent_trades[i],
-            })
+            anomalies.append(
+                {
+                    "type": "OVERSIZED_LOSS",
+                    "severity": "ERROR",
+                    "description": f"R-배수 {r:.2f} (< -3.0): {recent_trades[i].get('symbol', '?')}",
+                    "trade": recent_trades[i],
+                }
+            )
 
     # Rule 2: 과잉 매매 (일 10건 초과)
     daily_counts: Dict[str, int] = defaultdict(int)
@@ -540,17 +526,17 @@ def detect_anomalies(
             daily_counts[day] += 1
     for day, count in daily_counts.items():
         if count > 10:
-            anomalies.append({
-                "type": "EXCESSIVE_TRADING",
-                "severity": "WARNING",
-                "description": f"{day}: {count}건 거래 (> 10건/일)",
-                "trade": {},
-            })
+            anomalies.append(
+                {
+                    "type": "EXCESSIVE_TRADING",
+                    "severity": "WARNING",
+                    "description": f"{day}: {count}건 거래 (> 10건/일)",
+                    "trade": {},
+                }
+            )
 
     # Rule 3: 연속 손실 (>= 5건)
-    sorted_recent = sorted(
-        recent_trades, key=lambda t: str(t.get("exit_date", ""))
-    )
+    sorted_recent = sorted(recent_trades, key=lambda t: str(t.get("exit_date", "")))
     consecutive_losses = 0
     max_consecutive = 0
     last_loss_trade = {}
@@ -564,27 +550,28 @@ def detect_anomalies(
         else:
             consecutive_losses = 0
     if max_consecutive >= 5:
-        anomalies.append({
-            "type": "CONSECUTIVE_LOSSES",
-            "severity": "WARNING",
-            "description": f"연속 {max_consecutive}건 손실 (>= 5건)",
-            "trade": last_loss_trade,
-        })
+        anomalies.append(
+            {
+                "type": "CONSECUTIVE_LOSSES",
+                "severity": "WARNING",
+                "description": f"연속 {max_consecutive}건 손실 (>= 5건)",
+                "trade": last_loss_trade,
+            }
+        )
 
     # Rule 4: 과대 노출 (단일 거래 PnL > 계좌의 5%)
     threshold = account_equity * 0.05
     for t in recent_trades:
         pnl = abs(t.get("pnl", 0) or 0)
         if pnl > threshold:
-            anomalies.append({
-                "type": "EXCESSIVE_EXPOSURE",
-                "severity": "WARNING",
-                "description": (
-                    f"{t.get('symbol', '?')} PnL ${pnl:,.0f} "
-                    f"(> 5% of ${account_equity:,.0f})"
-                ),
-                "trade": t,
-            })
+            anomalies.append(
+                {
+                    "type": "EXCESSIVE_EXPOSURE",
+                    "severity": "WARNING",
+                    "description": (f"{t.get('symbol', '?')} PnL ${pnl:,.0f} (> 5% of ${account_equity:,.0f})"),
+                    "trade": t,
+                }
+            )
 
     return anomalies
 
