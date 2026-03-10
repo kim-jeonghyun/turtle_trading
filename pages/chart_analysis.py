@@ -11,8 +11,10 @@ import streamlit as st
 from src.indicators import add_turtle_indicators
 
 
-def render(data_fetcher, data_store, universe, symbols, period):
+def render(data_fetcher, data_store, universe, **kwargs):
     """차트 분석 페이지 렌더링."""
+    symbols = kwargs.get("symbols", [])
+    period = kwargs.get("period", "1y")
     st.header("차트 분석")
 
     if not symbols:

@@ -268,3 +268,25 @@ class TestAppVersion:
         with patch("importlib.metadata.version", return_value="3.9.0"):
             result = _get_version_standalone()
             assert result == "3.9.0"
+
+
+class TestAppRenderCallsKeywordArgs:
+    """app.py의 render() 호출이 키워드 인자를 사용하는지 검증."""
+
+    def test_render_calls_use_keyword_args(self):
+        """app.py의 모든 render() 호출이 키워드 인자를 사용한다"""
+        import ast
+        from pathlib import Path
+
+        source = Path("app.py").read_text()
+        tree = ast.parse(source)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "render":
+                    # render() calls should have keywords for symbols and period
+                    kw_names = [kw.arg for kw in node.keywords]
+                    if "symbols" in kw_names or "period" in kw_names:
+                        assert "symbols" in kw_names, f"render() call missing 'symbols' keyword at line {node.lineno}"
+                        assert "period" in kw_names, f"render() call missing 'period' keyword at line {node.lineno}"

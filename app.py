@@ -75,19 +75,19 @@ def main():
 
     # 페이지 라우팅
     if page == "📊 대시보드":
-        dashboard.render(data_fetcher, data_store, universe, selected_symbols, period)
+        dashboard.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "📈 차트 분석":
-        chart_analysis.render(data_fetcher, data_store, universe, selected_symbols, period)
+        chart_analysis.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "🔔 시그널":
-        signals.render(data_fetcher, data_store, universe)
+        signals.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "📜 거래 기록":
-        trades.render(data_fetcher, data_store, universe)
+        trades.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "📊 성과 분석":
-        performance.render(data_fetcher, data_store, universe)
+        performance.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "🛡️ 리스크":
-        risk.render(data_fetcher, data_store, universe)
+        risk.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
     elif page == "🧪 백테스트":
-        backtest.render(data_fetcher, data_store, universe, selected_symbols, period)
+        backtest.render(data_fetcher, data_store, universe, symbols=selected_symbols, period=period)
 
 
 if __name__ == "__main__":
