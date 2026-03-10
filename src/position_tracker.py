@@ -65,6 +65,7 @@ class Position:
     exit_date: Optional[str] = None
     exit_price: Optional[float] = None
     exit_reason: Optional[str] = None
+    entry_reason: Optional[str] = None
     pnl: Optional[float] = None
     pnl_pct: Optional[float] = None
     r_multiple: Optional[float] = None  # N의 배수로 수익 표현
@@ -76,7 +77,11 @@ class Position:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Position":
-        return cls(**dict(data))
+        from dataclasses import fields
+
+        known_keys = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known_keys}
+        return cls(**filtered)
 
     def calculate_pnl(self, exit_price: float) -> float:
         """손익 계산"""

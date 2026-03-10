@@ -124,6 +124,139 @@ def render_chart(
         return False
 
 
+def render_trade_chart(
+    symbol: str,
+    df: pd.DataFrame,
+    entry_date: str,
+    entry_price: float,
+    exit_date: str,
+    exit_price: float,
+    entry_reason: str = "",
+    exit_reason: str = "",
+    stop_loss: Optional[float] = None,
+    output_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """진입/청산 마커가 포함된 거래 차트를 PNG로 렌더링한다.
+
+    Args:
+        symbol: 종목 코드
+        df: OHLCV DataFrame (DatetimeIndex)
+        entry_date: 진입일 (YYYY-MM-DD)
+        entry_price: 진입가
+        exit_date: 청산일 (YYYY-MM-DD)
+        exit_price: 청산가
+        entry_reason: 진입 사유 (레이블용)
+        exit_reason: 청산 사유 (레이블용)
+        stop_loss: 손절가 (있을 경우 수평선 표시)
+        output_dir: 출력 디렉토리 (None이면 현재 디렉토리)
+
+    Returns:
+        저장된 파일 경로, 실패 시 None
+    """
+    if df.empty or len(df) < 5:
+        logger.warning(f"[{symbol}] 데이터 부족, 거래 차트 생성 스킵")
+        return None
+
+    try:
+        out_dir = Path(output_dir) if output_dir is not None else Path(".")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = out_dir / f"{symbol}_trade.png"
+
+        # 진입/청산 마커 시리즈 구성
+        entry_markers = pd.Series(float("nan"), index=df.index)
+        exit_markers = pd.Series(float("nan"), index=df.index)
+
+        entry_dt = pd.Timestamp(entry_date)
+        exit_dt = pd.Timestamp(exit_date)
+
+        # 가장 가까운 인덱스 날짜를 찾아 마커 위치 설정
+        if entry_dt in df.index:
+            entry_markers[entry_dt] = entry_price
+        else:
+            nearest = df.index[df.index.get_indexer([entry_dt], method="nearest")[0]]
+            entry_markers[nearest] = entry_price
+
+        if exit_dt in df.index:
+            exit_markers[exit_dt] = exit_price
+        else:
+            nearest = df.index[df.index.get_indexer([exit_dt], method="nearest")[0]]
+            exit_markers[nearest] = exit_price
+
+        addplots = []
+        entry_label = f"진입 {entry_reason}".strip() if entry_reason else "진입"
+        exit_label = f"청산 {exit_reason}".strip() if exit_reason else "청산"
+
+        addplots.append(
+            mpf.make_addplot(
+                entry_markers,
+                type="scatter",
+                marker="^",
+                markersize=120,
+                color="green",
+                label=entry_label,
+            )
+        )
+        addplots.append(
+            mpf.make_addplot(
+                exit_markers,
+                type="scatter",
+                marker="v",
+                markersize=120,
+                color="red",
+                label=exit_label,
+            )
+        )
+
+        # 손절 수평선
+        if stop_loss is not None:
+            stop_series = pd.Series(stop_loss, index=df.index)
+            addplots.append(
+                mpf.make_addplot(
+                    stop_series,
+                    color="red",
+                    linestyle="--",
+                    width=0.8,
+                    label="손절",
+                )
+            )
+
+        mc = mpf.make_marketcolors(
+            up="#ef5350",
+            down="#2196f3",
+            edge="inherit",
+            wick="inherit",
+            volume="in",
+        )
+        style = mpf.make_mpf_style(
+            marketcolors=mc,
+            gridstyle="-",
+            gridcolor="#e0e0e0",
+            facecolor="white",
+        )
+
+        title = f"{symbol} 거래 차트"
+        mpf.plot(
+            df,
+            type="candle",
+            style=style,
+            addplot=addplots,
+            volume=True,
+            volume_panel=1,
+            panel_ratios=(6, 2),
+            figsize=(14, 7),
+            tight_layout=True,
+            title=title,
+            savefig=dict(fname=str(output_path), dpi=100, bbox_inches="tight"),
+        )
+
+        logger.info(f"[{symbol}] 거래 차트 저장: {output_path}")
+        return output_path
+
+    except Exception as e:
+        logger.error(f"[{symbol}] 거래 차트 렌더링 실패: {e}")
+        return None
+
+
 class BatchChartRenderer:
     """유니버스 전체 차트를 배치로 렌더링한다."""
 
