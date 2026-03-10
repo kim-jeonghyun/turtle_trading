@@ -388,17 +388,49 @@ class TestCLIRiskWiring:
 class TestPathResolution:
     """경로 해석 회귀 테스트"""
 
-    def test_universe_yaml_path_is_absolute(self):
-        """run_backtest.py가 Path(__file__) 기반 절대경로로 universe.yaml을 참조하는지 검증"""
-        import inspect
+    @patch("scripts.run_backtest.TurtleBacktester")
+    def test_universe_yaml_resolves_from_any_cwd(self, mock_bt_cls, tmp_path):
+        """CWD가 프로젝트 루트가 아니어도 config/universe.yaml이 올바르게 로드되는지 검증"""
+        import os
 
-        from scripts import run_backtest as rb
+        mock_bt = MagicMock()
+        mock_bt.run.return_value = BacktestResult(config=BacktestConfig())
+        mock_bt_cls.return_value = mock_bt
 
-        source = inspect.getsource(rb.run_backtest)
-        # 상대경로 "config/universe.yaml" 리터럴이 없어야 함
-        assert 'yaml_path="config/universe.yaml"' not in source
-        # Path(__file__) 기반 패턴이 존재해야 함
-        assert "Path(__file__)" in source
+        mock_data = {
+            "SPY": pd.DataFrame(
+                {
+                    "date": pd.date_range("2024-01-01", periods=10, freq="B"),
+                    "open": [100.0] * 10,
+                    "high": [105.0] * 10,
+                    "low": [95.0] * 10,
+                    "close": [102.0] * 10,
+                    "volume": [1000000] * 10,
+                }
+            )
+        }
+
+        args = MagicMock()
+        args.capital = 100000.0
+        args.risk = 0.01
+        args.system = 1
+        args.no_filter = False
+        args.commission = 0.001
+        args.no_risk_limits = False
+
+        # CWD를 임시 디렉터리로 변경하여 상대경로가 깨지는 상황 재현
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            # 상대경로였다면 여기서 FileNotFoundError 또는 기본 8종목 fallback 발생
+            run_backtest(mock_data, args)
+        finally:
+            os.chdir(original_cwd)
+
+        # UniverseManager가 호출되었고 TurtleBacktester에 symbol_groups가 전달됨
+        _, kwargs = mock_bt_cls.call_args
+        # symbol_groups가 None이 아니면 universe.yaml이 정상 로드된 것
+        assert kwargs["symbol_groups"] is not None
 
 
 if __name__ == "__main__":

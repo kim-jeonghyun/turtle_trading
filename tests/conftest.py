@@ -2,6 +2,7 @@
 Turtle Trading 테스트 공통 Fixtures
 """
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -9,6 +10,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+
+# macOS 기본 Matplotlib 백엔드(macosx)는 headless 환경에서 abort 가능.
+# 테스트 안정성을 위해 Agg 백엔드 고정.
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 
 @pytest.fixture
