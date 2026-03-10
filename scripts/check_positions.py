@@ -580,9 +580,16 @@ async def _run_checks():
 
     # 5. 이상 거래 감지
     try:
+        from datetime import timedelta
+
         from src.analytics import detect_anomalies
 
-        closed_positions = [p for p in tracker.get_all_positions() if p.status == "closed"]
+        lookback_cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        closed_positions = [
+            p
+            for p in tracker.get_all_positions()
+            if p.status == "closed" and p.exit_date and p.exit_date >= lookback_cutoff
+        ]
         recent_trade_dicts = []
         for p in closed_positions:
             recent_trade_dicts.append(

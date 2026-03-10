@@ -54,14 +54,15 @@ def render(data_fetcher, data_store, universe, **kwargs):
         return
 
     analytics = TradeAnalytics(trades)
+    initial_capital = kwargs.get("initial_capital", 100000)
 
     # 메트릭 카드 행
-    _render_metric_cards(analytics)
+    _render_metric_cards(analytics, initial_capital=initial_capital)
 
     st.divider()
 
     # 에쿼티 커브 + 드로다운
-    _render_equity_curve(analytics)
+    _render_equity_curve(analytics, initial_capital=initial_capital)
 
     st.divider()
 
@@ -117,7 +118,7 @@ def _filter_by_period(trades, months):
     return filtered
 
 
-def _render_metric_cards(analytics):
+def _render_metric_cards(analytics, *, initial_capital: int = 100000):
     """메트릭 카드 행."""
     stats = analytics.get_win_loss_stats()
     expectancy = analytics.get_expectancy()
@@ -133,7 +134,7 @@ def _render_metric_cards(analytics):
         st.metric("기대값 (E)", f"{expectancy:.3f}R")
     with col5:
         # MDD 게이지
-        equity_curve = analytics.get_equity_curve(initial_capital=100000)
+        equity_curve = analytics.get_equity_curve(initial_capital=initial_capital)
         if equity_curve:
             equity_values = [p["equity"] for p in equity_curve]
             dd_analysis = analytics.get_drawdown_analysis(equity_values)
@@ -142,11 +143,11 @@ def _render_metric_cards(analytics):
             st.metric("MDD", "N/A")
 
 
-def _render_equity_curve(analytics):
+def _render_equity_curve(analytics, *, initial_capital: int = 100000):
     """에쿼티 커브 + 드로다운 영역."""
     st.subheader("에쿼티 커브")
 
-    curve_data = analytics.get_equity_curve(initial_capital=100000)
+    curve_data = analytics.get_equity_curve(initial_capital=initial_capital)
     if not curve_data:
         st.info("에쿼티 커브를 생성할 수 없습니다.")
         return

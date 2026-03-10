@@ -14,7 +14,7 @@ from scripts.monthly_report import (
     get_previous_month,
     parse_month,
 )
-from src.position_tracker import Direction, Position
+from src.position_tracker import Direction, Position, PositionTracker
 
 # ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
@@ -54,13 +54,15 @@ def make_position(
 
 
 def make_mock_tracker(positions: list) -> MagicMock:
-    tracker = MagicMock()
+    tracker = MagicMock(spec=PositionTracker)
     tracker.get_all_positions.return_value = positions
     return tracker
 
 
 def make_mock_data_store() -> MagicMock:
-    return MagicMock()
+    from src.data_store import ParquetDataStore
+
+    return MagicMock(spec=ParquetDataStore)
 
 
 # ── test_parse_month_default ─────────────────────────────────────────────────
