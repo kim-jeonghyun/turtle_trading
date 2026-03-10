@@ -55,6 +55,7 @@ class UniverseManager:
 
         group_mapping = {
             "us_equity": AssetGroup.US_EQUITY,
+            "us_tech": AssetGroup.US_TECH,
             "kr_equity": AssetGroup.KR_EQUITY,
             "asia_equity": AssetGroup.ASIA_EQUITY,
             "eu_equity": AssetGroup.EU_EQUITY,

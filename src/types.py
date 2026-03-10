@@ -39,6 +39,7 @@ class SignalType(SerializableEnum):
 class AssetGroup(SerializableEnum):
     KR_EQUITY = "kr_equity"
     US_EQUITY = "us_equity"
+    US_TECH = "us_tech"
     ASIA_EQUITY = "asia_equity"
     EU_EQUITY = "eu_equity"
     CHINA_EQUITY = "china_equity"

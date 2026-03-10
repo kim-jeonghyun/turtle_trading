@@ -7,10 +7,11 @@ symbols:
     - {symbol: QQQ, name: "Nasdaq 100 ETF", group: us_equity, short_restricted: false}
     - {symbol: DIA, name: "Dow Jones ETF", group: us_equity, short_restricted: false}
     - {symbol: IWM, name: "Russell 2000 ETF", group: us_equity, short_restricted: false}
-    - {symbol: AAPL, name: "Apple", group: us_equity, short_restricted: false}
-    - {symbol: NVDA, name: "NVIDIA", group: us_equity, short_restricted: false}
-    - {symbol: TSLA, name: "Tesla", group: us_equity, short_restricted: false}
-    - {symbol: MSFT, name: "Microsoft", group: us_equity, short_restricted: false}
+  us_tech:
+    - {symbol: AAPL, name: "Apple", group: us_tech, short_restricted: false}
+    - {symbol: NVDA, name: "NVIDIA", group: us_tech, short_restricted: false}
+    - {symbol: TSLA, name: "Tesla", group: us_tech, short_restricted: false}
+    - {symbol: MSFT, name: "Microsoft", group: us_tech, short_restricted: false}
   kr_equity:
     - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
     - {symbol: "000660.KS", name: "SK하이닉스", group: kr_equity, short_restricted: true}
