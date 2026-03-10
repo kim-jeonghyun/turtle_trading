@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 _GROUP_MAPPING: dict[str, AssetGroup] = {
     "us_equity": AssetGroup.US_EQUITY,
     "us_etf": AssetGroup.US_EQUITY,
-    "us_tech": AssetGroup.US_EQUITY,
+    "us_tech": AssetGroup.US_TECH,
     "kr_equity": AssetGroup.KR_EQUITY,
     "asia_equity": AssetGroup.ASIA_EQUITY,
     "china_equity": AssetGroup.CHINA_EQUITY,

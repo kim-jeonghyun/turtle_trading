@@ -17,10 +17,10 @@ def risk_manager():
     symbol_groups = {
         "SPY": AssetGroup.US_EQUITY,
         "QQQ": AssetGroup.US_EQUITY,
-        "AAPL": AssetGroup.US_EQUITY,
-        "NVDA": AssetGroup.US_EQUITY,
-        "TSLA": AssetGroup.US_EQUITY,
-        "MSFT": AssetGroup.US_EQUITY,
+        "AAPL": AssetGroup.US_TECH,
+        "NVDA": AssetGroup.US_TECH,
+        "TSLA": AssetGroup.US_TECH,
+        "MSFT": AssetGroup.US_TECH,
         "AMZN": AssetGroup.US_EQUITY,
         "005930.KS": AssetGroup.KR_EQUITY,
         "000660.KS": AssetGroup.KR_EQUITY,
@@ -62,7 +62,8 @@ class TestCorrelatedGroupLimit:
     def test_exceeds_group_limit(self, risk_manager):
         risk_manager.add_position("SPY", 3, 1.5, Direction.LONG)
         risk_manager.add_position("QQQ", 3, 1.5, Direction.LONG)
-        ok, msg = risk_manager.can_add_position("AAPL", 1, 1.5, Direction.LONG)
+        # AMZN is US_EQUITY (same group as SPY/QQQ) → 6+1=7 > 6 group limit
+        ok, msg = risk_manager.can_add_position("AMZN", 1, 1.5, Direction.LONG)
         assert ok is False
         assert "그룹" in msg
 
@@ -87,14 +88,14 @@ class TestDirectionLimit:
         risk_manager.add_position("BTC-USD", 3, 1.0, Direction.LONG)
         # 총 9 units long, N=9*1.0=9.0 (< 10), 각 그룹 3 (< 6)
         ok, msg = risk_manager.can_add_position("AAPL", 1, 1.0, Direction.LONG)
-        # AAPL은 US_EQUITY 그룹에서 SPY(3)+AAPL(1)=4 < 6, 방향 10 < 12, N=9+1=10 <= 10
+        # AAPL은 US_TECH 그룹에서 AAPL(1) < 6, 방향 10 < 12, N=9+1=10 <= 10
         assert ok is True
 
     def test_exceeds_direction_limit(self):
         """방향 한도 초과 테스트 (N 노출 한도를 높여 방향 한도만 테스트)"""
         symbol_groups = {
             "SPY": AssetGroup.US_EQUITY,
-            "AAPL": AssetGroup.US_EQUITY,
+            "AAPL": AssetGroup.US_TECH,
             "005930.KS": AssetGroup.KR_EQUITY,
             "000660.KS": AssetGroup.KR_EQUITY,
             "BTC-USD": AssetGroup.CRYPTO,
@@ -490,6 +491,7 @@ class TestRealConfigGroupMapping:
 
         expected = {
             "SPY": AssetGroup.US_EQUITY,
+            "AAPL": AssetGroup.US_TECH,
             "EWJ": AssetGroup.ASIA_EQUITY,
             "MCHI": AssetGroup.CHINA_EQUITY,
             "VGK": AssetGroup.EU_EQUITY,
@@ -520,7 +522,7 @@ class TestShortDirectionLimit:
             "SPY": AssetGroup.US_EQUITY,
             "005930.KS": AssetGroup.KR_EQUITY,
             "BTC-USD": AssetGroup.CRYPTO,
-            "AAPL": AssetGroup.US_EQUITY,
+            "AAPL": AssetGroup.US_TECH,
         }
         limits = RiskLimits(
             max_units_per_market=4,

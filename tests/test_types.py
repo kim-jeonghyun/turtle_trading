@@ -131,6 +131,7 @@ class TestAssetGroup:
         assert "commodity" in groups
         assert "bond" in groups
         assert "inverse" in groups
+        assert "us_tech" in groups
 
     def test_additional_groups(self):
         groups = [g.value for g in AssetGroup]
@@ -144,9 +145,10 @@ class TestAssetGroup:
         assert AssetGroup("commodity_agri") == AssetGroup.COMMODITY_AGRI
         assert AssetGroup("reit") == AssetGroup.REIT
         assert AssetGroup("alternatives") == AssetGroup.ALTERNATIVES
+        assert AssetGroup("us_tech") == AssetGroup.US_TECH
 
     def test_count(self):
-        assert len(list(AssetGroup)) == 14
+        assert len(list(AssetGroup)) == 15
 
     def test_from_value(self):
         assert AssetGroup("us_equity") == AssetGroup.US_EQUITY

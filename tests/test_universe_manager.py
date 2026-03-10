@@ -477,6 +477,7 @@ class TestUniverseExpansion:
         assert mapping["BITO"] == AssetGroup.CRYPTO
         assert mapping["UUP"] == AssetGroup.CURRENCY
         assert mapping["COPX"] == AssetGroup.COMMODITY
+        assert mapping["AAPL"] == AssetGroup.US_TECH
 
     def test_existing_symbols_unchanged(self):
         """기존 심볼 그룹 변경 없음 검증"""
@@ -487,14 +488,21 @@ class TestUniverseExpansion:
         assert mapping["GLD"] == AssetGroup.COMMODITY
         assert mapping["TLT"] == AssetGroup.BOND
         assert mapping["SH"] == AssetGroup.INVERSE
+        # Issue #166: AAPL intentionally moved from US_EQUITY to US_TECH
+        assert mapping["AAPL"] == AssetGroup.US_TECH
 
     def test_no_silent_fallback_to_default_group(self):
         """US_EQUITY로 fallback된 심볼이 실제 us_equity 카테고리 심볼만인지 검증"""
         um = self._load()
-        expected_us_equity = {"SPY", "QQQ", "DIA", "IWM", "AAPL", "NVDA", "TSLA", "MSFT"}
+        expected_us_equity = {"SPY", "QQQ", "DIA", "IWM"}
         actual_us_equity = set(um.get_symbols_by_group(AssetGroup.US_EQUITY))
         assert actual_us_equity == expected_us_equity, (
             f"Unexpected US_EQUITY symbols: {actual_us_equity - expected_us_equity}"
+        )
+        expected_us_tech = {"AAPL", "NVDA", "TSLA", "MSFT"}
+        actual_us_tech = set(um.get_symbols_by_group(AssetGroup.US_TECH))
+        assert actual_us_tech == expected_us_tech, (
+            f"Unexpected US_TECH symbols: {actual_us_tech - expected_us_tech}"
         )
 
 
