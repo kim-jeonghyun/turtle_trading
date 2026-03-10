@@ -6,13 +6,15 @@ import pandas as pd
 import pytest
 
 from scripts.daily_report import generate_pnl_summary, generate_report
+from src.data_store import ParquetDataStore
+from src.position_tracker import PositionTracker
 
 
 class TestGenerateReport:
     @pytest.mark.asyncio
     async def test_daily_report_includes_pnl_summary(self):
         """generate_report 결과에 pnl_summary 섹션이 포함된다"""
-        mock_data_store = MagicMock()
+        mock_data_store = MagicMock(spec=ParquetDataStore)
         mock_data_store.load_signals.return_value = pd.DataFrame()
         mock_data_store.load_trades.return_value = pd.DataFrame()
         mock_data_store.get_cache_stats.return_value = {"cache_files": 0, "total_size_mb": 0.0}
@@ -50,7 +52,7 @@ class TestGeneratePnlSummary:
     @pytest.mark.asyncio
     async def test_daily_report_spot_price_failure_graceful(self):
         """spot_price API 실패 시 미실현 PnL은 N/A로 표시"""
-        mock_tracker = MagicMock()
+        mock_tracker = MagicMock(spec=PositionTracker)
         mock_pos = MagicMock()
         mock_pos.symbol = "SPY"
         mock_pos.direction.value = "LONG"

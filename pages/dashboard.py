@@ -7,6 +7,7 @@
 - 30일 PnL 미니 차트
 """
 
+import logging
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -15,6 +16,8 @@ import streamlit as st
 
 from src.indicators import add_turtle_indicators
 from src.position_tracker import PositionTracker
+
+logger = logging.getLogger(__name__)
 
 
 def render(data_fetcher, data_store, universe, symbols, period):
@@ -104,7 +107,8 @@ def _render_open_positions():
                     delta=f"Units: {pos.units}/{pos.max_units}",
                 )
                 st.caption(f"Stop: ${pos.stop_loss:.2f} | System {pos.system}")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"포지션 로드 실패: {e}", exc_info=True)
         st.info("포지션 데이터를 불러올 수 없습니다.")
 
 
