@@ -58,6 +58,9 @@ PYTHONPATH=/app
 # 주간 리포트 (매주 토요일 09:00)
 0 9 * * 6 cd /app && python scripts/weekly_report.py --send >> /app/logs/weekly_report.log 2>&1
 
+# 월간 리포트 (매월 1일 07:00)
+0 7 1 * * cd /app && python scripts/monthly_report.py --send >> /app/logs/monthly_report.log 2>&1
+
 # 로그 정리 (매주 일요일 04:00, 14일 이상 된 로그 삭제)
 0 4 * * 0 find /app/logs -name "*.log" -mtime +14 -delete >> /app/logs/cleanup.log 2>&1
 
