@@ -14,6 +14,7 @@ from src.market_calendar import get_market_status
 from src.position_tracker import PositionTracker
 from src.risk_manager import PortfolioRiskManager
 from src.script_helpers import load_config, setup_notifier
+from src.spot_price import SpotPriceFetcher
 from src.universe_manager import UniverseManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -41,6 +42,59 @@ def generate_cost_summary(today: str) -> dict:
     except Exception as e:
         logger.warning(f"비용 요약 조회 실패: {e}")
         return {}
+
+
+def generate_pnl_summary(
+    today: str,
+    trades,
+    tracker: PositionTracker | None = None,
+    data_store: ParquetDataStore | None = None,
+) -> dict:
+    """오늘의 PnL 요약: 실현 PnL + 미실현 PnL.
+
+    spot_price API 실패 시 미실현 PnL은 'N/A'로 표시하고 실현 PnL만 반환.
+    """
+    # 실현 PnL: 오늘 청산된 거래의 PnL 합산
+    realized_pnl = 0.0
+    if not trades.empty:
+        today_trades = trades[trades.get("exit_date", trades.index).astype(str).str.startswith(today)]
+        if not today_trades.empty:
+            realized_pnl = today_trades["pnl"].sum()
+
+    # 미실현 PnL: 오픈 포지션의 현재가 기준 평가 손익
+    unrealized_pnl: float | str = "N/A"
+    if tracker is not None:
+        open_positions = tracker.get_open_positions()
+        if open_positions:
+            try:
+                spot_fetcher = SpotPriceFetcher()
+                total_unrealized = 0.0
+                has_price = False
+
+                for pos in open_positions:
+                    try:
+                        spot = asyncio.get_event_loop().run_until_complete(spot_fetcher.fetch_spot_price(pos.symbol))
+                        if spot is not None:
+                            current_price = spot["price"]
+                            if pos.direction.value == "LONG":
+                                pos_pnl = (current_price - pos.entry_price) * pos.total_shares
+                            else:
+                                pos_pnl = (pos.entry_price - current_price) * pos.total_shares
+                            total_unrealized += pos_pnl
+                            has_price = True
+                    except Exception as e:
+                        logger.warning(f"미실현 PnL 조회 실패: {pos.symbol} - {e}")
+                        continue
+
+                if has_price:
+                    unrealized_pnl = total_unrealized
+            except Exception as e:
+                logger.warning(f"spot_price API 실패, 미실현 PnL은 N/A: {e}")
+
+    return {
+        "realized_pnl": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+    }
 
 
 def generate_report(
@@ -125,6 +179,9 @@ def generate_report(
         except Exception as e:
             logger.warning(f"R-배수 분석 실패: {e}")
 
+    # PnL 요약 (오늘 기준)
+    pnl_summary = generate_pnl_summary(today, trades, tracker, data_store)
+
     # 비용 요약 (오늘 기준)
     cost_summary = generate_cost_summary(today)
 
@@ -143,6 +200,7 @@ def generate_report(
         "캐시 파일": cache_stats["cache_files"],
         "데이터 크기": f"{cache_stats['total_size_mb']:.1f}MB",
         "비용 요약": cost_summary,
+        "pnl_summary": pnl_summary,
     }
 
 
@@ -172,6 +230,10 @@ async def main():
 
     # 알림 전송
     await notifier.send_daily_report(report_data)
+
+    # PnL 요약 알림
+    if "pnl_summary" in report_data:
+        await notifier.send_pnl_summary(report_data["pnl_summary"])
 
     # 오래된 캐시 정리
     data_store.cleanup_old_cache(max_age_days=7)
