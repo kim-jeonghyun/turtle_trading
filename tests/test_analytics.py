@@ -8,6 +8,7 @@ from src.analytics import (
     calculate_calmar_ratio,
     calculate_sharpe_ratio,
     calculate_sortino_ratio,
+    detect_anomalies,
 )
 
 # 테스트용 샘플 거래 데이터
@@ -602,3 +603,181 @@ class TestSummaryReport:
         report = analytics.generate_summary_report()
         assert isinstance(report, str)
         assert len(report) > 0
+
+
+class TestPerSymbolPnl:
+    """종목별 PnL 집계 테스트"""
+
+    def test_multiple_symbols(self):
+        """여러 종목 집계 정확성"""
+        analytics = TradeAnalytics(SAMPLE_TRADES)
+        result = analytics.get_per_symbol_pnl()
+
+        assert "SPY" in result
+        assert "QQQ" in result
+        assert "AAPL" in result
+        assert "TSLA" in result
+        assert len(result) == 4
+
+        assert result["SPY"]["total_pnl"] == 2000.0
+        assert result["SPY"]["trade_count"] == 1
+        assert result["SPY"]["win_rate"] == 1.0
+
+        assert result["QQQ"]["total_pnl"] == -500.0
+        assert result["QQQ"]["win_rate"] == 0.0
+
+    def test_same_symbol_multiple_trades(self):
+        """동일 종목 여러 거래 합산"""
+        trades = [
+            {**SAMPLE_TRADES[0], "pnl": 1000.0},
+            {**SAMPLE_TRADES[0], "pnl": -200.0, "exit_price": 445.0},
+        ]
+        analytics = TradeAnalytics(trades)
+        result = analytics.get_per_symbol_pnl()
+
+        assert result["SPY"]["trade_count"] == 2
+        assert result["SPY"]["total_pnl"] == 800.0
+        assert result["SPY"]["win_rate"] == 0.5
+
+    def test_empty_trades(self):
+        """거래 없을 때 빈 딕셔너리"""
+        analytics = TradeAnalytics([])
+        assert analytics.get_per_symbol_pnl() == {}
+
+
+class TestEquityCurve:
+    """에쿼티 커브 테스트"""
+
+    def test_cumulative_pnl(self):
+        """누적 PnL 정확성"""
+        analytics = TradeAnalytics(SAMPLE_TRADES)
+        curve = analytics.get_equity_curve(100000.0)
+
+        assert len(curve) == 4
+        # 시간순 정렬 (exit_date 기준)
+        assert curve[0]["date"] <= curve[-1]["date"]
+        # 최종 에쿼티 = 100000 + 2000 - 500 + 1600 - 600 = 102500
+        assert curve[-1]["equity"] == 102500.0
+
+    def test_drawdown_in_curve(self):
+        """drawdown_pct 포함 확인"""
+        analytics = TradeAnalytics(SAMPLE_TRADES)
+        curve = analytics.get_equity_curve(100000.0)
+
+        for point in curve:
+            assert "drawdown_pct" in point
+            assert point["drawdown_pct"] >= 0.0
+
+    def test_empty_trades(self):
+        """거래 없을 때 빈 리스트"""
+        analytics = TradeAnalytics([])
+        assert analytics.get_equity_curve(100000.0) == []
+
+    def test_max_trade_limit(self):
+        """max_trades 제한 동작"""
+        many_trades = [
+            {**SAMPLE_TRADES[0], "exit_date": f"2025-01-{i+1:02d}"}
+            for i in range(20)
+        ]
+        analytics = TradeAnalytics(many_trades)
+        curve = analytics.get_equity_curve(100000.0, max_trades=5)
+        assert len(curve) == 5
+
+
+class TestStrategyContribution:
+    """전략 기여도 테스트"""
+
+    def test_system_contribution(self):
+        """System 1/2 기여도"""
+        analytics = TradeAnalytics(SAMPLE_TRADES)
+        contrib = analytics.get_strategy_contribution()
+
+        assert "system_1_pct" in contrib
+        assert "system_2_pct" in contrib
+        assert "long_pct" in contrib
+        assert "short_pct" in contrib
+        assert "total_pnl" in contrib
+
+        # total_pnl = 2000 - 500 + 1600 - 600 = 2500
+        assert contrib["total_pnl"] == 2500.0
+
+        # System 1: (2000-500)/2500 = 60%
+        assert abs(contrib["system_1_pct"] - 60.0) < 0.01
+
+        # System 2: (1600-600)/2500 = 40%
+        assert abs(contrib["system_2_pct"] - 40.0) < 0.01
+
+    def test_all_long(self):
+        """모든 거래가 LONG일 때"""
+        analytics = TradeAnalytics(SAMPLE_TRADES)
+        contrib = analytics.get_strategy_contribution()
+        assert contrib["long_pct"] == 100.0
+        assert contrib["short_pct"] == 0.0
+
+    def test_empty_trades(self):
+        """거래 없을 때"""
+        analytics = TradeAnalytics([])
+        contrib = analytics.get_strategy_contribution()
+        assert contrib["total_pnl"] == 0.0
+
+
+class TestDetectAnomalies:
+    """이상 거래 감지 테스트"""
+
+    def _make_trade(self, symbol="SPY", pnl=100.0, exit_date="2026-03-05",
+                    entry_price=100.0, stop_loss=90.0, total_shares=10,
+                    system=1, direction="LONG"):
+        return {
+            "symbol": symbol, "system": system, "direction": direction,
+            "entry_price": entry_price, "exit_price": entry_price + pnl / max(total_shares, 1),
+            "stop_loss": stop_loss, "total_shares": total_shares,
+            "pnl": pnl, "entry_date": "2026-03-01", "exit_date": exit_date,
+        }
+
+    def test_oversized_loss(self):
+        """R < -3.0 과대 손실 감지"""
+        # risk = (100-90)*10 = 1000, pnl = -4000 → R = -4.0
+        trade = self._make_trade(pnl=-4000.0)
+        anomalies = detect_anomalies([trade], account_equity=100000.0)
+        types = [a["type"] for a in anomalies]
+        assert "OVERSIZED_LOSS" in types
+
+    def test_excessive_trading(self):
+        """일 10건 초과 과잉 매매 감지"""
+        trades = [self._make_trade(pnl=10.0) for _ in range(12)]
+        anomalies = detect_anomalies(trades, account_equity=100000.0)
+        types = [a["type"] for a in anomalies]
+        assert "EXCESSIVE_TRADING" in types
+
+    def test_consecutive_losses(self):
+        """연속 5건 이상 손실 감지"""
+        trades = [
+            self._make_trade(pnl=-100.0, exit_date=f"2026-03-{i+1:02d}")
+            for i in range(6)
+        ]
+        anomalies = detect_anomalies(trades, account_equity=100000.0)
+        types = [a["type"] for a in anomalies]
+        assert "CONSECUTIVE_LOSSES" in types
+
+    def test_excessive_exposure(self):
+        """단일 거래 PnL > 계좌 5% 감지"""
+        # 계좌 100,000의 5% = 5,000. PnL = 6,000 → 초과
+        trade = self._make_trade(pnl=6000.0)
+        anomalies = detect_anomalies([trade], account_equity=100000.0)
+        types = [a["type"] for a in anomalies]
+        assert "EXCESSIVE_EXPOSURE" in types
+
+    def test_no_anomaly(self):
+        """정상 거래에서 이상 없음"""
+        trade = self._make_trade(pnl=500.0)
+        anomalies = detect_anomalies([trade], account_equity=100000.0)
+        assert len(anomalies) == 0
+
+    def test_empty_trades(self):
+        """빈 거래 리스트"""
+        assert detect_anomalies([], account_equity=100000.0) == []
+
+    def test_zero_account_equity(self):
+        """계좌 자산 0일 때 빈 리스트"""
+        trade = self._make_trade(pnl=-100.0)
+        assert detect_anomalies([trade], account_equity=0) == []
