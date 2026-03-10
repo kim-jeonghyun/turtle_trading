@@ -77,6 +77,67 @@ class TestCorrelatedGroupLimit:
         assert ok is True
 
 
+class TestUsTechGroupLimit:
+    """US_TECH 그룹 독립 한도 검증 (Issue #166 후속)"""
+
+    def test_us_tech_group_at_boundary(self, risk_manager):
+        """US_TECH 정확히 6유닛 도달 — 성공 경계값"""
+        # AAPL(2) + NVDA(2) = 4 US_TECH units
+        risk_manager.add_position("AAPL", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("NVDA", 2, 1.0, Direction.LONG)
+        # TSLA(2) → 4+2=6 == 6 → 허용 (> 연산자이므로)
+        # N exposure: 4*1.0 + 2*1.0 = 6.0 < 10.0
+        ok, msg = risk_manager.can_add_position("TSLA", 2, 1.0, Direction.LONG)
+        assert ok is True, f"Exactly 6 units should be allowed: {msg}"
+
+    def test_us_tech_group_exceeds_limit(self, risk_manager):
+        """US_TECH 6유닛 한도 초과 검증"""
+        # AAPL(2) + NVDA(2) + TSLA(2) = 6 US_TECH units
+        risk_manager.add_position("AAPL", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("NVDA", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("TSLA", 2, 1.0, Direction.LONG)
+        # MSFT(1) → 6+1=7 > 6 → 거부
+        # N exposure: 6*1.0 + 1*1.0 = 7.0 < 10.0 → N한도 미도달
+        ok, msg = risk_manager.can_add_position("MSFT", 1, 1.0, Direction.LONG)
+        assert ok is False
+        assert "그룹" in msg
+        assert "us_tech" in msg
+
+    def test_us_equity_and_us_tech_independent(self, risk_manager):
+        """두 그룹 독립 동시 보유 (방향 한도 12 안전 마진 확보)"""
+        # US_EQUITY: SPY(2) + QQQ(2) = 4 (< 6 그룹 한도)
+        risk_manager.add_position("SPY", 2, 0.5, Direction.LONG)
+        risk_manager.add_position("QQQ", 2, 0.5, Direction.LONG)
+        # US_TECH: AAPL(2) + NVDA(2) + TSLA(2) = 6 (= 6 그룹 한도)
+        # 총 long: 4+6 = 10 (< 12 방향 한도, 안전 마진 2)
+        # N exposure: (4*0.5) + (6*1.0) = 2.0 + 6.0 = 8.0 < 10.0
+        risk_manager.add_position("AAPL", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("NVDA", 2, 1.0, Direction.LONG)
+        ok, msg = risk_manager.can_add_position("TSLA", 2, 1.0, Direction.LONG)
+        assert ok is True, f"US_TECH should be independent from US_EQUITY: {msg}"
+
+    def test_cross_group_asymmetry_tech_full(self, risk_manager):
+        """US_TECH 만석이어도 US_EQUITY 진입 허용"""
+        # US_TECH: AAPL(2) + NVDA(2) + TSLA(2) = 6 (만석)
+        risk_manager.add_position("AAPL", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("NVDA", 2, 1.0, Direction.LONG)
+        risk_manager.add_position("TSLA", 2, 1.0, Direction.LONG)
+        # US_EQUITY: SPY(1) → 별도 그룹이므로 허용
+        # N exposure: 6*1.0 + 1*1.0 = 7.0 < 10.0
+        ok, msg = risk_manager.can_add_position("SPY", 1, 1.0, Direction.LONG)
+        assert ok is True, f"US_EQUITY should be allowed when US_TECH is full: {msg}"
+
+    def test_cross_group_asymmetry_equity_full(self, risk_manager):
+        """US_EQUITY 만석이어도 US_TECH 진입 허용"""
+        # US_EQUITY: SPY(3) + QQQ(3) = 6 (만석)
+        risk_manager.add_position("SPY", 3, 1.0, Direction.LONG)
+        risk_manager.add_position("QQQ", 3, 1.0, Direction.LONG)
+        # US_TECH: AAPL(1) → 별도 그룹이므로 허용
+        # N exposure: 6*1.0 + 1*1.0 = 7.0 < 10.0
+        ok, msg = risk_manager.can_add_position("AAPL", 1, 1.0, Direction.LONG)
+        assert ok is True, f"US_TECH should be allowed when US_EQUITY is full: {msg}"
+
+
 class TestDirectionLimit:
     """단일 방향: 12 Units"""
 
