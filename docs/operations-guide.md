@@ -191,7 +191,7 @@ DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d
 
 ### cron 작업 스케줄
 
-아래 테이블은 `crontab` 파일의 18개 개별 엔트리를 14개 논리 그룹으로 정리한 것입니다. 각 그룹 내 복수 cron 엔트리는 시간대 분할(DST 커버, 장시간 분할 등)에 의한 것입니다.
+아래 테이블은 `crontab` 파일의 19개 개별 엔트리를 15개 논리 그룹으로 정리한 것입니다. 각 그룹 내 복수 cron 엔트리는 시간대 분할(DST 커버, 장시간 분할 등)에 의한 것입니다.
 
 | 시간 (KST) | 요일 | 작업 | 스크립트 | 로그 위치 |
 |------------|------|------|---------|----------|
@@ -202,6 +202,7 @@ DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d
 | 매 4시간 | 매일 | 시스템 건강 점검 | `health_check.py` | `/app/logs/health_check.log` |
 | 07:00 | 화-토 | US 시그널+포지션 체크 | `check_positions.py` | `/app/logs/check_us.log` |
 | 08:00 | 매일 | 일일 리포트 | `daily_report.py` | `/app/logs/daily_report.log` |
+| 07:00 | 매월 1일 | 월간 성과 리포트 | `monthly_report.py --send` | `/app/logs/monthly_report.log` |
 | 09:00 | 토 | 주간 리포트 | `weekly_report.py --send` | `/app/logs/weekly_report.log` |
 | 매시 09-15 | 월-금 | KR 리스크 한도 점검 (7회/일) | `check_risk_limits.py` | `/app/logs/risk_check.log` |
 | 5분 간격 09:00-15:25 | 월-금 | KR 장중 모니터링 (2 cron 엔트리) | `monitor_positions.py` | Python 로깅 |
