@@ -267,3 +267,52 @@ class TestRenderChartBoundary:
         output = str(tmp_path / "five.png")
         assert render_chart(df, "FIVE", "Five Rows", output) is True
         assert os.path.exists(output)
+
+
+class TestRenderTradeChart:
+    """render_trade_chart 테스트"""
+
+    def test_render_trade_chart_creates_png(self, sample_ohlcv, tmp_path):
+        """render_trade_chart가 PNG 파일을 생성한다"""
+        from src.local_chart_renderer import render_trade_chart
+
+        entry_date = str(sample_ohlcv.index[10].date())
+        exit_date = str(sample_ohlcv.index[40].date())
+
+        result = render_trade_chart(
+            symbol="SPY",
+            df=sample_ohlcv,
+            entry_date=entry_date,
+            entry_price=float(sample_ohlcv["Close"].iloc[10]),
+            exit_date=exit_date,
+            exit_price=float(sample_ohlcv["Close"].iloc[40]),
+            output_dir=tmp_path,
+        )
+
+        assert result is not None
+        assert result.exists()
+        assert result.name == "SPY_trade.png"
+        assert result.stat().st_size > 1000
+
+    def test_render_trade_chart_with_markers(self, sample_ohlcv, tmp_path):
+        """진입/청산 사유 마커 포함 시 정상 실행된다"""
+        from src.local_chart_renderer import render_trade_chart
+
+        entry_date = str(sample_ohlcv.index[5].date())
+        exit_date = str(sample_ohlcv.index[50].date())
+
+        result = render_trade_chart(
+            symbol="QQQ",
+            df=sample_ohlcv,
+            entry_date=entry_date,
+            entry_price=float(sample_ohlcv["Close"].iloc[5]),
+            exit_date=exit_date,
+            exit_price=float(sample_ohlcv["Close"].iloc[50]),
+            entry_reason="S1_20D_BREAKOUT",
+            exit_reason="10D_LOW_EXIT",
+            stop_loss=float(sample_ohlcv["Close"].iloc[5]) * 0.95,
+            output_dir=tmp_path,
+        )
+
+        assert result is not None
+        assert result.exists()

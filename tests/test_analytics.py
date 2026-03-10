@@ -781,3 +781,51 @@ class TestDetectAnomalies:
         """계좌 자산 0일 때 빈 리스트"""
         trade = self._make_trade(pnl=-100.0)
         assert detect_anomalies([trade], account_equity=0) == []
+
+
+class TestGenerateTradeDetailReport:
+    """generate_trade_detail_report 테스트"""
+
+    TRADE = {
+        "symbol": "SPY",
+        "system": 1,
+        "direction": "LONG",
+        "entry_date": "2025-01-15",
+        "exit_date": "2025-02-10",
+        "entry_price": 450.0,
+        "exit_price": 470.0,
+        "stop_loss": 440.0,
+        "total_shares": 100,
+        "pnl": 2000.0,
+        "r_multiple": 2.0,
+        "entry_reason": "S1_20D_BREAKOUT",
+        "exit_reason": "10D_LOW_EXIT",
+    }
+
+    def test_generate_trade_detail_report(self):
+        """마크다운 출력에 핵심 필드가 포함된다"""
+        analytics = TradeAnalytics([self.TRADE])
+        report = analytics.generate_trade_detail_report(self.TRADE)
+
+        assert isinstance(report, str)
+        assert "SPY" in report
+        assert "S1_20D_BREAKOUT" in report
+        assert "10D_LOW_EXIT" in report
+        assert "2025-01-15" in report
+        assert "2025-02-10" in report
+        assert "2.00R" in report
+        assert "LONG" in report
+
+    def test_report_without_reasons(self):
+        """진입/청산 사유 없는 거래도 오류 없이 처리된다"""
+        trade = {**self.TRADE, "entry_reason": None, "exit_reason": ""}
+        analytics = TradeAnalytics([trade])
+        report = analytics.generate_trade_detail_report(trade)
+        assert isinstance(report, str)
+        assert "SPY" in report
+
+    def test_report_holding_period(self):
+        """보유 기간이 일(日) 단위로 계산된다"""
+        analytics = TradeAnalytics([self.TRADE])
+        report = analytics.generate_trade_detail_report(self.TRADE)
+        assert "26일" in report  # 2025-01-15 to 2025-02-10 = 26일
