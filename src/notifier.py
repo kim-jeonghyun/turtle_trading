@@ -296,3 +296,69 @@ class NotificationManager:
             title="일일 리포트", body="오늘의 포트폴리오 현황입니다.", level=NotificationLevel.INFO, data=report_data
         )
         return await self.send_all(message)
+
+    async def send_pnl_summary(self, pnl_data: Dict):
+        """일일 PnL 요약 알림"""
+        realized = pnl_data.get("realized_pnl", 0)
+        unrealized = pnl_data.get("unrealized_pnl", "N/A")
+
+        if isinstance(unrealized, (int, float)):
+            total = realized + unrealized
+            body = f"일일 PnL: ${total:+,.0f} (실현 ${realized:+,.0f} / 미실현 ${unrealized:+,.0f})"
+        else:
+            body = f"일일 PnL: 실현 ${realized:+,.0f} / 미실현 {unrealized}"
+
+        message = NotificationMessage(
+            title="일일 PnL 요약",
+            body=body,
+            level=NotificationLevel.INFO,
+            data=pnl_data,
+        )
+        return await self.send_all(message)
+
+    async def send_performance_alert(self, stats: Dict):
+        """주간 성과 알림"""
+        win_rate = stats.get("win_rate", 0)
+        avg_r = stats.get("avg_r", 0)
+        total_pnl = stats.get("total_pnl", 0)
+        profit_factor = stats.get("profit_factor", 0)
+
+        body = (
+            f"주간 성과 요약\n"
+            f"승률: {win_rate:.1%}\n"
+            f"평균 R: {avg_r:.2f}\n"
+            f"총 PnL: ${total_pnl:+,.0f}\n"
+            f"Profit Factor: {profit_factor:.2f}"
+        )
+
+        message = NotificationMessage(
+            title="주간 성과 알림",
+            body=body,
+            level=NotificationLevel.INFO,
+            data=stats,
+        )
+        return await self.send_all(message)
+
+    async def send_anomaly_alert(self, anomalies: List[Dict]):
+        """이상 거래 감지 알림"""
+        if not anomalies:
+            return {}
+
+        lines = []
+        max_severity = NotificationLevel.WARNING
+        for anomaly in anomalies:
+            severity = anomaly.get("severity", "WARNING")
+            anomaly_type = anomaly.get("type", "UNKNOWN")
+            description = anomaly.get("description", "")
+            lines.append(f"[{severity}] {anomaly_type}: {description}")
+            if severity == "ERROR":
+                max_severity = NotificationLevel.ERROR
+
+        body = f"이상 거래 {len(anomalies)}건 감지\n\n" + "\n".join(lines)
+
+        message = NotificationMessage(
+            title="이상 거래 감지",
+            body=body,
+            level=max_severity,
+        )
+        return await self.send_all(message)

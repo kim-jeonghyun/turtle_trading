@@ -493,3 +493,129 @@ class TestSecurityFixes:
         """올바르지 않은 경로는 ValueError를 발생시킨다."""
         with pytest.raises(ValueError, match="webhook path"):
             DiscordChannel(webhook_url="https://discord.com/other/path")
+
+
+class TestPnlSummary:
+    @pytest.mark.asyncio
+    async def test_send_pnl_summary(self):
+        """PnL 요약 메시지 포맷 검증"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        pnl_data = {"realized_pnl": 500.0, "unrealized_pnl": 734.0}
+        results = await manager.send_pnl_summary(pnl_data)
+        assert "TestCh" in results
+
+        # 전송된 메시지 검증
+        sent_msg = mock_ch.send.call_args[0][0]
+        assert "일일 PnL 요약" in sent_msg.title
+        assert "실현" in sent_msg.body
+        assert "미실현" in sent_msg.body
+        assert sent_msg.level == NotificationLevel.INFO
+
+    @pytest.mark.asyncio
+    async def test_send_pnl_summary_unrealized_na(self):
+        """미실현 PnL이 N/A인 경우 포맷 검증"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        pnl_data = {"realized_pnl": 500.0, "unrealized_pnl": "N/A"}
+        await manager.send_pnl_summary(pnl_data)
+
+        sent_msg = mock_ch.send.call_args[0][0]
+        assert "N/A" in sent_msg.body
+
+
+class TestPerformanceAlert:
+    @pytest.mark.asyncio
+    async def test_send_performance_alert(self):
+        """주간 성과 알림 메시지 포맷 검증"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        stats = {
+            "win_rate": 0.65,
+            "avg_r": 1.5,
+            "total_pnl": 2500.0,
+            "profit_factor": 2.1,
+        }
+        results = await manager.send_performance_alert(stats)
+        assert "TestCh" in results
+
+        sent_msg = mock_ch.send.call_args[0][0]
+        assert "주간 성과 알림" in sent_msg.title
+        assert "65.0%" in sent_msg.body
+        assert "1.50" in sent_msg.body
+        assert "2.10" in sent_msg.body
+        assert sent_msg.level == NotificationLevel.INFO
+
+
+class TestAnomalyAlert:
+    @pytest.mark.asyncio
+    async def test_send_anomaly_alert(self):
+        """이상 거래 감지 알림 포맷 검증"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        anomalies = [
+            {"type": "OVERSIZED_LOSS", "severity": "ERROR", "description": "R-배수 -4.2: SPY"},
+            {"type": "CONSECUTIVE_LOSSES", "severity": "WARNING", "description": "연속 5건 손실"},
+        ]
+        results = await manager.send_anomaly_alert(anomalies)
+        assert "TestCh" in results
+
+        sent_msg = mock_ch.send.call_args[0][0]
+        assert "이상 거래 감지" in sent_msg.title
+        assert "2건" in sent_msg.body
+        assert "OVERSIZED_LOSS" in sent_msg.body
+        assert "CONSECUTIVE_LOSSES" in sent_msg.body
+        # ERROR severity가 있으면 ERROR 레벨
+        assert sent_msg.level == NotificationLevel.ERROR
+
+    @pytest.mark.asyncio
+    async def test_send_anomaly_alert_empty(self):
+        """빈 anomaly 리스트 전송 시 아무 것도 보내지 않는다"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        results = await manager.send_anomaly_alert([])
+        assert results == {}
+        mock_ch.send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_anomaly_alert_warning_only(self):
+        """WARNING severity만 있으면 WARNING 레벨"""
+        manager = NotificationManager()
+        mock_ch = AsyncMock()
+        mock_ch.__class__.__name__ = "TestCh"
+        mock_ch.send = AsyncMock(return_value=True)
+        manager.add_channel(mock_ch)
+        manager._health["TestCh"] = {"success": 0, "failure": 0}
+
+        anomalies = [
+            {"type": "EXCESSIVE_TRADING", "severity": "WARNING", "description": "10건 초과"},
+        ]
+        await manager.send_anomaly_alert(anomalies)
+
+        sent_msg = mock_ch.send.call_args[0][0]
+        assert sent_msg.level == NotificationLevel.WARNING

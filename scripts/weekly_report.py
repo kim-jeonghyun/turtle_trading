@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
 
+from src.analytics import TradeAnalytics
 from src.data_store import ParquetDataStore
 from src.notifier import NotificationLevel, NotificationMessage
 from src.position_tracker import PositionStatus, PositionTracker
@@ -169,6 +170,58 @@ def format_risk_summary(risk_manager: PortfolioRiskManager, positions: List) -> 
     return "\n".join(lines)
 
 
+def get_weekly_performance_stats(closed_trades: List) -> Dict:
+    """주간 성과 통계 계산 (TradeAnalytics 활용)"""
+    if not closed_trades:
+        return {
+            "win_rate": 0.0,
+            "avg_r": 0.0,
+            "total_pnl": 0.0,
+            "profit_factor": 0.0,
+        }
+
+    trade_dicts = []
+    for pos in closed_trades:
+        trade_dicts.append(
+            {
+                "symbol": pos.symbol,
+                "system": pos.system,
+                "direction": pos.direction.value if hasattr(pos.direction, "value") else pos.direction,
+                "entry_price": pos.entry_price,
+                "exit_price": pos.exit_price,
+                "stop_loss": pos.stop_loss,
+                "total_shares": pos.total_shares,
+                "pnl": pos.pnl or 0,
+                "exit_date": pos.exit_date,
+            }
+        )
+
+    analytics = TradeAnalytics(trade_dicts)
+    stats = analytics.get_win_loss_stats()
+    r_dist = analytics.get_r_distribution()
+
+    return {
+        "win_rate": stats["win_rate"],
+        "avg_r": r_dist["mean_r"],
+        "total_pnl": sum(t.get("pnl", 0) for t in trade_dicts),
+        "profit_factor": stats["profit_factor"],
+    }
+
+
+def format_performance_stats(stats: Dict) -> str:
+    """주간 성과 통계 포맷팅"""
+    if stats["win_rate"] == 0 and stats["total_pnl"] == 0:
+        return "  이번 주 청산 거래 없음"
+
+    lines = [
+        f"  승률: {stats['win_rate']:.1%}",
+        f"  평균 R: {stats['avg_r']:.2f}",
+        f"  총 PnL: ${stats['total_pnl']:+,.0f}",
+        f"  Profit Factor: {stats['profit_factor']:.2f}",
+    ]
+    return "\n".join(lines)
+
+
 async def main(args):
     """메인 함수"""
     logger.info("=== 주간 리포트 생성 ===")
@@ -201,6 +254,9 @@ async def main(args):
         logger.error(f"데이터 수집 오류: {e}")
         return
 
+    # 주간 성과 통계
+    perf_stats = get_weekly_performance_stats(closed_trades)
+
     # 주간 리포트 본문 구성
     week_start = get_week_start()
     _week_end = week_start + timedelta(days=7)
@@ -215,6 +271,9 @@ async def main(args):
 
 💰 **CLOSED TRADES**
 {format_closed_trades_summary(closed_trades, universe.get_display_name)}
+
+📊 **PERFORMANCE STATS**
+{format_performance_stats(perf_stats)}
 
 📈 **OPEN POSITIONS**
 {format_open_positions_summary(open_positions, universe.get_display_name)}
@@ -236,6 +295,9 @@ async def main(args):
         await notifier.send_message(
             NotificationMessage(title="Weekly Trading Report", body=report_body, level=NotificationLevel.INFO)
         )
+        # 성과 통계 알림
+        if perf_stats["total_pnl"] != 0 or perf_stats["win_rate"] != 0:
+            await notifier.send_performance_alert(perf_stats)
         logger.info("주간 리포트 전송 완료")
     else:
         logger.info("--send 플래그가 없어서 알림 전송을 건너뜁니다")

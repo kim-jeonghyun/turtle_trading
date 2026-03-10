@@ -578,7 +578,37 @@ async def _run_checks():
             reason=budget_reason,
         )
 
-    # 5. 요약 리포트
+    # 5. 이상 거래 감지
+    try:
+        from src.analytics import detect_anomalies
+
+        closed_positions = [p for p in tracker.get_all_positions() if p.status == "closed"]
+        recent_trade_dicts = []
+        for p in closed_positions:
+            recent_trade_dicts.append(
+                {
+                    "symbol": p.symbol,
+                    "system": p.system,
+                    "direction": p.direction.value if hasattr(p.direction, "value") else p.direction,
+                    "entry_price": p.entry_price,
+                    "exit_price": p.exit_price,
+                    "stop_loss": p.stop_loss,
+                    "total_shares": p.total_shares,
+                    "pnl": p.pnl,
+                    "exit_date": p.exit_date,
+                }
+            )
+        account_equity = config.get("initial_capital", 100000.0)
+        anomalies = detect_anomalies(recent_trade_dicts, account_equity)
+        if anomalies:
+            logger.warning(f"이상 거래 감지: {len(anomalies)}건")
+            await notifier.send_anomaly_alert(anomalies)
+        else:
+            logger.info("이상 거래 없음")
+    except Exception as e:
+        logger.error(f"이상 거래 감지 오류: {e}")
+
+    # 6. 요약 리포트
     summary = tracker.get_summary()
     logger.info(f"포지션 요약: {summary}")
 
