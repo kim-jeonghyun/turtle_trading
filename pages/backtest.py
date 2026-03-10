@@ -11,8 +11,10 @@ import streamlit as st
 from src.backtester import BacktestConfig, TurtleBacktester
 
 
-def render(data_fetcher, data_store, universe, symbols, period):
+def render(data_fetcher, data_store, universe, **kwargs):
     """백테스트 페이지 렌더링."""
+    symbols = kwargs.get("symbols", [])
+    period = kwargs.get("period", "1y")
     st.header("백테스트")
 
     col1, col2 = st.columns(2)

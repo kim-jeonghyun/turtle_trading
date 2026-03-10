@@ -196,6 +196,38 @@ class TestBacktestTradeDataclass:
         assert trade.exit_reason == ""
 
 
+class TestTradeEntryReason:
+    def test_trade_entry_reason_populated(self):
+        """백테스트 완료된 Trade에 entry_reason이 채워진다"""
+        import pandas as pd
+
+        from src.backtester import BacktestConfig, TurtleBacktester
+
+        # Create minimal OHLCV data with a breakout and then a close
+        dates = pd.date_range("2026-01-01", periods=60, freq="B")
+        data = pd.DataFrame({
+            "date": dates,
+            "open": [100] * 60,
+            "high": [101] * 20 + [120] * 20 + [101] * 20,
+            "low": [99] * 20 + [99] * 20 + [80] * 20,
+            "close": [100] * 20 + [115] * 20 + [85] * 20,
+            "volume": [1000000] * 60,
+        })
+
+        config = BacktestConfig(
+            initial_capital=100000,
+            system=1,
+            risk_percent=0.01,
+        )
+        bt = TurtleBacktester(config)
+        bt.run({"TEST": data})
+
+        assert len(bt.trades) > 0, "백테스트에서 최소 1개의 거래가 발생해야 한다"
+        for trade in bt.trades:
+            assert trade.entry_reason != "", f"Trade for {trade.symbol} has empty entry_reason"
+            assert "진입" in trade.entry_reason, f"entry_reason should contain '진입': {trade.entry_reason}"
+
+
 class TestBacktestEntryExitColumns:
     def test_system1_columns(self):
         config = BacktestConfig(system=1)

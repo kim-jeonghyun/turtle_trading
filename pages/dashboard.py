@@ -20,8 +20,10 @@ from src.position_tracker import PositionTracker
 logger = logging.getLogger(__name__)
 
 
-def render(data_fetcher, data_store, universe, symbols, period):
+def render(data_fetcher, data_store, universe, **kwargs):
     """대시보드 페이지 렌더링."""
+    symbols = kwargs.get("symbols", [])
+    period = kwargs.get("period", "1y")
     st.header("포트폴리오 대시보드")
 
     col1, col2, col3, col4 = st.columns(4)

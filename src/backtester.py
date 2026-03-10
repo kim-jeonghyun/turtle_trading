@@ -32,6 +32,7 @@ class Trade:
     pnl: float = 0.0
     pnl_pct: float = 0.0
     exit_reason: str = ""
+    entry_reason: str = ""
 
 
 @dataclass
@@ -73,6 +74,7 @@ class TurtleBacktester:
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
+        self.entry_reasons: Dict[str, str] = {}
         self.risk_manager: Optional[PortfolioRiskManager] = (
             PortfolioRiskManager(symbol_groups=symbol_groups or {}) if symbol_groups is not None else None
         )
@@ -210,6 +212,8 @@ class TurtleBacktester:
         self.pyramid_manager.create_position(symbol, direction, date, price, unit_size, n_value)
         if self.risk_manager is not None:
             self.risk_manager.add_position(symbol, 1, n_value, direction)
+        direction_label = "롱" if direction == Direction.LONG else "숏"
+        self.entry_reasons[symbol] = f"System {self.config.system} {direction_label} 진입: {price:.2f} 돌파"
         logger.debug(f"진입: {symbol} {direction.value} @ {price:.2f} x {unit_size}")
 
     def _add_pyramid(self, symbol: str, date: datetime, price: float, n_value: float):
@@ -263,6 +267,7 @@ class TurtleBacktester:
             pnl=pnl,
             pnl_pct=pnl_pct,
             exit_reason=reason,
+            entry_reason=self.entry_reasons.pop(symbol, ""),
         )
         self.trades.append(trade)
 
