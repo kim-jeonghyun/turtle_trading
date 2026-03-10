@@ -462,6 +462,65 @@ class TradeAnalytics:
             "total_pnl": round(total_pnl, 2),
         }
 
+    def generate_trade_detail_report(self, trade: dict) -> str:
+        """
+        개별 거래의 상세 리포트를 마크다운 문자열로 반환한다.
+
+        Args:
+            trade: 거래 딕셔너리 (symbol, entry_date, exit_date, entry_price,
+                   exit_price, pnl, r_multiple, entry_reason, exit_reason 등 포함)
+
+        Returns:
+            마크다운 형식의 거래 상세 리포트 문자열
+        """
+        symbol = trade.get("symbol", "N/A")
+        entry_date = trade.get("entry_date", "N/A")
+        exit_date = trade.get("exit_date", "N/A")
+        entry_price = trade.get("entry_price", 0.0) or 0.0
+        exit_price = trade.get("exit_price", 0.0) or 0.0
+        pnl = trade.get("pnl", 0.0) or 0.0
+        r_multiple = trade.get("r_multiple", None)
+        entry_reason = trade.get("entry_reason", "") or ""
+        exit_reason = trade.get("exit_reason", "") or ""
+        direction = trade.get("direction", "N/A")
+        total_shares = trade.get("total_shares", 0) or 0
+
+        # 보유 기간 계산
+        holding_days = "N/A"
+        try:
+            from datetime import datetime
+
+            fmt = "%Y-%m-%d"
+            entry_dt = datetime.strptime(str(entry_date)[:10], fmt)
+            exit_dt = datetime.strptime(str(exit_date)[:10], fmt)
+            holding_days = str((exit_dt - entry_dt).days) + "일"
+        except Exception:
+            pass
+
+        pnl_sign = "+" if pnl >= 0 else ""
+        r_str = f"{r_multiple:.2f}R" if r_multiple is not None else "N/A"
+
+        lines = [
+            f"## 거래 상세 리포트: {symbol}",
+            "",
+            "| 항목 | 내용 |",
+            "|------|------|",
+            f"| 종목 | {symbol} |",
+            f"| 방향 | {direction} |",
+            f"| 수량 | {total_shares:,}주 |",
+            f"| 진입일 | {entry_date} |",
+            f"| 청산일 | {exit_date} |",
+            f"| 보유 기간 | {holding_days} |",
+            f"| 진입가 | ${entry_price:,.2f} |",
+            f"| 청산가 | ${exit_price:,.2f} |",
+            f"| 손익 | {pnl_sign}${pnl:,.2f} |",
+            f"| R-배수 | {r_str} |",
+            f"| 진입 사유 | {entry_reason if entry_reason else '—'} |",
+            f"| 청산 사유 | {exit_reason if exit_reason else '—'} |",
+        ]
+
+        return "\n".join(lines)
+
 
 # ── 독립 함수 ──────────────────────────────────────────────────────────────
 

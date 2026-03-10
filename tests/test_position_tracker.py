@@ -318,3 +318,70 @@ class TestPersistence:
         assert summary["total_positions"] == 2
         assert summary["open_positions"] == 1
         assert summary["closed_positions"] == 1
+
+
+class TestEntryReason:
+    def test_entry_reason_serialization(self, tracker):
+        """entry_reason 필드가 직렬화/역직렬화된다"""
+        from src.position_tracker import Position
+
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        pos.entry_reason = "S1_20D_BREAKOUT"
+        d = pos.to_dict()
+        restored = Position.from_dict(d)
+        assert restored.entry_reason == "S1_20D_BREAKOUT"
+
+    def test_from_dict_unknown_key_resilience(self):
+        """from_dict은 알 수 없는 키를 무시한다"""
+        from src.position_tracker import Position
+        from src.types import Direction
+
+        data = {
+            "position_id": "pos-001",
+            "symbol": "SPY",
+            "system": 1,
+            "direction": Direction.LONG,
+            "entry_date": "2025-01-01",
+            "entry_price": 100.0,
+            "entry_n": 2.5,
+            "stop_loss": 95.0,
+            "total_shares": 40,
+            "units": 1,
+            "max_units": 4,
+            "shares_per_unit": 40,
+            "pyramid_level": 0,
+            "exit_period": 10,
+            "status": "open",
+            "last_update": "2025-01-01",
+            "unknown_future_field": "some_value",  # 알 수 없는 키
+        }
+        pos = Position.from_dict(data)
+        assert pos.symbol == "SPY"
+        assert pos.entry_price == 100.0
+
+    def test_from_dict_missing_optional_key(self):
+        """from_dict은 entry_reason 없이도 동작한다 (하위 호환)"""
+        from src.position_tracker import Position
+        from src.types import Direction
+
+        data = {
+            "position_id": "pos-002",
+            "symbol": "QQQ",
+            "system": 2,
+            "direction": Direction.LONG,
+            "entry_date": "2025-02-01",
+            "entry_price": 200.0,
+            "entry_n": 3.0,
+            "stop_loss": 194.0,
+            "total_shares": 30,
+            "units": 1,
+            "max_units": 4,
+            "shares_per_unit": 30,
+            "pyramid_level": 0,
+            "exit_period": 20,
+            "status": "open",
+            "last_update": "2025-02-01",
+            # entry_reason 없음
+        }
+        pos = Position.from_dict(data)
+        assert pos.entry_reason is None
