@@ -273,20 +273,28 @@ class TestAppVersion:
 class TestAppRenderCallsKeywordArgs:
     """app.py의 render() 호출이 키워드 인자를 사용하는지 검증."""
 
-    def test_render_calls_use_keyword_args(self):
-        """app.py의 모든 render() 호출이 키워드 인자를 사용한다"""
+    def test_all_render_calls_use_keyword_args(self):
+        """app.py의 모든 render() 호출 7개가 symbols/period 키워드 인자를 사용한다"""
         import ast
         from pathlib import Path
 
         source = Path("app.py").read_text()
         tree = ast.parse(source)
 
+        render_calls = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 func = node.func
                 if isinstance(func, ast.Attribute) and func.attr == "render":
-                    # render() calls should have keywords for symbols and period
-                    kw_names = [kw.arg for kw in node.keywords]
-                    if "symbols" in kw_names or "period" in kw_names:
-                        assert "symbols" in kw_names, f"render() call missing 'symbols' keyword at line {node.lineno}"
-                        assert "period" in kw_names, f"render() call missing 'period' keyword at line {node.lineno}"
+                    render_calls.append(node)
+
+        # 7개 페이지 모듈의 render() 호출이 모두 존재해야 한다
+        assert len(render_calls) == 7, f"Expected 7 render() calls, found {len(render_calls)}"
+
+        for node in render_calls:
+            kw_names = [kw.arg for kw in node.keywords]
+            # 모든 render() 호출은 symbols와 period를 키워드로 전달해야 한다
+            assert "symbols" in kw_names, f"render() call at line {node.lineno} missing 'symbols' keyword"
+            assert "period" in kw_names, f"render() call at line {node.lineno} missing 'period' keyword"
+            # 위치 인자는 data_fetcher, data_store, universe 3개만 허용
+            assert len(node.args) == 3, f"render() call at line {node.lineno} has {len(node.args)} positional args, expected 3"

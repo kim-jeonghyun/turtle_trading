@@ -222,10 +222,10 @@ class TestTradeEntryReason:
         bt = TurtleBacktester(config)
         bt.run({"TEST": data})
 
-        if bt.trades:
-            for trade in bt.trades:
-                assert trade.entry_reason != "", f"Trade for {trade.symbol} has empty entry_reason"
-                assert "진입" in trade.entry_reason, f"entry_reason should contain '진입': {trade.entry_reason}"
+        assert len(bt.trades) > 0, "백테스트에서 최소 1개의 거래가 발생해야 한다"
+        for trade in bt.trades:
+            assert trade.entry_reason != "", f"Trade for {trade.symbol} has empty entry_reason"
+            assert "진입" in trade.entry_reason, f"entry_reason should contain '진입': {trade.entry_reason}"
 
 
 class TestBacktestEntryExitColumns:

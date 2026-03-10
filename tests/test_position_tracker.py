@@ -29,7 +29,7 @@ class TestPositionLifecycle:
         assert pos.stop_loss == 95.0  # 100 - 2*2.5
 
     def test_open_position_stores_entry_reason(self, tracker):
-        """open_position에 entry_reason을 전달하면 Position 객체에 저장된다"""
+        """open_position에 entry_reason을 전달하면 Position에 저장되고 persistence round-trip 후에도 유지된다"""
         pos = tracker.open_position(
             symbol="TEST",
             system=1,
@@ -40,6 +40,12 @@ class TestPositionLifecycle:
             entry_reason="System 1 롱 진입: 100.00 돌파",
         )
         assert pos.entry_reason == "System 1 롱 진입: 100.00 돌파"
+
+        # persistence round-trip: 저장 후 재로드하여 entry_reason 유지 확인
+        loaded_positions = tracker._load_positions()
+        matched = [p for p in loaded_positions if p.symbol == "TEST"]
+        assert len(matched) == 1
+        assert matched[0].entry_reason == "System 1 롱 진입: 100.00 돌파"
 
         # entry_reason 미전달 시 None (하위호환)
         pos2 = tracker.open_position(
