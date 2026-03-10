@@ -44,7 +44,7 @@ def generate_cost_summary(today: str) -> dict:
         return {}
 
 
-def generate_pnl_summary(
+async def generate_pnl_summary(
     today: str,
     trades,
     tracker: PositionTracker | None = None,
@@ -73,7 +73,7 @@ def generate_pnl_summary(
 
                 for pos in open_positions:
                     try:
-                        spot = asyncio.get_event_loop().run_until_complete(spot_fetcher.fetch_spot_price(pos.symbol))
+                        spot = await spot_fetcher.fetch_spot_price(pos.symbol)
                         if spot is not None:
                             current_price = spot["price"]
                             if pos.direction.value == "LONG":
@@ -97,7 +97,7 @@ def generate_pnl_summary(
     }
 
 
-def generate_report(
+async def generate_report(
     data_store: ParquetDataStore,
     tracker: PositionTracker | None = None,
     risk_manager: PortfolioRiskManager | None = None,
@@ -180,7 +180,7 @@ def generate_report(
             logger.warning(f"R-배수 분석 실패: {e}")
 
     # PnL 요약 (오늘 기준)
-    pnl_summary = generate_pnl_summary(today, trades, tracker, data_store)
+    pnl_summary = await generate_pnl_summary(today, trades, tracker, data_store)
 
     # 비용 요약 (오늘 기준)
     cost_summary = generate_cost_summary(today)
@@ -225,7 +225,7 @@ async def main():
         universe = UniverseManager()
 
     # 리포트 생성
-    report_data = generate_report(data_store, tracker, risk_manager, universe)
+    report_data = await generate_report(data_store, tracker, risk_manager, universe)
     logger.info(f"리포트 데이터: {report_data}")
 
     # 알림 전송

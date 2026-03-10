@@ -1,14 +1,16 @@
 """scripts/daily_report.py 단위 테스트"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from scripts.daily_report import generate_pnl_summary, generate_report
 
 
 class TestGenerateReport:
-    def test_daily_report_includes_pnl_summary(self):
+    @pytest.mark.asyncio
+    async def test_daily_report_includes_pnl_summary(self):
         """generate_report 결과에 pnl_summary 섹션이 포함된다"""
         mock_data_store = MagicMock()
         mock_data_store.load_signals.return_value = pd.DataFrame()
@@ -18,21 +20,23 @@ class TestGenerateReport:
         pnl_mock = {"realized_pnl": 0, "unrealized_pnl": "N/A"}
         with patch("scripts.daily_report.get_market_status", return_value="closed"):
             with patch("scripts.daily_report.generate_cost_summary", return_value={}):
-                with patch("scripts.daily_report.generate_pnl_summary", return_value=pnl_mock):
-                    report = generate_report(mock_data_store)
+                with patch("scripts.daily_report.generate_pnl_summary", new_callable=AsyncMock, return_value=pnl_mock):
+                    report = await generate_report(mock_data_store)
 
         assert "pnl_summary" in report
         assert "realized_pnl" in report["pnl_summary"]
 
 
 class TestGeneratePnlSummary:
-    def test_pnl_summary_no_trades(self):
+    @pytest.mark.asyncio
+    async def test_pnl_summary_no_trades(self):
         """거래가 없으면 realized_pnl=0, unrealized_pnl=N/A"""
-        result = generate_pnl_summary("2026-03-10", pd.DataFrame(), None, None)
+        result = await generate_pnl_summary("2026-03-10", pd.DataFrame(), None, None)
         assert result["realized_pnl"] == 0.0
         assert result["unrealized_pnl"] == "N/A"
 
-    def test_pnl_summary_with_realized(self):
+    @pytest.mark.asyncio
+    async def test_pnl_summary_with_realized(self):
         """오늘 청산된 거래의 실현 PnL이 합산된다"""
         trades = pd.DataFrame(
             {
@@ -40,10 +44,11 @@ class TestGeneratePnlSummary:
                 "pnl": [100.0, 200.0, 500.0],
             }
         )
-        result = generate_pnl_summary("2026-03-10", trades, None, None)
+        result = await generate_pnl_summary("2026-03-10", trades, None, None)
         assert result["realized_pnl"] == 300.0
 
-    def test_daily_report_spot_price_failure_graceful(self):
+    @pytest.mark.asyncio
+    async def test_daily_report_spot_price_failure_graceful(self):
         """spot_price API 실패 시 미실현 PnL은 N/A로 표시"""
         mock_tracker = MagicMock()
         mock_pos = MagicMock()
@@ -62,7 +67,7 @@ class TestGeneratePnlSummary:
 
             mock_fetcher.fetch_spot_price = _raise
 
-            result = generate_pnl_summary("2026-03-10", pd.DataFrame(), mock_tracker, None)
+            result = await generate_pnl_summary("2026-03-10", pd.DataFrame(), mock_tracker, None)
 
         assert result["unrealized_pnl"] == "N/A"
         assert result["realized_pnl"] == 0.0

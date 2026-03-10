@@ -16,11 +16,11 @@ jobs:
           python-version: "3.12"
       - run: pip install ".[dev]"
       - name: Ruff check
-        run: ruff check src/ scripts/
+        run: ruff check src/ scripts/ pages/
       - name: Ruff format
-        run: ruff format src/ scripts/ --check
+        run: ruff format src/ scripts/ pages/ --check
       - name: MyPy
-        run: mypy src/ scripts/
+        run: mypy src/ scripts/ pages/
 
   test:
     runs-on: ubuntu-latest

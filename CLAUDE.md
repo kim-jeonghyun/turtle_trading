@@ -93,6 +93,21 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 
 ## 5. 프로젝트 구조
 
+### pages/ (Streamlit 대시보드 모듈)
+
+| 파일 | 책임 |
+|------|------|
+| `__init__.py` | 패키지 초기화 |
+| `dashboard.py` | 포트폴리오 대시보드 (캐시 통계, 오픈 포지션, PnL 추이) |
+| `chart_analysis.py` | 차트 분석 (캔들스틱, 도치안 채널, ATR) |
+| `signals.py` | 시그널 기록 조회 |
+| `trades.py` | 거래 기록 (R-배수, 상세 expander, CSV 다운로드) |
+| `performance.py` | 성과 분석 (에쿼티 커브, R-배수 히스토그램, 월별 히트맵) |
+| `risk.py` | 리스크 현황 (N 노출, 상관그룹, 킬스위치/가드 상태) |
+| `backtest.py` | 백테스트 실행 |
+
+> `app.py`가 `st.radio` 수동 라우팅으로 페이지 선택. `pages/`는 일반 Python 패키지 (Streamlit 네이티브 multi-page 아님).
+
 ### src/
 
 | 파일 | 책임 | 의존 방향 |

@@ -289,7 +289,7 @@ def build_monthly_heatmap_data(monthly_returns: dict) -> pd.DataFrame:
     if not monthly_returns:
         return pd.DataFrame()
 
-    data = defaultdict(dict)
+    data: dict[str, dict[int, float]] = defaultdict(dict)
     for key, pnl in monthly_returns.items():
         try:
             parts = key.split("-")
