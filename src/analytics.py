@@ -9,7 +9,8 @@
 import logging
 import math
 from collections import defaultdict
-from typing import Dict, List
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -373,8 +374,206 @@ class TradeAnalytics:
         lines += ["", "=" * 50]
         return "\n".join(lines)
 
+    def get_per_symbol_pnl(self) -> Dict[str, Dict[str, Any]]:
+        """종목별 PnL 집계.
+
+        Returns:
+            {symbol: {"total_pnl", "trade_count", "win_rate", "avg_r"}}
+        """
+        symbol_data: Dict[str, list] = defaultdict(list)
+        for trade in self.trades:
+            symbol = trade.get("symbol", "UNKNOWN")
+            symbol_data[symbol].append(trade)
+
+        result: Dict[str, Dict[str, Any]] = {}
+        for symbol, trades in symbol_data.items():
+            sub = TradeAnalytics(trades)
+            pnl_values = [t.get("pnl", 0) or 0 for t in trades]
+            winners = sum(1 for p in pnl_values if p > 0)
+            r_dist = sub.get_r_distribution()
+            result[symbol] = {
+                "total_pnl": round(sum(pnl_values), 2),
+                "trade_count": len(trades),
+                "win_rate": round(winners / len(trades), 4) if trades else 0.0,
+                "avg_r": r_dist["mean_r"],
+            }
+        return result
+
+    def get_equity_curve(self, initial_capital: float, max_trades: int = 10000) -> List[Dict[str, Any]]:
+        """청산 완료 거래 기반 에쿼티 커브 생성.
+
+        Args:
+            initial_capital: 초기 자본금
+            max_trades: 최대 거래 수 (성능 보호, 기본 10,000)
+
+        Returns:
+            [{"date": str, "equity": float, "drawdown_pct": float}, ...]
+        """
+        if not self.trades:
+            return []
+
+        sorted_trades = sorted(self.trades, key=lambda t: str(t.get("exit_date", "")))
+
+        if len(sorted_trades) > max_trades:
+            logger.warning(
+                f"거래 수 {len(sorted_trades)}건이 max_trades={max_trades} 초과. 최근 {max_trades}건만 사용합니다."
+            )
+            sorted_trades = sorted_trades[-max_trades:]
+
+        curve: List[Dict[str, Any]] = []
+        equity = initial_capital
+        peak = initial_capital
+
+        for trade in sorted_trades:
+            pnl = trade.get("pnl", 0) or 0
+            equity += pnl
+            if equity > peak:
+                peak = equity
+            dd_pct = ((peak - equity) / peak * 100) if peak > 0 else 0.0
+
+            curve.append(
+                {
+                    "date": str(trade.get("exit_date", "")),
+                    "equity": round(equity, 2),
+                    "drawdown_pct": round(dd_pct, 2),
+                }
+            )
+
+        return curve
+
+    def get_strategy_contribution(self) -> Dict[str, float]:
+        """System 1/2 및 Long/Short 기여도 계산.
+
+        Returns:
+            {"system_1_pct", "system_2_pct", "long_pct", "short_pct", "total_pnl"}
+        """
+        total_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades)
+        s1_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 1)
+        s2_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("system") == 2)
+        long_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("direction", "").upper() == "LONG")
+        short_pnl = sum(t.get("pnl", 0) or 0 for t in self.trades if t.get("direction", "").upper() == "SHORT")
+
+        abs_total = abs(total_pnl) if total_pnl != 0 else 1.0
+        return {
+            "system_1_pct": round(s1_pnl / abs_total * 100, 2),
+            "system_2_pct": round(s2_pnl / abs_total * 100, 2),
+            "long_pct": round(long_pnl / abs_total * 100, 2),
+            "short_pct": round(short_pnl / abs_total * 100, 2),
+            "total_pnl": round(total_pnl, 2),
+        }
+
 
 # ── 독립 함수 ──────────────────────────────────────────────────────────────
+
+
+def detect_anomalies(
+    trades: List[dict],
+    account_equity: float,
+    lookback_days: int = 30,
+) -> List[Dict[str, Any]]:
+    """이상 거래 감지.
+
+    Rules:
+        1. R-배수 < -3.0 (과대 손실)
+        2. 일일 거래 횟수 > 10 (과잉 매매)
+        3. 연속 손실 >= 5건
+        4. 단일 거래 PnL > 계좌의 5% (과대 노출)
+
+    Args:
+        trades: 거래 딕셔너리 리스트
+        account_equity: 현재 계좌 자산 총액
+        lookback_days: 감시 기간 (일)
+
+    Returns:
+        [{"type": str, "severity": str, "description": str, "trade": dict}, ...]
+    """
+    if not trades or account_equity <= 0:
+        return []
+
+    cutoff = datetime.now() - timedelta(days=lookback_days)
+    anomalies: List[Dict[str, Any]] = []
+
+    recent_trades = []
+    for t in trades:
+        exit_date_str = str(t.get("exit_date", ""))
+        try:
+            exit_date = datetime.strptime(exit_date_str[:10], "%Y-%m-%d")
+            if exit_date >= cutoff:
+                recent_trades.append(t)
+        except (ValueError, TypeError):
+            continue
+
+    analytics = TradeAnalytics(recent_trades)
+    r_multiples = analytics.calculate_r_multiples()
+
+    # Rule 1: 과대 손실 (R < -3.0)
+    for i, r in enumerate(r_multiples):
+        if r < -3.0 and i < len(recent_trades):
+            anomalies.append(
+                {
+                    "type": "OVERSIZED_LOSS",
+                    "severity": "ERROR",
+                    "description": f"R-배수 {r:.2f} (< -3.0): {recent_trades[i].get('symbol', '?')}",
+                    "trade": recent_trades[i],
+                }
+            )
+
+    # Rule 2: 과잉 매매 (일 10건 초과)
+    daily_counts: Dict[str, int] = defaultdict(int)
+    for t in recent_trades:
+        day = str(t.get("exit_date", ""))[:10]
+        if day:
+            daily_counts[day] += 1
+    for day, count in daily_counts.items():
+        if count > 10:
+            anomalies.append(
+                {
+                    "type": "EXCESSIVE_TRADING",
+                    "severity": "WARNING",
+                    "description": f"{day}: {count}건 거래 (> 10건/일)",
+                    "trade": {},
+                }
+            )
+
+    # Rule 3: 연속 손실 (>= 5건)
+    sorted_recent = sorted(recent_trades, key=lambda t: str(t.get("exit_date", "")))
+    consecutive_losses = 0
+    max_consecutive = 0
+    last_loss_trade = {}
+    for t in sorted_recent:
+        pnl = t.get("pnl", 0) or 0
+        if pnl < 0:
+            consecutive_losses += 1
+            if consecutive_losses > max_consecutive:
+                max_consecutive = consecutive_losses
+                last_loss_trade = t
+        else:
+            consecutive_losses = 0
+    if max_consecutive >= 5:
+        anomalies.append(
+            {
+                "type": "CONSECUTIVE_LOSSES",
+                "severity": "WARNING",
+                "description": f"연속 {max_consecutive}건 손실 (>= 5건)",
+                "trade": last_loss_trade,
+            }
+        )
+
+    # Rule 4: 과대 노출 (단일 거래 PnL > 계좌의 5%)
+    threshold = account_equity * 0.05
+    for t in recent_trades:
+        pnl = abs(t.get("pnl", 0) or 0)
+        if pnl > threshold:
+            anomalies.append(
+                {
+                    "type": "EXCESSIVE_EXPOSURE",
+                    "severity": "WARNING",
+                    "description": (f"{t.get('symbol', '?')} PnL ${pnl:,.0f} (> 5% of ${account_equity:,.0f})"),
+                    "trade": t,
+                }
+            )
+
+    return anomalies
 
 
 def calculate_sharpe_ratio(returns: list[float], risk_free_rate: float = 0.03) -> float:
