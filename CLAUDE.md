@@ -136,6 +136,7 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 | `collect_daily_ohlcv.py` | OHLCV 일별 배치 수집 (~350종목) | 매일 cron |
 | `daily_report.py` | 일일 요약 전송 | 매일 cron |
 | `weekly_report.py` | 주간 성과 요약 | 토요일 cron |
+| `monthly_report.py` | 월간 성과 요약 | 매월 1일 cron |
 | `fetch_universe_charts.py` | 주간 차트 생성 (mplfinance) | 토요일 06:00 cron |
 | `weekly_charts.sh` | 차트 생성 래퍼 (로컬 호스트) | 토요일 06:00 cron |
 | `health_check.py` | 시스템/연동 상태 점검 | 4시간 cron |

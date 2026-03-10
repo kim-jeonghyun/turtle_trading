@@ -17,6 +17,7 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `paper_trade_report.py` | Reporting | Paper trading performance analysis (returns, MDD, win rate) | Manual |
 | `sync_positions.py` | Operations | KIS account balance vs local positions reconciliation | Manual |
 | `weekly_report.py` | Reporting | Weekly performance summary with trade analysis | Saturday 09:00 cron |
+| `monthly_report.py` | Reporting | Monthly performance summary with PnL, win rate, and system contribution | 1st of month 07:00 cron |
 | `fetch_universe_charts.py` | Chart | mplfinance chart generation for all universe symbols | Saturday 06:00 cron |
 | `weekly_charts.sh` | Chart | Bash wrapper for local cron (logging, notification) | Saturday 06:00 cron |
 | `performance_review.py` | Reporting | Historical performance analysis with statistics | Manual |
@@ -324,6 +325,46 @@ python scripts/weekly_report.py --send --verbose
 
 ```
 0 9 * * 6  # Saturday 09:00 KST (uses --send flag)
+```
+
+> See [cron 작업 스케줄](../docs/operations-guide.md#cron-작업-스케줄) for the full schedule.
+
+---
+
+#### monthly_report.py
+
+Monthly performance report covering closed trades for the target month. Includes PnL, win rate, profit factor, max drawdown, System 1 vs 2 contribution, per-symbol Top/Bottom 5, R-multiple distribution, and month-over-month comparison. Without `--send`, the report is generated but not delivered.
+
+##### Usage
+
+```bash
+# Generate report for previous month (preview only)
+python scripts/monthly_report.py
+
+# Generate for a specific month
+python scripts/monthly_report.py --month 2026-02
+
+# Generate and send via notification channels
+python scripts/monthly_report.py --send
+
+# With console output
+python scripts/monthly_report.py --month 2026-02 --send --verbose
+```
+
+##### Key Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--month YYYY-MM` | Target month (default: previous month) |
+| `--send` | Actually send the report via notification channels (default: preview only) |
+| `--verbose` | Print report to console and enable detailed logging |
+
+> Full argument list: `python scripts/monthly_report.py --help`
+
+##### Cron Schedule
+
+```
+0 7 1 * *  # 1st of every month at 07:00 KST (uses --send flag)
 ```
 
 > See [cron 작업 스케줄](../docs/operations-guide.md#cron-작업-스케줄) for the full schedule.
