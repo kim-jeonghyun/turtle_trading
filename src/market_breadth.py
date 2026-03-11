@@ -57,9 +57,7 @@ class BreadthSnapshot:
         }
 
 
-def calculate_pct_above_ma(
-    data: dict[str, pd.DataFrame], period: int = 20
-) -> float:
+def calculate_pct_above_ma(data: dict[str, pd.DataFrame], period: int = 20) -> float:
     """종목 중 이동평균선 위에 있는 비율(%) 계산."""
     if not data:
         return 0.0
@@ -81,16 +79,14 @@ def calculate_pct_above_ma(
     return (above / valid * 100) if valid > 0 else 0.0
 
 
-def calculate_new_high_low(
-    data: dict[str, pd.DataFrame], period: int = 260
-) -> tuple[int, int]:
+def calculate_new_high_low(data: dict[str, pd.DataFrame], period: int = 260) -> tuple[int, int]:
     """N일 신고가/신저가 종목 수."""
     new_highs = 0
     new_lows = 0
     for symbol, df in data.items():
         if len(df) < period + 1:
             continue
-        lookback = df.iloc[-(period + 1):-1]
+        lookback = df.iloc[-(period + 1) : -1]
         today_close = df["close"].iloc[-1]
         if today_close >= lookback["close"].max():
             new_highs += 1

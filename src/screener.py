@@ -76,8 +76,7 @@ class Strategy(Protocol):
         short_restricted: bool = True,
         price_limit_pct: float = 0.30,
         context: dict | None = None,
-    ) -> list[ScreeningResult]:
-        ...
+    ) -> list[ScreeningResult]: ...
 
 
 class TurtleStrategy:
@@ -123,11 +122,7 @@ class TurtleStrategy:
 
         # 가격 제한 근접 판단 (DD4)
         yesterday_close = float(yesterday["close"])
-        daily_change_pct = (
-            (current_close - yesterday_close) / yesterday_close
-            if yesterday_close != 0
-            else 0.0
-        )
+        daily_change_pct = (current_close - yesterday_close) / yesterday_close if yesterday_close != 0 else 0.0
         near_price_limit = abs(daily_change_pct) >= (price_limit_pct - 0.01)
 
         # 평균 거래량 20일
@@ -140,28 +135,38 @@ class TurtleStrategy:
             meta = {"system": 1, **volume_meta}
             if near_price_limit:
                 meta["price_limit_warning"] = True
-            results.append(ScreeningResult(
-                symbol=symbol, strategy_name=self.name,
-                signal_type=SignalType.ENTRY_LONG,
-                price=entry_price, current_close=current_close,
-                n_value=n_val, stop_loss=entry_price - 2 * n_val,
-                message=f"S1 롱 진입: {entry_price:.0f} 돌파 (20일)",
-                metadata=meta,
-            ))
+            results.append(
+                ScreeningResult(
+                    symbol=symbol,
+                    strategy_name=self.name,
+                    signal_type=SignalType.ENTRY_LONG,
+                    price=entry_price,
+                    current_close=current_close,
+                    n_value=n_val,
+                    stop_loss=entry_price - 2 * n_val,
+                    message=f"S1 롱 진입: {entry_price:.0f} 돌파 (20일)",
+                    metadata=meta,
+                )
+            )
 
         if today["high"] > yesterday["dc_high_55"]:
             entry_price = float(yesterday["dc_high_55"])
             meta = {"system": 2, **volume_meta}
             if near_price_limit:
                 meta["price_limit_warning"] = True
-            results.append(ScreeningResult(
-                symbol=symbol, strategy_name=self.name,
-                signal_type=SignalType.ENTRY_LONG,
-                price=entry_price, current_close=current_close,
-                n_value=n_val, stop_loss=entry_price - 2 * n_val,
-                message=f"S2 롱 진입: {entry_price:.0f} 돌파 (55일)",
-                metadata=meta,
-            ))
+            results.append(
+                ScreeningResult(
+                    symbol=symbol,
+                    strategy_name=self.name,
+                    signal_type=SignalType.ENTRY_LONG,
+                    price=entry_price,
+                    current_close=current_close,
+                    n_value=n_val,
+                    stop_loss=entry_price - 2 * n_val,
+                    message=f"S2 롱 진입: {entry_price:.0f} 돌파 (55일)",
+                    metadata=meta,
+                )
+            )
 
         # === 숏 진입 시그널 (DD2) ===
         if not short_restricted:
@@ -170,71 +175,97 @@ class TurtleStrategy:
                 meta = {"system": 1, **volume_meta}
                 if near_price_limit:
                     meta["price_limit_warning"] = True
-                results.append(ScreeningResult(
-                    symbol=symbol, strategy_name=self.name,
-                    signal_type=SignalType.ENTRY_SHORT,
-                    price=entry_price, current_close=current_close,
-                    n_value=n_val, stop_loss=entry_price + 2 * n_val,
-                    message=f"S1 숏 진입: {entry_price:.0f} 이탈 (20일)",
-                    metadata=meta,
-                ))
+                results.append(
+                    ScreeningResult(
+                        symbol=symbol,
+                        strategy_name=self.name,
+                        signal_type=SignalType.ENTRY_SHORT,
+                        price=entry_price,
+                        current_close=current_close,
+                        n_value=n_val,
+                        stop_loss=entry_price + 2 * n_val,
+                        message=f"S1 숏 진입: {entry_price:.0f} 이탈 (20일)",
+                        metadata=meta,
+                    )
+                )
 
             if today["low"] < yesterday["dc_low_55"]:
                 entry_price = float(yesterday["dc_low_55"])
                 meta = {"system": 2, **volume_meta}
                 if near_price_limit:
                     meta["price_limit_warning"] = True
-                results.append(ScreeningResult(
-                    symbol=symbol, strategy_name=self.name,
-                    signal_type=SignalType.ENTRY_SHORT,
-                    price=entry_price, current_close=current_close,
-                    n_value=n_val, stop_loss=entry_price + 2 * n_val,
-                    message=f"S2 숏 진입: {entry_price:.0f} 이탈 (55일)",
-                    metadata=meta,
-                ))
+                results.append(
+                    ScreeningResult(
+                        symbol=symbol,
+                        strategy_name=self.name,
+                        signal_type=SignalType.ENTRY_SHORT,
+                        price=entry_price,
+                        current_close=current_close,
+                        n_value=n_val,
+                        stop_loss=entry_price + 2 * n_val,
+                        message=f"S2 숏 진입: {entry_price:.0f} 이탈 (55일)",
+                        metadata=meta,
+                    )
+                )
 
         # === 롱 청산 시그널 ===
         if today["low"] < yesterday["dc_low_10"]:
-            results.append(ScreeningResult(
-                symbol=symbol, strategy_name=self.name,
-                signal_type=SignalType.EXIT_LONG,
-                price=float(yesterday["dc_low_10"]),
-                current_close=current_close, n_value=n_val,
-                message=f"S1 롱 청산: {yesterday['dc_low_10']:.0f} 이탈 (10일)",
-                metadata={"system": 1},
-            ))
+            results.append(
+                ScreeningResult(
+                    symbol=symbol,
+                    strategy_name=self.name,
+                    signal_type=SignalType.EXIT_LONG,
+                    price=float(yesterday["dc_low_10"]),
+                    current_close=current_close,
+                    n_value=n_val,
+                    message=f"S1 롱 청산: {yesterday['dc_low_10']:.0f} 이탈 (10일)",
+                    metadata={"system": 1},
+                )
+            )
 
         if today["low"] < yesterday["dc_low_20"]:
-            results.append(ScreeningResult(
-                symbol=symbol, strategy_name=self.name,
-                signal_type=SignalType.EXIT_LONG,
-                price=float(yesterday["dc_low_20"]),
-                current_close=current_close, n_value=n_val,
-                message=f"S2 롱 청산: {yesterday['dc_low_20']:.0f} 이탈 (20일)",
-                metadata={"system": 2},
-            ))
+            results.append(
+                ScreeningResult(
+                    symbol=symbol,
+                    strategy_name=self.name,
+                    signal_type=SignalType.EXIT_LONG,
+                    price=float(yesterday["dc_low_20"]),
+                    current_close=current_close,
+                    n_value=n_val,
+                    message=f"S2 롱 청산: {yesterday['dc_low_20']:.0f} 이탈 (20일)",
+                    metadata={"system": 2},
+                )
+            )
 
         # === 숏 청산 시그널 (short_restricted=True이면 억제) ===
         if not short_restricted:
             if today["high"] > yesterday["dc_high_10"]:
-                results.append(ScreeningResult(
-                    symbol=symbol, strategy_name=self.name,
-                    signal_type=SignalType.EXIT_SHORT,
-                    price=float(yesterday["dc_high_10"]),
-                    current_close=current_close, n_value=n_val,
-                    message=f"S1 숏 청산: {yesterday['dc_high_10']:.0f} 돌파 (10일)",
-                    metadata={"system": 1},
-                ))
+                results.append(
+                    ScreeningResult(
+                        symbol=symbol,
+                        strategy_name=self.name,
+                        signal_type=SignalType.EXIT_SHORT,
+                        price=float(yesterday["dc_high_10"]),
+                        current_close=current_close,
+                        n_value=n_val,
+                        message=f"S1 숏 청산: {yesterday['dc_high_10']:.0f} 돌파 (10일)",
+                        metadata={"system": 1},
+                    )
+                )
 
             if today["high"] > yesterday["dc_high_20"]:
-                results.append(ScreeningResult(
-                    symbol=symbol, strategy_name=self.name,
-                    signal_type=SignalType.EXIT_SHORT,
-                    price=float(yesterday["dc_high_20"]),
-                    current_close=current_close, n_value=n_val,
-                    message=f"S2 숏 청산: {yesterday['dc_high_20']:.0f} 돌파 (20일)",
-                    metadata={"system": 2},
-                ))
+                results.append(
+                    ScreeningResult(
+                        symbol=symbol,
+                        strategy_name=self.name,
+                        signal_type=SignalType.EXIT_SHORT,
+                        price=float(yesterday["dc_high_20"]),
+                        current_close=current_close,
+                        n_value=n_val,
+                        message=f"S2 숏 청산: {yesterday['dc_high_20']:.0f} 돌파 (20일)",
+                        metadata={"system": 2},
+                    )
+                )
 
         return results
 
@@ -279,14 +310,15 @@ def run_screening(
     volume_median = sorted(all_avg_volumes)[len(all_avg_volumes) // 2] if all_avg_volumes else 0.0
 
     for symbol, df in prepared.items():
-        short_restricted = (
-            short_restricted_symbols is None or symbol in short_restricted_symbols
-        )
+        short_restricted = short_restricted_symbols is None or symbol in short_restricted_symbols
 
         for strategy in strategies:
             try:
                 results = strategy.scan(
-                    df, symbol, short_restricted=short_restricted, context=context,
+                    df,
+                    symbol,
+                    short_restricted=short_restricted,
+                    context=context,
                 )
                 for r in results:
                     avg_vol = r.metadata.get("avg_volume_20d", 0)

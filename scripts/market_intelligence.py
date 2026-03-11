@@ -77,7 +77,10 @@ def generate_intelligence_report(
     else:
         regime_snapshot = RegimeSnapshot(
             regime=MarketRegime.SIDEWAYS,
-            last_close=0, sma_50=0, sma_200=0, slope_200=0,
+            last_close=0,
+            sma_50=0,
+            sma_200=0,
+            slope_200=0,
         )
 
     # 레짐 경고 (advisory only)
@@ -93,14 +96,8 @@ def generate_intelligence_report(
     # 3. 스크리닝 (한국 주식 숏 제한: short_restricted_symbols=None → 전체 제한)
     screening_results = run_screening(data, strategies=[TurtleStrategy()])
 
-    entry_signals = [
-        r for r in screening_results
-        if r.signal_type in (SignalType.ENTRY_LONG, SignalType.ENTRY_SHORT)
-    ]
-    exit_signals = [
-        r for r in screening_results
-        if r.signal_type in (SignalType.EXIT_LONG, SignalType.EXIT_SHORT)
-    ]
+    entry_signals = [r for r in screening_results if r.signal_type in (SignalType.ENTRY_LONG, SignalType.ENTRY_SHORT)]
+    exit_signals = [r for r in screening_results if r.signal_type in (SignalType.EXIT_LONG, SignalType.EXIT_SHORT)]
 
     # Top 후보: entry 시그널을 시스템 우선순위로 정렬 (S2 > S1)
     top_candidates = sorted(

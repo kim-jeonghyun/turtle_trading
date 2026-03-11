@@ -457,6 +457,7 @@ async def main():
             try:
                 import subprocess
                 import sys
+
                 subprocess.Popen(
                     [sys.executable, str(Path(__file__).parent / "market_intelligence.py")],
                     stdout=subprocess.DEVNULL,
