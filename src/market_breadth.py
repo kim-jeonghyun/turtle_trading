@@ -80,7 +80,7 @@ def calculate_pct_above_ma(data: dict[str, pd.DataFrame], period: int = 20) -> f
 
 
 def calculate_new_high_low(data: dict[str, pd.DataFrame], period: int = 260) -> tuple[int, int]:
-    """N일 신고가/신저가 종목 수."""
+    """종가 기준 N일 신고가/신저가 종목 수 (close-to-close 비교)."""
     new_highs = 0
     new_lows = 0
     for symbol, df in data.items():
