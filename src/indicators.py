@@ -14,6 +14,19 @@ class ATRMethod(Enum):
     EMA = "ema"
 
 
+def calculate_sma(series: pd.Series, period: int) -> pd.Series:
+    """단순이동평균 (Simple Moving Average).
+
+    Args:
+        series: 가격 또는 지표 시리즈
+        period: 이동평균 기간
+
+    Returns:
+        SMA 시리즈 (앞부분 NaN)
+    """
+    return series.rolling(window=period).mean()
+
+
 def calculate_true_range(df: pd.DataFrame) -> pd.Series:
     """True Range 계산"""
     high = df["high"]
