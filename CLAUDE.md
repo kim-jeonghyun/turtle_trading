@@ -119,7 +119,9 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 | `data_store.py` | Parquet 저장/조회/TTL | fetcher + 분석 모듈 |
 | `position_sizer.py` | 위험 기반 수량 산정 | RiskManager + tracker |
 | `risk_manager.py` | 포트폴리오 한도/상관군 제한 | auto_trader + position_sizer |
+| `screener.py` | 멀티 전략 스크리너 (Strategy Protocol, 확장 가능) | indicators + types |
 | `pyramid_manager.py` | 피라미딩 상태 전이 | tracker + position_sizer |
+| `regime_detector.py` | Rule-based 시장 레짐 분류 (5단계) | indicators |
 | `position_tracker.py` | 포지션 생애주기/손익 계산 | trader + scripts + risk |
 | `inverse_filter.py` | Inverse ETF 디케이 감시 | check_positions + trader |
 | `universe_manager.py` | 심볼·그룹 관리 (15그룹, 42종목) | 스크리닝/시그널/보고 |
@@ -127,6 +129,7 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 | `auto_trader.py` | 주문 라우팅, 상태 동기화 | risk/notifier/kis_api |
 | `backtester.py` | 전략 검증 파이프라인 + 리스크 한도 | indicators + position_sizer + pyramid_manager + risk_manager |
 | `local_chart_renderer.py` | mplfinance 차트 렌더링 | fetch_universe_charts |
+| `market_breadth.py` | 시장 브레드스 지표 (% above MA, 52주 NH/NL, AD, 종합 점수) | data_store + indicators |
 | `notifier.py` | 알림 발송 채널 통합 | 운영 스크립트 |
 | `kill_switch.py` | 시스템 거래 정지 스위치 (BUY만 차단) | auto_trader + trading_guard |
 | `trading_guard.py` | 일일 손실 서킷브레이커/최대 주문 제한 | kill_switch + auto_trader |
@@ -165,6 +168,7 @@ kill_switch → vi_cb_detector → trading_guard → AutoTrader(5M) → place_or
 | `performance_review.py` | 거래 성과 분석 | 수동 |
 | `paper_trade_report.py` | 모의투자 성과 리포트 | 수동 |
 | `list_positions.py` | 포지션 목록 조회 | 수동 |
+| `market_intelligence.py` | 시장 인텔리전스 리포트 생성·전송 | 수집 후 자동/수동 |
 | `validate_data.py` | 데이터 정합성 검증/수복 | 수동 |
 | `cleanup_old_data.py` | 오래된 캐시/로그 정리 | 수동 |
 | `security_check.py` | 설정/키/권한 경고 | 수동 |

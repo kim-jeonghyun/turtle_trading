@@ -297,4 +297,6 @@ class TestAppRenderCallsKeywordArgs:
             assert "symbols" in kw_names, f"render() call at line {node.lineno} missing 'symbols' keyword"
             assert "period" in kw_names, f"render() call at line {node.lineno} missing 'period' keyword"
             # 위치 인자는 data_fetcher, data_store, universe 3개만 허용
-            assert len(node.args) == 3, f"render() call at line {node.lineno} has {len(node.args)} positional args, expected 3"
+            assert len(node.args) == 3, (
+                f"render() call at line {node.lineno} has {len(node.args)} positional args, expected 3"
+            )

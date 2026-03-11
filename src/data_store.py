@@ -154,6 +154,47 @@ class ParquetDataStore:
         result: datetime = pd.to_datetime(df["date"]).max().to_pydatetime()
         return result
 
+    def list_accumulated_symbols(self) -> list[str]:
+        """축적 OHLCV가 존재하는 심볼 코드 목록 반환.
+
+        glob 패턴 *_ohlcv.parquet 으로 정확히 매칭.
+        손상 격리 파일(*.parquet.corrupted.*)은 확장자가 달라 자동 제외.
+
+        Returns:
+            심볼 코드 리스트 (정렬됨)
+        """
+        symbols = []
+        for path in self.ohlcv_dir.glob("*_ohlcv.parquet"):
+            stem = path.stem  # "005930_ohlcv"
+            symbol = stem.removesuffix("_ohlcv")
+            symbols.append(symbol)
+        return sorted(symbols)
+
+    def load_multiple_ohlcv(
+        self,
+        symbols: list[str],
+        min_rows: int = 0,
+    ) -> dict[str, pd.DataFrame]:
+        """복수 심볼 OHLCV 일괄 로드.
+
+        Args:
+            symbols: 로드할 심볼 코드 리스트
+            min_rows: 최소 행 수. 이보다 적은 심볼은 제외 (지표 계산 불가 방지).
+
+        Returns:
+            {symbol: DataFrame} 딕셔너리. 누락/손상/부족 심볼은 제외.
+        """
+        result: dict[str, pd.DataFrame] = {}
+        for symbol in symbols:
+            df = self.load_ohlcv_accumulated(symbol)
+            if df is None or df.empty:
+                continue
+            if len(df) < min_rows:
+                logger.debug(f"OHLCV 부족: {symbol} ({len(df)}행 < {min_rows})")
+                continue
+            result[symbol] = df
+        return result
+
     def save_indicators(self, symbol: str, df: pd.DataFrame):
         symbol = validate_symbol(symbol)
         path = self._get_cache_path(symbol, "indicators")

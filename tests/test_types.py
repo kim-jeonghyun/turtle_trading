@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 
 import pytest
 
-from src.types import AssetGroup, Direction, OrderStatus, SerializableEnum, SignalType
+from src.types import AssetGroup, Direction, MarketRegime, OrderStatus, SerializableEnum, SignalType
 
 
 class TestSerializableEnum:
@@ -180,3 +180,16 @@ class TestOrderStatus:
             serialized = json.dumps({"status": status.value})
             loaded = json.loads(serialized)
             assert OrderStatus(loaded["status"]) == status
+
+
+class TestMarketRegime:
+    def test_string_comparison(self):
+        assert MarketRegime.BULL == "bull"
+        assert MarketRegime.BEAR == "bear"
+
+    def test_json_serialization(self):
+        result = json.dumps(MarketRegime.BULL)
+        assert result == '"bull"'
+
+    def test_all_values(self):
+        assert len(MarketRegime) == 5

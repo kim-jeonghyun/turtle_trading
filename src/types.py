@@ -80,3 +80,13 @@ class PositionSnapshot(Protocol):
 
     @property
     def unrealized_pnl(self) -> float: ...
+
+
+class MarketRegime(SerializableEnum):
+    """시장 레짐 분류."""
+
+    BULL = "bull"
+    RECOVERY = "recovery"
+    SIDEWAYS = "sideways"
+    DECLINE = "decline"
+    BEAR = "bear"
