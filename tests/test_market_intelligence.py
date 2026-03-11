@@ -92,6 +92,19 @@ class TestGenerateIntelligenceReport:
         assert "regime" in report
         assert report["regime"] in ("bull", "recovery", "sideways", "decline", "bear")
 
+    def test_report_date_from_data(self):
+        """날짜가 데이터의 마지막 거래일에서 추출되는지 확인."""
+        data = _make_ohlcv_data(n_symbols=3, n_days=270)
+        report = generate_intelligence_report(data)
+        # 테스트 데이터의 마지막 날짜는 2026-03-10
+        assert report["date"] == "2026-03-10"
+
+    def test_report_date_explicit(self):
+        """명시적 날짜가 우선하는지 확인."""
+        data = _make_ohlcv_data(n_symbols=3, n_days=270)
+        report = generate_intelligence_report(data, report_date="2026-01-15")
+        assert report["date"] == "2026-01-15"
+
 
 class TestFullPipeline:
     """전체 파이프라인 통합 테스트."""

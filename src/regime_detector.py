@@ -2,11 +2,11 @@
 시장 레짐 분류 모듈.
 
 Rule-based 레짐 판별:
-- BULL: close > SMA200, SMA50 > SMA200, SMA200 기울기 상승 (>0.5%)
-- RECOVERY: close > SMA200, SMA50 > SMA200, 기울기 약함 (<=0.5%)
+- BULL: close > SMA200, SMA50 > SMA200, SMA200 기울기 상승 (>1.5%)
+- RECOVERY: close > SMA200, SMA50 > SMA200, 기울기 약함 (<=1.5%)
 - SIDEWAYS: SMA50과 SMA200 교차 구간 또는 데이터 부족
-- DECLINE: close < SMA200, SMA50 < SMA200, 기울기 약함 (>=-0.5%)
-- BEAR: close < SMA200, SMA50 < SMA200, SMA200 기울기 하락 (<-0.5%)
+- DECLINE: close < SMA200, SMA50 < SMA200, 기울기 약함 (>=-1.5%)
+- BEAR: close < SMA200, SMA50 < SMA200, SMA200 기울기 하락 (<-1.5%)
 """
 
 import logging

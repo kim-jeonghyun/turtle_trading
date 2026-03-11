@@ -52,17 +52,30 @@ _REGIME_WARNINGS: dict[MarketRegime, str] = {
 def generate_intelligence_report(
     data: dict[str, pd.DataFrame],
     index_df: pd.DataFrame | None = None,
+    report_date: str | None = None,
 ) -> dict:
     """인텔리전스 리포트 데이터 생성.
 
     Args:
         data: {symbol: ohlcv_df} — 전체 350종목
         index_df: 대표 지수 OHLCV (DD5: KODEX 200 등). None이면 가장 긴 데이터로 대체.
+        report_date: 리포트 대상 날짜 (YYYY-MM-DD). None이면 데이터 최신일 기준.
 
     Returns:
         리포트 딕셔너리
     """
-    today = datetime.now().strftime("%Y-%m-%d")
+    if report_date is None:
+        # 데이터의 마지막 거래일 기준 (backfill 안전)
+        if data:
+            last_dates = []
+            for df in data.values():
+                if "date" in df.columns and len(df) > 0:
+                    last_dates.append(pd.Timestamp(df["date"].iloc[-1]))
+            today = max(last_dates).strftime("%Y-%m-%d") if last_dates else datetime.now().strftime("%Y-%m-%d")
+        else:
+            today = datetime.now().strftime("%Y-%m-%d")
+    else:
+        today = report_date
     warnings: list[str] = []
 
     # 1. 브레드스 계산
@@ -160,6 +173,7 @@ async def run_pipeline(
     min_rows: int = 56,
     output_json: bool = False,
     timeout: int = 300,
+    report_date: str | None = None,
 ) -> dict | None:
     """인텔리전스 파이프라인 실행 (parse_args 없이 직접 호출 가능).
 
@@ -171,6 +185,7 @@ async def run_pipeline(
         min_rows: 최소 데이터 행 수
         output_json: True이면 stdout에 JSON 출력
         timeout: 파이프라인 타임아웃 초 (기본 300초)
+        report_date: 리포트 대상 날짜 (YYYY-MM-DD). None이면 데이터 최신일 기준.
 
     Returns:
         리포트 딕셔너리. 실행 불가/타임아웃 시 None.
@@ -214,7 +229,7 @@ async def run_pipeline(
                 logger.info("인덱스 프록시 미발견, 가장 긴 심볼로 대체")
 
             # 리포트 생성
-            report = generate_intelligence_report(data, index_df=index_df)
+            report = generate_intelligence_report(data, index_df=index_df, report_date=report_date)
 
             logger.info(
                 f"리포트 완료: 레짐={report['regime']}, "
@@ -259,6 +274,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json", action="store_true", help="JSON 형식 출력")
     parser.add_argument("--min-rows", type=int, default=56, help="최소 데이터 행 수 (기본 56)")
     parser.add_argument("--timeout", type=int, default=300, help="파이프라인 타임아웃 초 (기본 300)")
+    parser.add_argument("--date", type=str, default=None, help="리포트 대상 날짜 (YYYY-MM-DD, 기본: 데이터 최신일)")
     return parser.parse_args()
 
 
@@ -270,6 +286,7 @@ async def main():
         min_rows=args.min_rows,
         output_json=args.json,
         timeout=args.timeout,
+        report_date=args.date,
     )
 
 
