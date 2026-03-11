@@ -194,6 +194,13 @@ async def run_pipeline(
             data = data_store.load_multiple_ohlcv(symbols, min_rows=min_rows)
             logger.info(f"분석 대상: {len(data)}개 심볼")
 
+            if not data:
+                logger.warning(
+                    f"min_rows={min_rows} 기준 분석 가능 심볼 0개. "
+                    "데이터 축적을 기다리세요."
+                )
+                return None
+
             # DD5: 인덱스 프록시 로드
             index_df = None
             for proxy_symbol in INDEX_PROXIES:
