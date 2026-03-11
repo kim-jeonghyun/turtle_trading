@@ -458,8 +458,11 @@ async def main():
                 import subprocess
                 import sys
 
+                cmd = [sys.executable, str(Path(__file__).parent / "market_intelligence.py")]
+                if args.date:
+                    cmd.extend(["--date", args.date])
                 subprocess.Popen(
-                    [sys.executable, str(Path(__file__).parent / "market_intelligence.py")],
+                    cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )

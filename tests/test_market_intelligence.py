@@ -57,14 +57,21 @@ class TestGenerateIntelligenceReport:
         assert report["exit_signals"] == 0
 
     def test_run_pipeline_returns_none_for_insufficient_data(self):
-        """min_rows 필터 후 분석 대상 0개면 리포트를 생성하지 않아야."""
-        # generate_intelligence_report with empty data still produces a report
-        # but run_pipeline should catch this case and return None
-        # We test generate_intelligence_report's empty behavior here
-        report = generate_intelligence_report({})
-        assert report["total_symbols_analyzed"] == 0
-        assert report["entry_signals"] == 0
-        assert report["exit_signals"] == 0
+        """min_rows 필터 후 분석 대상 0개면 run_pipeline이 None을 반환해야."""
+        import asyncio
+
+        with (
+            patch("scripts.market_intelligence.acquire_lock") as mock_lock,
+            patch("scripts.market_intelligence.release_lock"),
+            patch("scripts.market_intelligence.ParquetDataStore") as mock_store,
+        ):
+            mock_lock.return_value = True  # lock 획득 성공
+            mock_store_inst = mock_store.return_value
+            mock_store_inst.list_accumulated_symbols.return_value = ["SYM001", "SYM002"]
+            mock_store_inst.load_multiple_ohlcv.return_value = {}  # 0개 통과
+
+            result = asyncio.run(run_pipeline(dry_run=True, min_rows=56, timeout=10))
+            assert result is None
 
     def test_regime_is_advisory_only(self):
         """레짐이 경고만 포함하고 자동 차단하지 않는지 확인."""

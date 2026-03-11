@@ -7,6 +7,7 @@ indicators.py 단위 테스트
 """
 
 import pandas as pd
+import pytest
 
 from src.indicators import (
     ATRMethod,
@@ -125,16 +126,16 @@ class TestAddTurtleIndicators:
 
 class TestCalculateSMA:
     def test_sma_basic(self):
-        import pytest
         from src.indicators import calculate_sma
+
         df = pd.DataFrame({"close": [10, 20, 30, 40, 50]})
         result = calculate_sma(df["close"], period=3)
         assert result.iloc[-1] == pytest.approx(40.0)  # (30+40+50)/3
         assert pd.isna(result.iloc[0])  # not enough data
 
     def test_sma_custom_series(self):
-        import pytest
         from src.indicators import calculate_sma
+
         series = pd.Series([1, 2, 3, 4, 5])
         result = calculate_sma(series, period=2)
         assert result.iloc[-1] == pytest.approx(4.5)

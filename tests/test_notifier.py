@@ -627,8 +627,6 @@ class TestSendMarketIntelligence:
     @pytest.mark.asyncio
     async def test_formats_intelligence_report(self):
         """리포트 데이터가 NotificationMessage로 변환되는지 확인."""
-        from unittest.mock import AsyncMock
-        from src.notifier import NotificationManager, NotificationLevel
 
         notifier = NotificationManager()
         notifier.send_message = AsyncMock(return_value={"discord": True})
