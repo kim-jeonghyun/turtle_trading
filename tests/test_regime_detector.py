@@ -1,7 +1,6 @@
 import pandas as pd
-import pytest
 
-from src.regime_detector import classify_regime, RegimeSnapshot
+from src.regime_detector import RegimeSnapshot, classify_regime
 from src.types import MarketRegime
 
 
@@ -9,24 +8,32 @@ def _make_trending_up(n: int = 250) -> pd.DataFrame:
     """강한 상승 추세 데이터 (close > SMA200, SMA50 > SMA200, 기울기 상승)."""
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [100 + i * 0.5 for i in range(n)]
-    return pd.DataFrame({
-        "date": dates, "close": closes,
-        "high": [c * 1.01 for c in closes],
-        "low": [c * 0.99 for c in closes],
-        "open": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "open": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_trending_down(n: int = 250) -> pd.DataFrame:
     """강한 하락 추세 데이터."""
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [200 - i * 0.5 for i in range(n)]
-    return pd.DataFrame({
-        "date": dates, "close": closes,
-        "high": [c * 1.01 for c in closes],
-        "low": [c * 0.99 for c in closes],
-        "open": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "open": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_recovery(n: int = 250) -> pd.DataFrame:
@@ -34,12 +41,16 @@ def _make_recovery(n: int = 250) -> pd.DataFrame:
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [150 - i * 0.05 for i in range(200)]
     closes += [closes[-1] + i * 0.5 for i in range(1, 51)]
-    return pd.DataFrame({
-        "date": dates, "close": closes,
-        "high": [c * 1.01 for c in closes],
-        "low": [c * 0.99 for c in closes],
-        "open": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "open": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_decline(n: int = 250) -> pd.DataFrame:
@@ -47,12 +58,16 @@ def _make_decline(n: int = 250) -> pd.DataFrame:
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [100 + i * 0.05 for i in range(200)]
     closes += [closes[-1] - i * 0.5 for i in range(1, 51)]
-    return pd.DataFrame({
-        "date": dates, "close": closes,
-        "high": [c * 1.01 for c in closes],
-        "low": [c * 0.99 for c in closes],
-        "open": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "open": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_crossing(n: int = 250) -> pd.DataFrame:
@@ -60,12 +75,16 @@ def _make_crossing(n: int = 250) -> pd.DataFrame:
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [100 + i * 0.3 for i in range(200)]
     closes += [closes[-1] - i * 1.5 for i in range(1, 51)]
-    return pd.DataFrame({
-        "date": dates, "close": closes,
-        "high": [c * 1.01 for c in closes],
-        "low": [c * 0.99 for c in closes],
-        "open": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "open": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 class TestClassifyRegime:
@@ -127,12 +146,16 @@ class TestSlopeThresholdBoundary:
         # 강한 상승: slope가 threshold를 초과하도록 설계
         dates = pd.bdate_range(end="2026-03-10", periods=n)
         closes = [100 + i * 0.5 for i in range(n)]
-        df = pd.DataFrame({
-            "date": dates, "close": closes,
-            "high": [c * 1.01 for c in closes],
-            "low": [c * 0.99 for c in closes],
-            "open": closes, "volume": [1000] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "close": closes,
+                "high": [c * 1.01 for c in closes],
+                "low": [c * 0.99 for c in closes],
+                "open": closes,
+                "volume": [1000] * n,
+            }
+        )
         result = classify_regime(df)
         assert result.regime == MarketRegime.BULL
         assert abs(result.slope_200) > 0.015
@@ -144,12 +167,16 @@ class TestSlopeThresholdBoundary:
         dates = pd.bdate_range(end="2026-03-10", periods=n)
         # 앞부분은 평탄, 마지막 구간만 약간 상승 → SMA200 기울기 낮음
         closes = [100.0] * 200 + [100.0 + i * 0.3 for i in range(50)]
-        df = pd.DataFrame({
-            "date": dates, "close": closes,
-            "high": [c * 1.01 for c in closes],
-            "low": [c * 0.99 for c in closes],
-            "open": closes, "volume": [1000] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "close": closes,
+                "high": [c * 1.01 for c in closes],
+                "low": [c * 0.99 for c in closes],
+                "open": closes,
+                "volume": [1000] * n,
+            }
+        )
         result = classify_regime(df)
         # close > SMA200, SMA50 > SMA200, but low slope → RECOVERY
         assert result.regime == MarketRegime.RECOVERY
@@ -160,12 +187,16 @@ class TestSlopeThresholdBoundary:
         n = 250
         dates = pd.bdate_range(end="2026-03-10", periods=n)
         closes = [200 - i * 0.5 for i in range(n)]
-        df = pd.DataFrame({
-            "date": dates, "close": closes,
-            "high": [c * 1.01 for c in closes],
-            "low": [c * 0.99 for c in closes],
-            "open": closes, "volume": [1000] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "close": closes,
+                "high": [c * 1.01 for c in closes],
+                "low": [c * 0.99 for c in closes],
+                "open": closes,
+                "volume": [1000] * n,
+            }
+        )
         result = classify_regime(df)
         assert result.regime == MarketRegime.BEAR
         assert result.slope_200 < -0.015

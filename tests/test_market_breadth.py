@@ -2,11 +2,11 @@ import pandas as pd
 import pytest
 
 from src.market_breadth import (
-    calculate_pct_above_ma,
-    calculate_new_high_low,
+    BreadthSnapshot,
     calculate_advance_decline,
     calculate_breadth_score,
-    BreadthSnapshot,
+    calculate_new_high_low,
+    calculate_pct_above_ma,
 )
 
 
@@ -15,15 +15,17 @@ def _make_ohlcv(closes: list[float], n_days: int = 270) -> pd.DataFrame:
 
     기본 270일로 52주(260일) NH/NL 계산에 충분한 데이터를 보장.
     """
-    dates = pd.bdate_range(end="2026-03-10", periods=n_days)[-len(closes):]
-    return pd.DataFrame({
-        "date": dates,
-        "open": closes,
-        "high": [c * 1.02 for c in closes],
-        "low": [c * 0.98 for c in closes],
-        "close": closes,
-        "volume": [1000] * len(closes),
-    })
+    dates = pd.bdate_range(end="2026-03-10", periods=n_days)[-len(closes) :]
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [c * 1.02 for c in closes],
+            "low": [c * 0.98 for c in closes],
+            "close": closes,
+            "volume": [1000] * len(closes),
+        }
+    )
 
 
 class TestPctAboveMA:
@@ -146,9 +148,16 @@ class TestBreadthScore:
         snapshot = calculate_breadth_score(data)
         d = snapshot.to_dict()
         expected_keys = {
-            "pct_above_20ma", "pct_above_50ma", "pct_above_200ma",
-            "new_highs", "new_lows", "nh_nl_ratio",
-            "advancing", "declining", "net_advancing",
-            "composite_score", "total_symbols",
+            "pct_above_20ma",
+            "pct_above_50ma",
+            "pct_above_200ma",
+            "new_highs",
+            "new_lows",
+            "nh_nl_ratio",
+            "advancing",
+            "declining",
+            "net_advancing",
+            "composite_score",
+            "total_symbols",
         }
         assert set(d.keys()) == expected_keys

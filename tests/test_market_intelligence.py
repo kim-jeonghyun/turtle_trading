@@ -1,7 +1,8 @@
 import inspect
+from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 from scripts.market_intelligence import generate_intelligence_report, run_pipeline
 
@@ -15,12 +16,16 @@ def _make_ohlcv_data(n_symbols: int = 5, n_days: int = 270) -> dict[str, pd.Data
     dates = pd.bdate_range(end="2026-03-10", periods=n_days)
     for i in range(n_symbols):
         closes = [100 + j * 0.1 * (1 if i % 2 == 0 else -1) for j in range(n_days)]
-        data[f"SYM{i:03d}"] = pd.DataFrame({
-            "date": dates, "open": closes,
-            "high": [c * 1.02 for c in closes],
-            "low": [c * 0.98 for c in closes],
-            "close": closes, "volume": [1000] * n_days,
-        })
+        data[f"SYM{i:03d}"] = pd.DataFrame(
+            {
+                "date": dates,
+                "open": closes,
+                "high": [c * 1.02 for c in closes],
+                "low": [c * 0.98 for c in closes],
+                "close": closes,
+                "volume": [1000] * n_days,
+            }
+        )
     return data
 
 
@@ -82,12 +87,16 @@ class TestGenerateIntelligenceReport:
         data = _make_ohlcv_data()
         dates = pd.bdate_range(end="2026-03-10", periods=270)
         index_closes = [100 + i * 0.3 for i in range(270)]
-        index_df = pd.DataFrame({
-            "date": dates, "open": index_closes,
-            "high": [c * 1.01 for c in index_closes],
-            "low": [c * 0.99 for c in index_closes],
-            "close": index_closes, "volume": [100000] * 270,
-        })
+        index_df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": index_closes,
+                "high": [c * 1.01 for c in index_closes],
+                "low": [c * 0.99 for c in index_closes],
+                "close": index_closes,
+                "volume": [100000] * 270,
+            }
+        )
         report = generate_intelligence_report(data, index_df=index_df)
         assert "regime" in report
         assert report["regime"] in ("bull", "recovery", "sideways", "decline", "bear")
@@ -116,9 +125,17 @@ class TestFullPipeline:
 
         # 필수 키 존재
         required_keys = {
-            "date", "regime", "regime_detail", "breadth", "breadth_score",
-            "entry_signals", "exit_signals", "all_signals",
-            "top_candidates", "warnings", "total_symbols_analyzed",
+            "date",
+            "regime",
+            "regime_detail",
+            "breadth",
+            "breadth_score",
+            "entry_signals",
+            "exit_signals",
+            "all_signals",
+            "top_candidates",
+            "warnings",
+            "total_symbols_analyzed",
         }
         assert required_keys.issubset(set(report.keys()))
 
@@ -152,10 +169,6 @@ class TestFullPipeline:
 
         # all_signals는 리스트
         assert isinstance(report["all_signals"], list)
-
-
-from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
 class TestPostCollectionHook:
@@ -193,6 +206,7 @@ class TestPostCollectionHook:
             if not dry_run and success_count > 0:
                 import subprocess
                 import sys
+
                 subprocess.Popen(
                     [sys.executable, "market_intelligence.py"],
                     stdout=subprocess.DEVNULL,
@@ -210,6 +224,7 @@ class TestPostCollectionHook:
             if not dry_run and success_count > 0:
                 import subprocess
                 import sys
+
                 subprocess.Popen(
                     [sys.executable, "market_intelligence.py"],
                     stdout=subprocess.DEVNULL,
@@ -225,6 +240,7 @@ class TestRunPipelineGuards:
     def test_empty_data_returns_none_signature(self):
         """run_pipeline이 분석 불가 시 None을 반환하도록 설계."""
         import inspect
+
         sig = inspect.signature(run_pipeline)
         # return annotation should allow None
         assert sig.return_annotation is not inspect.Parameter.empty or True

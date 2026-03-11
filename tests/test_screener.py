@@ -1,5 +1,4 @@
 import pandas as pd
-import pytest
 
 from src.screener import (
     ScreeningResult,
@@ -15,21 +14,32 @@ def _make_breakout_ohlcv(n: int = 60) -> pd.DataFrame:
     closes = [100.0] * (n - 10) + [100 + i * 2 for i in range(1, 11)]
     highs = [c + 1 for c in closes]
     lows = [c - 1 for c in closes]
-    return pd.DataFrame({
-        "date": dates, "open": closes, "high": highs,
-        "low": lows, "close": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_flat_ohlcv(n: int = 60) -> pd.DataFrame:
     """시그널 없는 횡보 데이터."""
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [100.0] * n
-    return pd.DataFrame({
-        "date": dates, "open": closes,
-        "high": [101.0] * n, "low": [99.0] * n,
-        "close": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": [101.0] * n,
+            "low": [99.0] * n,
+            "close": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_breakdown_ohlcv(n: int = 60) -> pd.DataFrame:
@@ -38,10 +48,16 @@ def _make_breakdown_ohlcv(n: int = 60) -> pd.DataFrame:
     closes = [100.0] * (n - 10) + [100 - i * 2 for i in range(1, 11)]
     highs = [c + 1 for c in closes]
     lows = [c - 1 for c in closes]
-    return pd.DataFrame({
-        "date": dates, "open": closes, "high": highs,
-        "low": lows, "close": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 def _make_price_limit_ohlcv(n: int = 60) -> pd.DataFrame:
@@ -50,10 +66,16 @@ def _make_price_limit_ohlcv(n: int = 60) -> pd.DataFrame:
     closes = [100.0] * (n - 1) + [130.0]
     highs = [c + 1 for c in closes]
     lows = [c - 1 for c in closes]
-    return pd.DataFrame({
-        "date": dates, "open": closes, "high": highs,
-        "low": lows, "close": closes, "volume": [1000] * n,
-    })
+    return pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [1000] * n,
+        }
+    )
 
 
 class TestTurtleStrategy:
@@ -77,8 +99,7 @@ class TestTurtleStrategy:
         strategy = TurtleStrategy()
         df = _make_breakdown_ohlcv()
         results = strategy.scan(df, symbol="005930", short_restricted=True)
-        short_signals = [r for r in results if r.signal_type in (
-            SignalType.ENTRY_SHORT, SignalType.EXIT_SHORT)]
+        short_signals = [r for r in results if r.signal_type in (SignalType.ENTRY_SHORT, SignalType.EXIT_SHORT)]
         assert len(short_signals) == 0
 
     def test_short_allowed_when_not_restricted(self):
@@ -112,8 +133,7 @@ class TestTurtleStrategy:
 
     def test_docstring_mentions_no_profit_filter(self):
         """DD1: profit filter 미적용이 문서화되어 있는지."""
-        assert "profit filter" in TurtleStrategy.__doc__.lower() or \
-               "System 1 필터" in TurtleStrategy.__doc__
+        assert "profit filter" in TurtleStrategy.__doc__.lower() or "System 1 필터" in TurtleStrategy.__doc__
 
     def test_price_limit_warning(self):
         """DD4: 상한가/하한가 근접 시 price_limit_warning 메타데이터 포함."""
@@ -146,6 +166,7 @@ class TestTurtleStrategy:
     def test_scan_accepts_context_parameter(self):
         """Strategy Protocol의 context 파라미터가 존재하는지 확인."""
         import inspect
+
         sig = inspect.signature(TurtleStrategy.scan)
         assert "context" in sig.parameters
 
