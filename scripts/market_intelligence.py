@@ -210,10 +210,7 @@ async def run_pipeline(
             logger.info(f"분석 대상: {len(data)}개 심볼")
 
             if not data:
-                logger.warning(
-                    f"min_rows={min_rows} 기준 분석 가능 심볼 0개. "
-                    "데이터 축적을 기다리세요."
-                )
+                logger.warning(f"min_rows={min_rows} 기준 분석 가능 심볼 0개. 데이터 축적을 기다리세요.")
                 return None
 
             # DD5: 인덱스 프록시 로드
