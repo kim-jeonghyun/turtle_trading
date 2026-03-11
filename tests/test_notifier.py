@@ -619,3 +619,40 @@ class TestAnomalyAlert:
 
         sent_msg = mock_ch.send.call_args[0][0]
         assert sent_msg.level == NotificationLevel.WARNING
+
+
+class TestSendMarketIntelligence:
+    """send_market_intelligence() 메서드 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_formats_intelligence_report(self):
+        """리포트 데이터가 NotificationMessage로 변환되는지 확인."""
+        from unittest.mock import AsyncMock
+        from src.notifier import NotificationManager, NotificationLevel
+
+        notifier = NotificationManager()
+        notifier.send_message = AsyncMock(return_value={"discord": True})
+
+        report = {
+            "date": "2026-03-11",
+            "regime": "bull",
+            "breadth_score": 72.0,
+            "entry_signals": 3,
+            "exit_signals": 1,
+            "top_candidates": [
+                {"symbol": "005930", "signal": "S1 롱 진입", "score": 92},
+            ],
+            "warnings": ["브레드스 3일 연속 하락"],
+        }
+
+        result = await notifier.send_market_intelligence(report)
+        notifier.send_message.assert_called_once()
+
+        msg = notifier.send_message.call_args[0][0]
+        assert "시장 인텔리전스" in msg.title
+        assert "005930" in msg.body
+        # DD3: 항상 SIGNAL 레벨 (모든 채널 전송)
+        assert msg.level == NotificationLevel.SIGNAL
+        # 반환값 확인
+        assert isinstance(result, dict)
+        assert result == {"discord": True}

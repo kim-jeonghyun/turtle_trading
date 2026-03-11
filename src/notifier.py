@@ -362,3 +362,57 @@ class NotificationManager:
             level=max_severity,
         )
         return await self.send_all(message)
+
+    async def send_market_intelligence(self, report: dict) -> dict[str, bool]:
+        """시장 인텔리전스 리포트 전송.
+
+        DD3: 항상 SIGNAL 레벨로 전송하여 모든 채널에 도달.
+        경고는 본문에 포함.
+
+        Args:
+            report: 리포트 데이터 딕셔너리 (date, regime, breadth_score,
+                    entry_signals, exit_signals, top_candidates, warnings)
+
+        Returns:
+            채널별 전송 결과 딕셔너리 (예: {"discord": True, "telegram": False})
+        """
+        date = report.get("date", "")
+        regime = report.get("regime", "unknown").upper()
+        score = report.get("breadth_score", 0)
+        entries = report.get("entry_signals", 0)
+        exits = report.get("exit_signals", 0)
+        warnings = report.get("warnings", [])
+        candidates = report.get("top_candidates", [])
+
+        title = f"[{date}] 시장 인텔리전스 | 레짐: {regime} | 브레드스: {score:.0f}/100"
+
+        lines = []
+        lines.append(f"진입 시그널: {entries}건 | 청산 시그널: {exits}건")
+
+        if warnings:
+            lines.append("")
+            for w in warnings[:5]:
+                lines.append(f"⚠️ {w}")
+
+        if candidates:
+            lines.append("")
+            lines.append("--- Top 브레이크아웃 후보 ---")
+            for c in candidates[:10]:
+                sym = c.get("symbol", "?")
+                sig = c.get("signal", "")
+                lines.append(f"  {sym}: {sig}")
+
+        body = "\n".join(lines)
+
+        message = NotificationMessage(
+            title=title,
+            body=body,
+            level=NotificationLevel.SIGNAL,
+            data={
+                "레짐": regime,
+                "브레드스": f"{score:.0f}/100",
+                "진입_시그널": entries,
+                "청산_시그널": exits,
+            },
+        )
+        return await self.send_message(message)
