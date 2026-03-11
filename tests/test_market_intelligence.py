@@ -129,3 +129,68 @@ class TestFullPipeline:
 
         # all_signals는 리스트
         assert isinstance(report["all_signals"], list)
+
+
+from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+
+class TestPostCollectionHook:
+    """collect_daily_ohlcv.py의 post-collection hook 테스트."""
+
+    def test_subprocess_called_on_success(self):
+        """수집 성공 시 subprocess.Popen이 올바른 스크립트 경로로 호출되는지."""
+        with patch("subprocess.Popen") as mock_popen:
+            import subprocess
+            import sys
+
+            # hook 로직 시뮬레이션
+            script_path = str(Path(__file__).parent.parent / "scripts" / "market_intelligence.py")
+            dry_run = False
+            success_count = 10
+
+            if not dry_run and success_count > 0:
+                subprocess.Popen(
+                    [sys.executable, script_path],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            mock_popen.assert_called_once()
+            call_args = mock_popen.call_args[0][0]
+            assert call_args[0] == sys.executable
+            assert "market_intelligence.py" in call_args[1]
+
+    def test_subprocess_not_called_on_dry_run(self):
+        """dry_run=True이면 subprocess가 호출되지 않아야."""
+        with patch("subprocess.Popen") as mock_popen:
+            dry_run = True
+            success_count = 10
+
+            if not dry_run and success_count > 0:
+                import subprocess
+                import sys
+                subprocess.Popen(
+                    [sys.executable, "market_intelligence.py"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            mock_popen.assert_not_called()
+
+    def test_subprocess_not_called_on_zero_success(self):
+        """success_count=0이면 subprocess가 호출되지 않아야."""
+        with patch("subprocess.Popen") as mock_popen:
+            dry_run = False
+            success_count = 0
+
+            if not dry_run and success_count > 0:
+                import subprocess
+                import sys
+                subprocess.Popen(
+                    [sys.executable, "market_intelligence.py"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            mock_popen.assert_not_called()

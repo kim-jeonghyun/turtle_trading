@@ -451,6 +451,21 @@ async def main():
 
         await send_collection_summary(notifier, result, args.dry_run)
 
+        # 수집 성공 시 인텔리전스 파이프라인 트리거 (별도 프로세스)
+        if not args.dry_run and result.success_count > 0:
+            logger.info("=== 인텔리전스 파이프라인 트리거 ===")
+            try:
+                import subprocess
+                import sys
+                subprocess.Popen(
+                    [sys.executable, str(Path(__file__).parent / "market_intelligence.py")],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                logger.info("인텔리전스 파이프라인 프로세스 시작 완료")
+            except Exception as e:
+                logger.error(f"인텔리전스 파이프라인 트리거 실패 (수집 결과에 영향 없음): {e}")
+
     finally:
         release_lock(lock_fd)
 
