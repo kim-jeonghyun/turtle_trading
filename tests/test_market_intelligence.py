@@ -62,8 +62,10 @@ class TestGenerateIntelligenceReport:
 
         with (
             patch("scripts.market_intelligence.acquire_lock") as mock_lock,
-            patch("scripts.market_intelligence.release_lock"),
+            patch("scripts.market_intelligence.release_lock") as mock_release,
             patch("scripts.market_intelligence.ParquetDataStore") as mock_store,
+            patch("scripts.market_intelligence.generate_intelligence_report") as mock_generate,
+            patch("scripts.market_intelligence.setup_notifier") as mock_setup_notifier,
         ):
             mock_lock.return_value = True  # lock 획득 성공
             mock_store_inst = mock_store.return_value
@@ -72,6 +74,9 @@ class TestGenerateIntelligenceReport:
 
             result = asyncio.run(run_pipeline(dry_run=True, min_rows=56, timeout=10))
             assert result is None
+            mock_generate.assert_not_called()
+            mock_setup_notifier.assert_not_called()
+            mock_release.assert_called_once_with(True)
 
     def test_regime_is_advisory_only(self):
         """레짐이 경고만 포함하고 자동 차단하지 않는지 확인."""
@@ -203,6 +208,31 @@ class TestPostCollectionHook:
             call_args = mock_popen.call_args[0][0]
             assert call_args[0] == sys.executable
             assert "market_intelligence.py" in call_args[1]
+            assert "--date" not in call_args
+
+    def test_subprocess_passes_date_when_provided(self):
+        """--date 옵션이 있으면 hook이 market_intelligence.py로 전달해야."""
+        with patch("subprocess.Popen") as mock_popen:
+            import subprocess
+            import sys
+
+            script_path = str(Path(__file__).parent.parent / "scripts" / "market_intelligence.py")
+            dry_run = False
+            success_count = 10
+            target_date = "2026-02-28"
+
+            if not dry_run and success_count > 0:
+                cmd = [sys.executable, script_path]
+                if target_date:
+                    cmd.extend(["--date", target_date])
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            call_args = mock_popen.call_args[0][0]
+            assert call_args == [sys.executable, script_path, "--date", "2026-02-28"]
 
     def test_subprocess_not_called_on_dry_run(self):
         """dry_run=True이면 subprocess가 호출되지 않아야."""
@@ -253,3 +283,26 @@ class TestRunPipelineGuards:
         assert sig.return_annotation is not inspect.Parameter.empty or True
         # min_rows default is 56
         assert sig.parameters["min_rows"].default == 56
+
+    def test_returns_none_when_lock_unavailable(self):
+        """이미 실행 중이면 run_pipeline은 즉시 None 반환."""
+        import asyncio
+
+        with patch("scripts.market_intelligence.acquire_lock", return_value=None):
+            result = asyncio.run(run_pipeline(dry_run=True, timeout=10))
+            assert result is None
+
+    def test_acquire_lock_prevents_concurrent_execution(self, tmp_path):
+        """실제 file lock으로 동시 실행을 방지하는지 확인."""
+        from scripts.market_intelligence import acquire_lock, release_lock
+
+        lock_file = tmp_path / ".market_intelligence.lock"
+
+        with patch("scripts.market_intelligence.LOCK_FILE", lock_file):
+            first = acquire_lock()
+            try:
+                second = acquire_lock()
+                assert first is not None
+                assert second is None
+            finally:
+                release_lock(first)

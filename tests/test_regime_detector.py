@@ -37,7 +37,7 @@ def _make_trending_down(n: int = 250) -> pd.DataFrame:
 
 
 def _make_recovery(n: int = 250) -> pd.DataFrame:
-    """회복 추세: close > SMA200, SMA50 > SMA200, but SMA200 기울기 < 0.5%."""
+    """회복 추세: close > SMA200, SMA50 > SMA200, but SMA200 기울기 < 1.5%."""
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [150 - i * 0.05 for i in range(200)]
     closes += [closes[-1] + i * 0.5 for i in range(1, 51)]
@@ -54,7 +54,7 @@ def _make_recovery(n: int = 250) -> pd.DataFrame:
 
 
 def _make_decline(n: int = 250) -> pd.DataFrame:
-    """약한 하락: close < SMA200, SMA50 < SMA200, but SMA200 기울기 > -0.5%."""
+    """약한 하락: close < SMA200, SMA50 < SMA200, but SMA200 기울기 > -1.5%."""
     dates = pd.bdate_range(end="2026-03-10", periods=n)
     closes = [100 + i * 0.05 for i in range(200)]
     closes += [closes[-1] - i * 0.5 for i in range(1, 51)]
