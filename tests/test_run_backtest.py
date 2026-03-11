@@ -178,6 +178,7 @@ class TestOutputFormatting:
                 quantity=100,
                 pnl=1000.0,
                 pnl_pct=0.022,
+                entry_reason="System 1 롱 진입: 450.00 돌파",
                 exit_reason="exit_long",
             ),
             Trade(
@@ -190,6 +191,7 @@ class TestOutputFormatting:
                 quantity=100,
                 pnl=-500.0,
                 pnl_pct=-0.011,
+                entry_reason="System 1 롱 진입: 455.00 돌파",
                 exit_reason="stop_loss",
             ),
         ]
@@ -255,6 +257,7 @@ class TestOutputFormatting:
             "quantity",
             "pnl",
             "pnl_pct",
+            "entry_reason",
             "exit_reason",
         ]
 
@@ -262,7 +265,11 @@ class TestOutputFormatting:
         assert df.iloc[0]["symbol"] == "SPY"
         assert df.iloc[0]["direction"] == "long"
         assert df.iloc[0]["pnl"] == 1000.0
+        assert df.iloc[0]["entry_reason"] == "System 1 롱 진입: 450.00 돌파"
         assert df.iloc[0]["pnl_pct"] == pytest.approx(2.2, rel=0.1)
+
+        # 두 번째 거래 entry_reason 확인
+        assert df.iloc[1]["entry_reason"] == "System 1 롱 진입: 455.00 돌파"
 
     def test_plot_equity_curve(self, mock_result, tmp_path):
         """차트 생성 테스트"""

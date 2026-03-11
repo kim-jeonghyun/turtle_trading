@@ -214,6 +214,7 @@ def export_trades_csv(result: BacktestResult, csv_path: str):
                 "quantity": trade.quantity,
                 "pnl": trade.pnl,
                 "pnl_pct": trade.pnl_pct * 100,  # 백분율로 변환
+                "entry_reason": trade.entry_reason,
                 "exit_reason": trade.exit_reason,
             }
         )
