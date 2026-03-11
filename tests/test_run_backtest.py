@@ -268,6 +268,9 @@ class TestOutputFormatting:
         assert df.iloc[0]["entry_reason"] == "System 1 롱 진입: 450.00 돌파"
         assert df.iloc[0]["pnl_pct"] == pytest.approx(2.2, rel=0.1)
 
+        # 두 번째 거래 entry_reason 확인
+        assert df.iloc[1]["entry_reason"] == "System 1 롱 진입: 455.00 돌파"
+
     def test_plot_equity_curve(self, mock_result, tmp_path):
         """차트 생성 테스트"""
         # matplotlib.pyplot.savefig를 모킹하여 실제 파일 저장 방지
