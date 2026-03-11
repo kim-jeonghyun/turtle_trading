@@ -368,3 +368,72 @@ class TestOHLCVAccumulation:
         assert not path.exists()
         quarantined = list(data_store.ohlcv_dir.glob("CORRUPT_ohlcv.parquet.corrupted.*"))
         assert len(quarantined) == 1
+
+
+# ─── Accumulated Bulk API Tests ───────────────────────────────────────────────
+
+
+class TestAccumulatedBulkAPI:
+    """list_accumulated_symbols / load_multiple_ohlcv 테스트 (#202)"""
+
+    def _make_df(self, n: int = 5) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "date": pd.date_range("2026-01-01", periods=n, freq="B"),
+                "open": [100.0] * n,
+                "high": [101.0] * n,
+                "low": [99.0] * n,
+                "close": [100.5] * n,
+                "volume": [1_000_000] * n,
+            }
+        )
+
+    def test_list_accumulated_symbols_empty(self, data_store):
+        """ohlcv 디렉토리가 비어 있으면 빈 리스트 반환"""
+        assert data_store.list_accumulated_symbols() == []
+
+    def test_list_accumulated_symbols_returns_codes(self, data_store):
+        """저장된 심볼들의 코드가 정렬된 리스트로 반환됨"""
+        data_store.save_ohlcv_accumulated("005930", self._make_df())
+        data_store.save_ohlcv_accumulated("000660", self._make_df())
+        result = data_store.list_accumulated_symbols()
+        assert result == ["000660", "005930"]
+
+    def test_list_accumulated_symbols_ignores_non_parquet(self, data_store):
+        """비-parquet 파일 및 손상 격리 파일은 목록에서 제외"""
+        data_store.save_ohlcv_accumulated("005930", self._make_df())
+        # 비-parquet 파일 생성
+        (data_store.ohlcv_dir / "readme.txt").write_text("not a parquet")
+        # 손상 격리 파일 생성 (확장자가 .parquet이 아님)
+        (data_store.ohlcv_dir / "000660_ohlcv.parquet.corrupted.20260101_120000").write_text("bad")
+        result = data_store.list_accumulated_symbols()
+        assert result == ["005930"]
+
+    def test_list_accumulated_symbols_removesuffix_safety(self, data_store):
+        """심볼 코드에 'ohlcv' 부분 문자열이 포함돼도 올바르게 추출됨"""
+        data_store.save_ohlcv_accumulated("ohlcv123", self._make_df())
+        result = data_store.list_accumulated_symbols()
+        assert result == ["ohlcv123"]
+
+    def test_load_multiple_ohlcv(self, data_store):
+        """두 심볼 모두 로드되어 dict로 반환됨"""
+        data_store.save_ohlcv_accumulated("005930", self._make_df())
+        data_store.save_ohlcv_accumulated("000660", self._make_df())
+        result = data_store.load_multiple_ohlcv(["005930", "000660"])
+        assert set(result.keys()) == {"005930", "000660"}
+        assert len(result["005930"]) == 5
+        assert len(result["000660"]) == 5
+
+    def test_load_multiple_ohlcv_skips_missing(self, data_store):
+        """존재하지 않는 심볼은 결과 dict에서 조용히 제외됨"""
+        data_store.save_ohlcv_accumulated("005930", self._make_df())
+        result = data_store.load_multiple_ohlcv(["005930", "NONEXISTENT"])
+        assert set(result.keys()) == {"005930"}
+
+    def test_load_multiple_ohlcv_with_min_rows(self, data_store):
+        """min_rows 미만인 심볼은 제외됨"""
+        data_store.save_ohlcv_accumulated("005930", self._make_df(n=5))
+        data_store.save_ohlcv_accumulated("000660", self._make_df(n=3))
+        result = data_store.load_multiple_ohlcv(["005930", "000660"], min_rows=5)
+        assert set(result.keys()) == {"005930"}
+        assert "000660" not in result
