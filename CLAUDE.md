@@ -1,6 +1,6 @@
 # Turtle Trading System - CLAUDE OPERATING GUIDE
 
-Last updated: 2026-03-10
+Last updated: 2026-03-12
 
 ## 1. 목적과 운영 원칙
 

@@ -174,6 +174,9 @@ turtle_trading/
 │   ├── market_calendar.py      # 시장 영업일/상태 판단
 │   ├── security.py             # 보안 검증 유틸리티
 │   ├── monitor_state.py        # 장중 모니터링 알림 상태 관리
+│   ├── market_breadth.py       # 시장 브레드스 지표 (% above MA, NH/NL, AD)
+│   ├── regime_detector.py      # 시장 레짐 분류 (5단계)
+│   ├── screener.py             # 멀티 전략 스크리너 (Strategy Protocol)
 │   ├── spot_price.py           # 실시간 가격 조회 (KIS API)
 │   ├── trading_guard.py           # 주문 전 안전 검증 (일일 손실 한도)
 │   ├── utils.py                # 공유 유틸 (atomic write, retry, 심볼 검증)
@@ -203,6 +206,7 @@ turtle_trading/
 │   ├── sync_positions.py          # KIS 잔고 동기화
 │   ├── toggle_trading.py          # 킬스위치 CLI
 │   ├── weekly_charts.sh           # 주간 차트 자동 생성 (cron)
+│   ├── market_intelligence.py  # 시장 인텔리전스 리포트 생성·전송
 │   └── deploy-v3.2.1.sh        # v3.2.1 배포 (Legacy)
 │
 ├── config/                     # 설정 파일
