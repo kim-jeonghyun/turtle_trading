@@ -15,6 +15,7 @@ build/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 *.cover
@@ -69,3 +70,6 @@ Thumbs.db
 
 # Session work logs
 work_logs/
+
+# Internal development plans (not for public consumption)
+docs/plans/
