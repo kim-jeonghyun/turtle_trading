@@ -1,6 +1,5 @@
 """tests/test_go_live_check.py — Go-Live 자동 검증 체크리스트 테스트."""
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -183,7 +182,7 @@ def test_data_integrity_check_missing(tmp_path):
 
 def test_recent_ohlcv_exists(tmp_path):
     """최신 parquet 파일이 2일 이내면 True."""
-    cache_dir = tmp_path / "data" / "cache"
+    cache_dir = tmp_path / "data" / "ohlcv"
     cache_dir.mkdir(parents=True)
     parquet = cache_dir / "SPY_1d.parquet"
     parquet.write_bytes(b"fake")
@@ -200,7 +199,7 @@ def test_recent_ohlcv_stale(tmp_path):
     import os
     import time
 
-    cache_dir = tmp_path / "data" / "cache"
+    cache_dir = tmp_path / "data" / "ohlcv"
     cache_dir.mkdir(parents=True)
     parquet = cache_dir / "SPY_1d.parquet"
     parquet.write_bytes(b"fake")
@@ -226,7 +225,7 @@ def test_recent_ohlcv_no_cache_dir(tmp_path):
 
 def test_recent_ohlcv_empty_cache(tmp_path):
     """cache 디렉토리는 있지만 parquet 없으면 False."""
-    cache_dir = tmp_path / "data" / "cache"
+    cache_dir = tmp_path / "data" / "ohlcv"
     cache_dir.mkdir(parents=True)
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_recent_ohlcv()
@@ -274,10 +273,15 @@ def test_kill_switch_disabled():
 
 def test_backtest_performance_pass(tmp_path):
     """MDD < 30%, PF > 1.0인 최신 백테스트 결과면 True."""
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.15, "profit_factor": 1.5}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
+    csv_content = (
+        "symbol,direction,entry_date,entry_price,exit_date,exit_price,quantity,pnl,pnl_pct,exit_reason\n"
+        "SPY,LONG,2024-01-01,100.0,2024-02-01,110.0,100,1000.0,10.0,exit_long\n"
+        "QQQ,LONG,2024-02-01,200.0,2024-03-01,195.0,50,-250.0,-2.5,stop_loss\n"
+        "SPY,LONG,2024-03-01,105.0,2024-04-01,115.0,100,1000.0,9.52,exit_long\n"
+    )
+    (bt_dir / "result_2026.csv").write_text(csv_content)
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
@@ -289,10 +293,14 @@ def test_backtest_performance_pass(tmp_path):
 
 def test_backtest_performance_fail_mdd(tmp_path):
     """MDD > 30%면 False."""
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.35, "profit_factor": 1.5}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
+    csv_content = (
+        "symbol,direction,entry_date,entry_price,exit_date,exit_price,quantity,pnl,pnl_pct,exit_reason\n"
+        "SPY,LONG,2024-01-01,100.0,2024-02-01,110.0,100,5000.0,10.0,exit_long\n"
+        "QQQ,LONG,2024-02-01,200.0,2024-03-01,130.0,500,-35000.0,-35.0,stop_loss\n"
+    )
+    (bt_dir / "result_2026.csv").write_text(csv_content)
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
@@ -303,10 +311,14 @@ def test_backtest_performance_fail_mdd(tmp_path):
 
 def test_backtest_performance_fail_pf(tmp_path):
     """PF < 1.0이면 False."""
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.10, "profit_factor": 0.8}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
+    csv_content = (
+        "symbol,direction,entry_date,entry_price,exit_date,exit_price,quantity,pnl,pnl_pct,exit_reason\n"
+        "SPY,LONG,2024-01-01,100.0,2024-02-01,101.0,100,100.0,1.0,exit_long\n"
+        "QQQ,LONG,2024-02-01,200.0,2024-03-01,195.0,100,-500.0,-2.5,stop_loss\n"
+    )
+    (bt_dir / "result_2026.csv").write_text(csv_content)
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
@@ -320,11 +332,16 @@ def test_backtest_performance_stale(tmp_path):
     import os
     import time
 
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.10, "profit_factor": 1.5}
-    result_file = bt_dir / "result_old.json"
-    result_file.write_text(json.dumps(result))
+    csv_content = (
+        "symbol,direction,entry_date,entry_price,exit_date,exit_price,quantity,pnl,pnl_pct,exit_reason\n"
+        "SPY,LONG,2024-01-01,100.0,2024-02-01,110.0,100,1000.0,10.0,exit_long\n"
+        "QQQ,LONG,2024-02-01,200.0,2024-03-01,195.0,50,-250.0,-2.5,stop_loss\n"
+        "SPY,LONG,2024-03-01,105.0,2024-04-01,115.0,100,1000.0,9.52,exit_long\n"
+    )
+    result_file = bt_dir / "result_old.csv"
+    result_file.write_text(csv_content)
 
     old_time = time.time() - (31 * 86400)
     os.utime(result_file, (old_time, old_time))
@@ -337,15 +354,15 @@ def test_backtest_performance_stale(tmp_path):
 
 
 def test_backtest_performance_no_dir(tmp_path):
-    """data/backtest/ 없으면 False."""
+    """data/backtest_results/ 없으면 False."""
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
     assert ok is False
 
 
 def test_backtest_performance_no_files(tmp_path):
-    """data/backtest/ 있지만 파일 없으면 False."""
-    (tmp_path / "data" / "backtest").mkdir(parents=True)
+    """data/backtest_results/ 있지만 파일 없으면 False."""
+    (tmp_path / "data" / "backtest_results").mkdir(parents=True)
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
     assert ok is False
