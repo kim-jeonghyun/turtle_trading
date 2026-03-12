@@ -207,6 +207,7 @@ DOCKER_UID=$(id -u) DOCKER_GID=$(id -g) docker compose up -d
 | 매시 09-15 | 월-금 | KR 리스크 한도 점검 (7회/일) | `check_risk_limits.py` | `/app/logs/risk_check.log` |
 | 5분 간격 09:00-15:25 | 월-금 | KR 장중 모니터링 (2 cron 엔트리) | `monitor_positions.py` | Python 로깅 |
 | 16:00 | 월-금 | OHLCV 일별 수집 | `collect_daily_ohlcv.py` | `/app/logs/ohlcv_collect.log` |
+| 수집 후 자동 | 월-금 | 시장 인텔리전스 리포트 | `market_intelligence.py` (subprocess) | Python 로깅 |
 | 16:00 | 월-금 | KR 시그널+포지션 체크 | `check_positions.py` | `/app/logs/check_kr.log` |
 | 5분 간격 22:00-06:25 | 월-토 | US 장중 모니터링 (3 cron 엔트리) | `monitor_positions.py` | Python 로깅 |
 | 매시 23-06 | 월-토 | US 리스크 한도 점검 (2 cron 엔트리) | `check_risk_limits.py` | `/app/logs/risk_check.log` |

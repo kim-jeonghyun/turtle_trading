@@ -28,6 +28,7 @@ Complete reference for all operational scripts in the Turtle Trading system.
 | `cleanup_old_data.py` | Operations | Interactive cleanup of cache, logs, and backups | Manual |
 | `security_check.py` | Operations | Credential and permission audit | Manual |
 | `list_positions.py` | Query | View open/closed positions with P&L | Manual |
+| `market_intelligence.py` | Intelligence | Market breadth, regime, screening report | Post-collection auto / Manual |
 | `test_notifications.py` | Testing | Telegram, Discord, Email channel test | Manual |
 | `deploy-v3.2.1.sh` | Legacy | One-time v3.2.1 deployment script | N/A |
 
