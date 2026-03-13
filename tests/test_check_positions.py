@@ -415,6 +415,7 @@ class TestSignalStructure:
             "stop_loss",
             "date",
             "message",
+            "er_at_entry",
         }
         assert required_keys.issubset(sig.keys()), f"시그널에 필수 키가 누락됨: {required_keys - sig.keys()}"
 
@@ -456,6 +457,7 @@ class TestSignalStructure:
             "stop_loss",
             "date",
             "message",
+            "er_at_entry",
         }
         assert required_keys.issubset(sig.keys())
 

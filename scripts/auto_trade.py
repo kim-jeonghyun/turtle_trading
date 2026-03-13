@@ -211,6 +211,7 @@ def check_entry_signal(df, symbol: str, system: int) -> dict | None:
             "stop_loss": stop_loss,
             "date": today["date"].strftime("%Y-%m-%d") if hasattr(today["date"], "strftime") else str(today["date"]),
             "message": f"System {system} 롱 진입: {entry_price:.2f} 돌파",
+            "er_at_entry": today.get("er"),
         }
 
     return None

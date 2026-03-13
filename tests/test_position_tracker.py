@@ -415,3 +415,29 @@ class TestEntryReason:
         }
         pos = Position.from_dict(data)
         assert pos.entry_reason is None
+
+    def test_open_position_with_er_at_entry(self, tracker):
+        """er_at_entry 전달 시 Position에 저장"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40, er_at_entry=0.45)
+        assert pos.er_at_entry == 0.45
+
+    def test_open_position_er_at_entry_default_none(self, tracker):
+        """er_at_entry 미전달 시 None"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        assert pos.er_at_entry is None
+
+    def test_er_at_entry_round_trip(self, tracker):
+        """er_at_entry to_dict → from_dict 왕복 무결성"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40, er_at_entry=0.62)
+        d = pos.to_dict()
+        assert d["er_at_entry"] == 0.62
+        restored = Position.from_dict(d)
+        assert restored.er_at_entry == 0.62
+
+    def test_er_at_entry_none_round_trip(self, tracker):
+        """er_at_entry=None to_dict → from_dict 왕복"""
+        pos = tracker.open_position("SPY", 1, "LONG", 100.0, 2.5, 40)
+        d = pos.to_dict()
+        assert d["er_at_entry"] is None
+        restored = Position.from_dict(d)
+        assert restored.er_at_entry is None

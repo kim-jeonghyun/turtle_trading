@@ -196,6 +196,7 @@ def check_entry_signals(
                     "stop_loss": yesterday[high_col] - (2 * today["N"]),
                     "date": today["date"].strftime("%Y-%m-%d"),
                     "message": f"System {system} 롱 진입: {yesterday[high_col]:.2f} 돌파",
+                    "er_at_entry": today.get("er"),
                 }
             )
 
@@ -232,6 +233,7 @@ def check_entry_signals(
                         "stop_loss": yesterday[short_low_col] + (2 * today["N"]),  # 숏 스톱은 위로
                         "date": today["date"].strftime("%Y-%m-%d"),
                         "message": f"System {system} 숏 진입: {yesterday[short_low_col]:.2f} 이탈",
+                        "er_at_entry": today.get("er"),
                     }
                 )
 
