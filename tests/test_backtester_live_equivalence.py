@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.check_positions import _should_allow_entry, check_entry_signals
 from src.backtester import BacktestConfig, TurtleBacktester
 from src.position_tracker import Position
+from src.trend_filter import TrendFilter
 from src.types import SignalType
 
 # ---------------------------------------------------------------------------
@@ -656,11 +657,6 @@ class TestBoundaryEquivalence:
         assert bt is False and live is False and bt == live, (
             "today_low == dc_low_55: 55일 failsafe 비발동, 양쪽 모두 SHORT 스킵"
         )
-
-
-from src.trend_filter import TrendFilter, TrendFilterConfig
-from src.indicators import calculate_efficiency_ratio
-from src.types import MarketRegime
 
 
 class TestTrendFilterEquivalence:

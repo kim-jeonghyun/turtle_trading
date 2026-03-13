@@ -6,10 +6,15 @@ TrendFilterConfig 기본값:
   sideways_er_boost=0.1
 """
 
+from datetime import datetime
+
+import pandas as pd
 import pytest
 
+from src.backtester import BacktestConfig, BacktestResult, Trade, TurtleBacktester
+from src.position_tracker import Position
 from src.trend_filter import FilterStats, TrendFilter, TrendFilterConfig
-from src.types import MarketRegime
+from src.types import Direction, MarketRegime
 
 
 class TestTrendFilterRegimeBlock:
@@ -187,12 +192,8 @@ class TestResolveRegimeProxy:
                 assert group in DEFAULT_REGIME_PROXIES, f"{group} missing from DEFAULT_REGIME_PROXIES"
 
 
-from src.backtester import Trade
-
-
 class TestTradeERField:
     def test_trade_has_er_at_entry_field(self):
-        from datetime import datetime
         trade = Trade(symbol="SPY", entry_date=datetime(2025, 1, 1), entry_price=100.0)
         assert trade.er_at_entry is None
 
@@ -200,10 +201,6 @@ class TestTradeERField:
         from datetime import datetime
         trade = Trade(symbol="SPY", entry_date=datetime(2025, 1, 1), entry_price=100.0, er_at_entry=0.45)
         assert trade.er_at_entry == 0.45
-
-
-from src.position_tracker import Position
-from src.types import Direction
 
 
 class TestPositionERRoundTrip:
@@ -235,13 +232,6 @@ class TestPositionERRoundTrip:
         assert d["er_at_entry"] is None
         restored = Position.from_dict(d)
         assert restored.er_at_entry is None
-
-
-import pandas as pd
-from datetime import datetime
-
-from src.backtester import BacktestConfig, TurtleBacktester
-from src.types import MarketRegime
 
 
 def _make_test_data(n_days=60):
@@ -297,9 +287,6 @@ class TestBacktesterTrendFilterIntegration:
         config = BacktestConfig(use_trend_quality_filter=False)
         result = TurtleBacktester(config).run(data)
         assert result.filter_stats is None
-
-
-from src.backtester import BacktestConfig, BacktestResult
 
 
 class TestBacktestConfigTrendFilter:
