@@ -258,6 +258,7 @@ class TestOutputFormatting:
             "pnl",
             "pnl_pct",
             "entry_reason",
+            "er_at_entry",
             "exit_reason",
         ]
 
