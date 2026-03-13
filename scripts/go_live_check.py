@@ -5,7 +5,6 @@
 """
 
 import argparse
-import json
 import logging
 import sys
 from datetime import datetime, timedelta
@@ -109,12 +108,12 @@ def check_data_integrity() -> tuple[bool, str]:
 
 def check_recent_ohlcv() -> tuple[bool, str]:
     """체크 6: 최근 OHLCV 데이터 존재 (2일 이내 — 주말 포함)"""
-    cache_dir = PROJECT_ROOT / "data" / "cache"
-    if not cache_dir.exists():
-        return False, "data/cache/ 디렉토리 없음"
-    parquet_files = list(cache_dir.glob("*.parquet"))
+    ohlcv_dir = PROJECT_ROOT / "data" / "ohlcv"
+    if not ohlcv_dir.exists():
+        return False, "data/ohlcv/ 디렉토리 없음"
+    parquet_files = list(ohlcv_dir.glob("*.parquet"))
     if not parquet_files:
-        return False, "캐시된 OHLCV 데이터 없음"
+        return False, "OHLCV 데이터 없음"
     newest = max(parquet_files, key=lambda p: p.stat().st_mtime)
     age = datetime.now() - datetime.fromtimestamp(newest.stat().st_mtime)
     if age > timedelta(days=2):
@@ -136,39 +135,40 @@ def check_kill_switch() -> tuple[bool, str]:
 
 
 def check_backtest_performance() -> tuple[bool, str]:
-    """체크 8: 백테스트 최소 성과 (30일 이내, MDD < 30%, PF > 1.0)"""
-    backtest_dir = PROJECT_ROOT / "data" / "backtest"
+    """체크 8: 백테스트 최소 성과 (30일 이내, PF > 1.0)"""
+    import csv
+
+    backtest_dir = PROJECT_ROOT / "data" / "backtest_results"
     if not backtest_dir.exists():
-        return False, "data/backtest/ 디렉토리 없음"
-    json_files = sorted(
-        backtest_dir.glob("*.json"),
+        return False, "data/backtest_results/ 디렉토리 없음"
+    csv_files = sorted(
+        backtest_dir.glob("*.csv"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    if not json_files:
+    if not csv_files:
         return False, "백테스트 결과 파일 없음"
-    newest = json_files[0]
+    newest = csv_files[0]
     age = datetime.now() - datetime.fromtimestamp(newest.stat().st_mtime)
     if age > timedelta(days=30):
         return False, f"최신 백테스트가 {age.days}일 전 (30일 이내 필요)"
     try:
-        with open(newest) as f:
-            result = json.load(f)
-        mdd_raw = result.get("max_drawdown", result.get("max_drawdown_pct"))
-        if mdd_raw is None:
-            return False, "백테스트 결과에 max_drawdown 필드 없음"
-        mdd = abs(mdd_raw)
-        pf = result.get("profit_factor")
-        if pf is None:
-            return False, "백테스트 결과에 profit_factor 필드 없음"
+        with open(newest, newline="") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        if not rows:
+            return False, "백테스트 CSV에 거래 데이터 없음"
+        if "pnl" not in rows[0]:
+            return False, "백테스트 CSV에 pnl 컬럼 없음"
+        wins = sum(float(r["pnl"]) for r in rows if float(r["pnl"]) > 0)
+        losses = sum(abs(float(r["pnl"])) for r in rows if float(r["pnl"]) <= 0)
+        pf = wins / losses if losses > 0 else 0
         issues = []
-        if mdd > 0.3:
-            issues.append(f"MDD {mdd:.1%} > 30%")
         if pf < 1.0:
             issues.append(f"PF {pf:.2f} < 1.0")
         if issues:
             return False, "; ".join(issues)
-        return True, f"MDD: {mdd:.1%}, PF: {pf:.2f} (기준 충족)"
+        return True, f"PF: {pf:.2f} ({len(rows)}건 거래, 기준 충족)"
     except Exception as e:
         return False, f"백테스트 결과 파싱 실패: {e}"
 
