@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.types import AssetGroup, Direction, SignalType
+from src.trend_filter import FilterStats
+from src.types import AssetGroup, Direction, MarketRegime, SignalType
 
 from .indicators import add_turtle_indicators, calculate_unit_size
 from .position_sizer import AccountState
@@ -46,6 +47,9 @@ class BacktestConfig:
     stop_distance_n: float = 2.0
     use_filter: bool = True
     commission_pct: float = 0.001
+    use_trend_quality_filter: bool = False
+    er_threshold: float = 0.3
+    regime_proxy_symbol: Optional[str] = None
 
 
 @dataclass
@@ -65,6 +69,7 @@ class BacktestResult:
     losing_trades: int = 0
     avg_win: float = 0.0
     avg_loss: float = 0.0
+    filter_stats: Optional[FilterStats] = None
 
 
 class TurtleBacktester:

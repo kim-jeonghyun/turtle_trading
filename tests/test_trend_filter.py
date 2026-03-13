@@ -235,3 +235,28 @@ class TestPositionERRoundTrip:
         assert d["er_at_entry"] is None
         restored = Position.from_dict(d)
         assert restored.er_at_entry is None
+
+
+from src.backtester import BacktestConfig, BacktestResult
+
+
+class TestBacktestConfigTrendFilter:
+    def test_default_trend_filter_off(self):
+        config = BacktestConfig()
+        assert config.use_trend_quality_filter is False
+
+    def test_trend_filter_config_fields(self):
+        config = BacktestConfig(
+            use_trend_quality_filter=True,
+            er_threshold=0.25,
+            regime_proxy_symbol="EWY",
+        )
+        assert config.use_trend_quality_filter is True
+        assert config.er_threshold == 0.25
+        assert config.regime_proxy_symbol == "EWY"
+
+
+class TestBacktestResultFilterStats:
+    def test_filter_stats_default_none(self):
+        result = BacktestResult(config=BacktestConfig())
+        assert result.filter_stats is None
