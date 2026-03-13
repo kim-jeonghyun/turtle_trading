@@ -3,7 +3,7 @@
 > Agent Council 합의 (2026-03-01)
 > Chairman: Claude Opus | Members: Gemini 2.5 Pro, Codex GPT-5.3
 > 3라운드 사고 루프 (분석 → 반론/검증 → 최종 합의)
-> 최종 업데이트: 2026-03-11
+> 최종 업데이트: 2026-03-13
 
 ---
 
@@ -52,6 +52,9 @@
 | #199 | 2026-03-11 | render() kwargs 통일, entry_reason 전파 |
 | #201 | 2026-03-11 | entry_reason CSV export 수정 |
 | #203 | 2026-03-11 | 시장 인텔리전스 파이프라인 (브레드스/레짐/스크리닝/리포트) |
+| #212 | 2026-03-13 | Trend Quality Filter (Dual ER + Regime 이중 필터) |
+| #213 | 2026-03-13 | go_live_check 경로 수정 (OHLCV/백테스트) |
+| #214 | 2026-03-13 | Live 경로 er_at_entry 전파 |
 
 ---
 
@@ -152,7 +155,7 @@ v3.6.0
         └── v3.8.0 (Go-Live Readiness) ✅
               └── v3.8.1 (Runtime Integration) ✅
                     └── v3.9.0 (Live Operations) ✅
-                          └── Post-v3.9.0 개선 (유니버스/인텔리전스) ✅ ← 현재
+                          └── Post-v3.9.0 개선 (유니버스/인텔리전스/TrendFilter) ✅ ← 현재
                                 └── [소액 실거래 시작]
                                       └── v4.0.0 (Stability)
                                             ├── v4.1.0 (Multi-Market)
