@@ -32,8 +32,8 @@ class TestBugFixes:
         # 5.0 * risk(=100000) / 100000(=n_value) -> 완전히 다른 결과
         assert wrong != correct
 
-    def test_bug2_equity_includes_unrealized(self, trending_up_df):
-        """BUG-2: equity curve에 미실현 P&L이 반영되는지 검증"""
+    def test_equity_includes_position_market_value(self, trending_up_df):
+        """equity curve에 포지션 시가(market value)가 반영되는지 검증 (B1 수정 후)"""
         config = BacktestConfig(
             initial_capital=100000.0,
             risk_percent=0.01,
@@ -53,7 +53,7 @@ class TestBugFixes:
             has_difference = (result.equity_curve["equity"] != result.equity_curve["cash"]).any()
             # 포지션이 있었다면 차이가 있어야 함
             if result.total_trades > 0 or len(bt.pyramid_manager.positions) > 0:
-                assert has_difference, "Equity should include unrealized P&L"
+                assert has_difference, "Equity should include position market value"
 
 
 class TestBacktestBasic:
