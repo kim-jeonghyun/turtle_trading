@@ -84,7 +84,10 @@ class TurtleBacktester:
         self._er_at_entry: Dict[str, Optional[float]] = {}
         self.trend_filter: Optional[TrendFilter] = None
         if config.use_trend_quality_filter:
-            tf_config = TrendFilterConfig(er_threshold=config.er_threshold)
+            tf_config = TrendFilterConfig(
+                er_threshold=config.er_threshold,
+                sideways_er_boost=0.0,  # regime 미확인 시 boost 비적용
+            )
             self.trend_filter = TrendFilter(tf_config)
         self.risk_manager: Optional[PortfolioRiskManager] = (
             PortfolioRiskManager(symbol_groups=symbol_groups or {}) if symbol_groups is not None else None

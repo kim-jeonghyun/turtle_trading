@@ -323,6 +323,7 @@ async def _run_checks():
         from src.trend_filter import TrendFilterConfig
         tf_config = TrendFilterConfig(
             er_threshold=tf_config_section.get("er_threshold", 0.3),
+            sideways_er_boost=0.0,  # regime 미확인 시 boost 비적용
         )
         trend_filter = TrendFilter(tf_config)
         logger.info(f"[TrendFilter] 활성화 (ER threshold={tf_config.er_threshold})")
@@ -525,7 +526,7 @@ async def _run_checks():
                 df = add_turtle_indicators(df)
 
                 if trend_filter:
-                    df["er"] = calculate_efficiency_ratio(df["close"])
+                    df["er"] = calculate_efficiency_ratio(df["close"], period=trend_filter.config.er_period)
 
                 # System 1/2 독립 운영 - 각 시스템별로 기존 포지션 확인
                 existing_positions = tracker.get_open_positions(symbol)
