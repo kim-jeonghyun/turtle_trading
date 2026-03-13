@@ -175,6 +175,7 @@ class PositionTracker:
         shares: int,
         account_equity: float = 100000,
         entry_reason: str | None = None,
+        er_at_entry: float | None = None,
     ) -> Position:
         """새 포지션 생성"""
         if isinstance(direction, str):
@@ -208,6 +209,7 @@ class PositionTracker:
             status=PositionStatus.OPEN.value,
             last_update=datetime.now().isoformat(),
             entry_reason=entry_reason,
+            er_at_entry=er_at_entry,
         )
 
         # 포지션 저장
