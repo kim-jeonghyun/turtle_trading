@@ -185,3 +185,53 @@ class TestResolveRegimeProxy:
                 assert group not in DEFAULT_REGIME_PROXIES
             else:
                 assert group in DEFAULT_REGIME_PROXIES, f"{group} missing from DEFAULT_REGIME_PROXIES"
+
+
+from src.backtester import Trade
+
+
+class TestTradeERField:
+    def test_trade_has_er_at_entry_field(self):
+        from datetime import datetime
+        trade = Trade(symbol="SPY", entry_date=datetime(2025, 1, 1), entry_price=100.0)
+        assert trade.er_at_entry is None
+
+    def test_trade_er_at_entry_set(self):
+        from datetime import datetime
+        trade = Trade(symbol="SPY", entry_date=datetime(2025, 1, 1), entry_price=100.0, er_at_entry=0.45)
+        assert trade.er_at_entry == 0.45
+
+
+from src.position_tracker import Position
+from src.types import Direction
+
+
+class TestPositionERRoundTrip:
+    def test_position_er_at_entry_to_dict_from_dict(self):
+        pos = Position(
+            position_id="SPY_1_LONG_20250301_120000",
+            symbol="SPY", system=1, direction=Direction.LONG,
+            entry_date="2025-03-01", entry_price=100.0, entry_n=2.0,
+            units=1, max_units=4, shares_per_unit=40, total_shares=40,
+            stop_loss=96.0, pyramid_level=0, exit_period=10,
+            status="open", last_update="2025-03-01T12:00:00",
+            er_at_entry=0.42,
+        )
+        d = pos.to_dict()
+        assert d["er_at_entry"] == 0.42
+        restored = Position.from_dict(d)
+        assert restored.er_at_entry == 0.42
+
+    def test_position_er_at_entry_none_roundtrip(self):
+        pos = Position(
+            position_id="SPY_1_LONG_20250301_120000",
+            symbol="SPY", system=1, direction=Direction.LONG,
+            entry_date="2025-03-01", entry_price=100.0, entry_n=2.0,
+            units=1, max_units=4, shares_per_unit=40, total_shares=40,
+            stop_loss=96.0, pyramid_level=0, exit_period=10,
+            status="open", last_update="2025-03-01T12:00:00",
+        )
+        d = pos.to_dict()
+        assert d["er_at_entry"] is None
+        restored = Position.from_dict(d)
+        assert restored.er_at_entry is None

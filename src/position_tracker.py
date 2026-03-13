@@ -66,6 +66,7 @@ class Position:
     exit_price: Optional[float] = None
     exit_reason: Optional[str] = None
     entry_reason: Optional[str] = None
+    er_at_entry: Optional[float] = None
     pnl: Optional[float] = None
     pnl_pct: Optional[float] = None
     r_multiple: Optional[float] = None  # N의 배수로 수익 표현

@@ -33,6 +33,7 @@ class Trade:
     pnl_pct: float = 0.0
     exit_reason: str = ""
     entry_reason: str = ""
+    er_at_entry: Optional[float] = None
 
 
 @dataclass
