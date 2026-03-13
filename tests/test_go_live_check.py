@@ -1,6 +1,5 @@
 """tests/test_go_live_check.py — Go-Live 자동 검증 체크리스트 테스트."""
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -183,9 +182,9 @@ def test_data_integrity_check_missing(tmp_path):
 
 def test_recent_ohlcv_exists(tmp_path):
     """최신 parquet 파일이 2일 이내면 True."""
-    cache_dir = tmp_path / "data" / "cache"
-    cache_dir.mkdir(parents=True)
-    parquet = cache_dir / "SPY_1d.parquet"
+    ohlcv_dir = tmp_path / "data" / "ohlcv"
+    ohlcv_dir.mkdir(parents=True)
+    parquet = ohlcv_dir / "000080_ohlcv.parquet"
     parquet.write_bytes(b"fake")
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
@@ -200,9 +199,9 @@ def test_recent_ohlcv_stale(tmp_path):
     import os
     import time
 
-    cache_dir = tmp_path / "data" / "cache"
-    cache_dir.mkdir(parents=True)
-    parquet = cache_dir / "SPY_1d.parquet"
+    ohlcv_dir = tmp_path / "data" / "ohlcv"
+    ohlcv_dir.mkdir(parents=True)
+    parquet = ohlcv_dir / "000080_ohlcv.parquet"
     parquet.write_bytes(b"fake")
 
     # Set mtime to 3 days ago
@@ -216,18 +215,18 @@ def test_recent_ohlcv_stale(tmp_path):
     assert "일 전" in msg
 
 
-def test_recent_ohlcv_no_cache_dir(tmp_path):
-    """cache 디렉토리 없으면 False."""
+def test_recent_ohlcv_no_dir(tmp_path):
+    """ohlcv 디렉토리 없으면 False."""
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_recent_ohlcv()
     assert ok is False
     assert "디렉토리 없음" in msg
 
 
-def test_recent_ohlcv_empty_cache(tmp_path):
-    """cache 디렉토리는 있지만 parquet 없으면 False."""
-    cache_dir = tmp_path / "data" / "cache"
-    cache_dir.mkdir(parents=True)
+def test_recent_ohlcv_empty_dir(tmp_path):
+    """ohlcv 디렉토리는 있지만 parquet 없으면 False."""
+    ohlcv_dir = tmp_path / "data" / "ohlcv"
+    ohlcv_dir.mkdir(parents=True)
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_recent_ohlcv()
     assert ok is False
@@ -272,41 +271,45 @@ def test_kill_switch_disabled():
 # ---------------------------------------------------------------------------
 
 
+def _write_backtest_csv(path: Path, rows: list[dict]) -> None:
+    """헬퍼: 백테스트 CSV 파일 작성."""
+    import csv
+
+    fieldnames = rows[0].keys() if rows else ["symbol", "pnl"]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def test_backtest_performance_pass(tmp_path):
-    """MDD < 30%, PF > 1.0인 최신 백테스트 결과면 True."""
-    bt_dir = tmp_path / "data" / "backtest"
+    """PF > 1.0인 최신 백테스트 결과면 True."""
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.15, "profit_factor": 1.5}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
+    trades = [
+        {"symbol": "SPY", "pnl": "500"},
+        {"symbol": "QQQ", "pnl": "300"},
+        {"symbol": "IWM", "pnl": "-200"},
+    ]
+    _write_backtest_csv(bt_dir / "result_2026.csv", trades)
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
 
     assert ok is True
-    assert "MDD" in msg
     assert "PF" in msg
-
-
-def test_backtest_performance_fail_mdd(tmp_path):
-    """MDD > 30%면 False."""
-    bt_dir = tmp_path / "data" / "backtest"
-    bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.35, "profit_factor": 1.5}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
-
-    with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
-        ok, msg = go_live_check.check_backtest_performance()
-
-    assert ok is False
-    assert "MDD" in msg
+    assert "3건" in msg
 
 
 def test_backtest_performance_fail_pf(tmp_path):
     """PF < 1.0이면 False."""
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.10, "profit_factor": 0.8}
-    (bt_dir / "result_2026.json").write_text(json.dumps(result))
+    trades = [
+        {"symbol": "SPY", "pnl": "100"},
+        {"symbol": "QQQ", "pnl": "-500"},
+    ]
+    _write_backtest_csv(bt_dir / "result_2026.csv", trades)
 
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
@@ -320,11 +323,11 @@ def test_backtest_performance_stale(tmp_path):
     import os
     import time
 
-    bt_dir = tmp_path / "data" / "backtest"
+    bt_dir = tmp_path / "data" / "backtest_results"
     bt_dir.mkdir(parents=True)
-    result = {"max_drawdown": 0.10, "profit_factor": 1.5}
-    result_file = bt_dir / "result_old.json"
-    result_file.write_text(json.dumps(result))
+    trades = [{"symbol": "SPY", "pnl": "500"}]
+    result_file = bt_dir / "result_old.csv"
+    _write_backtest_csv(result_file, trades)
 
     old_time = time.time() - (31 * 86400)
     os.utime(result_file, (old_time, old_time))
@@ -337,19 +340,46 @@ def test_backtest_performance_stale(tmp_path):
 
 
 def test_backtest_performance_no_dir(tmp_path):
-    """data/backtest/ 없으면 False."""
+    """data/backtest_results/ 없으면 False."""
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
     assert ok is False
+    assert "디렉토리 없음" in msg
 
 
 def test_backtest_performance_no_files(tmp_path):
-    """data/backtest/ 있지만 파일 없으면 False."""
-    (tmp_path / "data" / "backtest").mkdir(parents=True)
+    """data/backtest_results/ 있지만 파일 없으면 False."""
+    (tmp_path / "data" / "backtest_results").mkdir(parents=True)
     with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
         ok, msg = go_live_check.check_backtest_performance()
     assert ok is False
     assert "없음" in msg
+
+
+def test_backtest_performance_empty_csv(tmp_path):
+    """CSV 헤더만 있고 데이터 없으면 False."""
+    bt_dir = tmp_path / "data" / "backtest_results"
+    bt_dir.mkdir(parents=True)
+    (bt_dir / "empty.csv").write_text("symbol,pnl\n")
+
+    with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
+        ok, msg = go_live_check.check_backtest_performance()
+
+    assert ok is False
+    assert "데이터 없음" in msg
+
+
+def test_backtest_performance_missing_pnl_column(tmp_path):
+    """pnl 컬럼 없으면 False."""
+    bt_dir = tmp_path / "data" / "backtest_results"
+    bt_dir.mkdir(parents=True)
+    (bt_dir / "bad.csv").write_text("symbol,direction\nSPY,LONG\n")
+
+    with patch.object(go_live_check, "PROJECT_ROOT", tmp_path):
+        ok, msg = go_live_check.check_backtest_performance()
+
+    assert ok is False
+    assert "pnl" in msg
 
 
 # ---------------------------------------------------------------------------
