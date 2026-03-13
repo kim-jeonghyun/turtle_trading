@@ -97,3 +97,20 @@ def calculate_unit_size(
     if n_value <= 0:
         return 0
     return int((account_equity * risk_per_unit) / (n_value * dollar_per_point))
+
+
+def calculate_efficiency_ratio(series: pd.Series, period: int = 20) -> pd.Series:
+    """Kaufman Efficiency Ratio: |net_movement| / path_sum.
+
+    0 = 완전한 횡보(choppy), 1 = 직선 추세(straight trend).
+
+    Args:
+        series: 가격 시리즈 (close)
+        period: 룩백 기간 (기본 20, S1 lookback과 동일)
+
+    Returns:
+        ER 시리즈 (0.0 ~ 1.0, NaN → 0으로 채움)
+    """
+    direction = abs(series - series.shift(period))
+    volatility = abs(series.diff()).rolling(period).sum()
+    return (direction / volatility.replace(0, float("nan"))).fillna(0)

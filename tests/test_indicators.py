@@ -13,6 +13,7 @@ from src.indicators import (
     ATRMethod,
     add_turtle_indicators,
     calculate_donchian_channel,
+    calculate_efficiency_ratio,
     calculate_n,
     calculate_true_range,
     calculate_unit_size,
@@ -139,3 +140,50 @@ class TestCalculateSMA:
         series = pd.Series([1, 2, 3, 4, 5])
         result = calculate_sma(series, period=2)
         assert result.iloc[-1] == pytest.approx(4.5)
+
+
+class TestEfficiencyRatio:
+    """Kaufman Efficiency Ratio 계산 테스트."""
+
+    def test_straight_uptrend_er_near_one(self):
+        """직선 상승 → ER ≈ 1.0."""
+        prices = pd.Series([100.0 + i for i in range(25)])
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert er.iloc[-1] == pytest.approx(1.0, abs=0.01)
+
+    def test_straight_downtrend_er_near_one(self):
+        """직선 하락 → ER ≈ 1.0."""
+        prices = pd.Series([200.0 - i for i in range(25)])
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert er.iloc[-1] == pytest.approx(1.0, abs=0.01)
+
+    def test_choppy_data_er_low(self):
+        """지그재그 횡보 → ER < 0.3."""
+        prices = pd.Series([100.0 + (i % 2) * 2 - 1 for i in range(25)])
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert er.iloc[-1] < 0.3
+
+    def test_empty_series_returns_zeros(self):
+        """빈 시리즈 → 빈 시리즈."""
+        prices = pd.Series([], dtype=float)
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert len(er) == 0
+
+    def test_short_series_returns_fillna_zero(self):
+        """period 미만 데이터 → NaN이 0으로 채워짐."""
+        prices = pd.Series([100.0, 101.0, 102.0])
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert all(er == 0.0)
+
+    def test_zero_volatility_returns_zero(self):
+        """일정한 가격 (변동성 0) → ER = 0 (NaN → 0)."""
+        prices = pd.Series([100.0] * 25)
+        er = calculate_efficiency_ratio(prices, period=20)
+        assert er.iloc[-1] == 0.0
+
+    def test_default_period_is_20(self):
+        """기본 period=20 확인."""
+        prices = pd.Series([100.0 + i for i in range(25)])
+        er_default = calculate_efficiency_ratio(prices)
+        er_explicit = calculate_efficiency_ratio(prices, period=20)
+        pd.testing.assert_series_equal(er_default, er_explicit)

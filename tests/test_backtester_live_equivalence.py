@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.check_positions import _should_allow_entry, check_entry_signals
 from src.backtester import BacktestConfig, TurtleBacktester
 from src.position_tracker import Position
+from src.trend_filter import TrendFilter
 from src.types import SignalType
 
 # ---------------------------------------------------------------------------
@@ -656,3 +657,72 @@ class TestBoundaryEquivalence:
         assert bt is False and live is False and bt == live, (
             "today_low == dc_low_55: 55일 failsafe 비발동, 양쪽 모두 SHORT 스킵"
         )
+
+
+class TestTrendFilterEquivalence:
+    """TrendFilter가 backtester와 live checker 양쪽에서 동일하게 동작하는지 검증."""
+
+    def _make_df_with_er(self, er_value: float):
+        """ER 컬럼이 포함된 2행 DataFrame 생성."""
+        n_value = 2.0
+        yesterday = {
+            "date": pd.Timestamp("2025-03-01"),
+            "high": 100.0, "low": 98.0, "close": 99.0, "N": n_value,
+            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
+            "er": er_value,
+        }
+        today = {
+            "date": pd.Timestamp("2025-03-02"),
+            "high": ABOVE_20_ONLY, "low": NEUTRAL_LOW,
+            "close": (ABOVE_20_ONLY + NEUTRAL_LOW) / 2, "N": n_value,
+            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
+            "er": er_value,
+        }
+        return pd.DataFrame([yesterday, today])
+
+    def test_low_er_blocks_entry_in_live_path(self):
+        """ER < threshold → live checker에서 진입 차단."""
+        tf = TrendFilter()
+        df = self._make_df_with_er(0.1)
+        signals = check_entry_signals(df, SYMBOL, system=1, trend_filter=tf)
+        assert len(signals) == 0, "low ER should block entry in live path"
+
+    def test_high_er_allows_entry_in_live_path(self):
+        """ER > threshold → live checker에서 진입 허용."""
+        tf = TrendFilter()
+        df = self._make_df_with_er(0.5)
+        signals = check_entry_signals(df, SYMBOL, system=1, trend_filter=tf)
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) > 0, "high ER should allow entry in live path"
+
+    def test_trend_filter_none_does_not_block(self):
+        """trend_filter=None → 기존 동작 유지."""
+        df = self._make_df_with_er(0.1)
+        signals = check_entry_signals(df, SYMBOL, system=1, trend_filter=None)
+        long_signals = [s for s in signals if s["direction"] == "LONG"]
+        assert len(long_signals) > 0, "no filter should not block entry"
+
+    def test_backtester_and_live_agree_on_filter_block(self):
+        """동일 ER에서 backtester와 live 모두 차단."""
+        low_er = 0.1
+
+        # Backtester path
+        config = BacktestConfig(system=1, use_trend_quality_filter=True)
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable[SYMBOL] = False
+        prev_row = pd.Series({
+            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
+        })
+        row = pd.Series({"high": ABOVE_20_ONLY, "low": NEUTRAL_LOW, "er": low_er})
+        bt_signal = bt._check_entry_signal(row, prev_row, SYMBOL)
+
+        # Live path
+        tf = TrendFilter()
+        df = self._make_df_with_er(low_er)
+        live_signals = check_entry_signals(df, SYMBOL, system=1, trend_filter=tf)
+
+        assert bt_signal is None, "backtester should block low ER"
+        assert len(live_signals) == 0, "live should block low ER"

@@ -10,9 +10,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.types import AssetGroup, Direction, SignalType
+from src.trend_filter import FilterStats, TrendFilter, TrendFilterConfig
+from src.types import AssetGroup, Direction, MarketRegime, SignalType
 
-from .indicators import add_turtle_indicators, calculate_unit_size
+from .indicators import add_turtle_indicators, calculate_efficiency_ratio, calculate_unit_size
 from .position_sizer import AccountState
 from .pyramid_manager import PyramidManager
 from .risk_manager import PortfolioRiskManager
@@ -33,6 +34,7 @@ class Trade:
     pnl_pct: float = 0.0
     exit_reason: str = ""
     entry_reason: str = ""
+    er_at_entry: Optional[float] = None
 
 
 @dataclass
@@ -45,6 +47,9 @@ class BacktestConfig:
     stop_distance_n: float = 2.0
     use_filter: bool = True
     commission_pct: float = 0.001
+    use_trend_quality_filter: bool = False
+    er_threshold: float = 0.3
+    regime_proxy_symbol: Optional[str] = None
 
 
 @dataclass
@@ -64,6 +69,7 @@ class BacktestResult:
     losing_trades: int = 0
     avg_win: float = 0.0
     avg_loss: float = 0.0
+    filter_stats: Optional[FilterStats] = None
 
 
 class TurtleBacktester:
@@ -75,6 +81,14 @@ class TurtleBacktester:
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
         self.entry_reasons: Dict[str, str] = {}
+        self._er_at_entry: Dict[str, Optional[float]] = {}
+        self.trend_filter: Optional[TrendFilter] = None
+        if config.use_trend_quality_filter:
+            tf_config = TrendFilterConfig(
+                er_threshold=config.er_threshold,
+                sideways_er_boost=0.0,  # regime 미확인 시 boost 비적용
+            )
+            self.trend_filter = TrendFilter(tf_config)
         self.risk_manager: Optional[PortfolioRiskManager] = (
             PortfolioRiskManager(symbol_groups=symbol_groups or {}) if symbol_groups is not None else None
         )
@@ -89,6 +103,13 @@ class TurtleBacktester:
         return "dc_high_55", "dc_low_55", "dc_low_20", "dc_high_20"
 
     def _check_entry_signal(self, row: pd.Series, prev_row: pd.Series, symbol: str) -> Optional[SignalType]:
+        if self.trend_filter:
+            er_value = float(row.get("er", 0.0) or 0.0)
+            result = self.trend_filter.should_enter(MarketRegime.SIDEWAYS, er_value)
+            if not result.allowed:
+                logger.debug(f"[TrendFilter] {symbol} 진입 차단: {result.reason}")
+                return None
+
         entry_high, entry_low, _, _ = self._get_entry_exit_columns()
 
         # 롱 진입 신호
@@ -143,6 +164,10 @@ class TurtleBacktester:
         # 모든 데이터에 지표 추가
         for symbol, df in data.items():
             data[symbol] = add_turtle_indicators(df)
+            if self.trend_filter:
+                data[symbol]["er"] = calculate_efficiency_ratio(
+                    data[symbol]["close"], period=self.trend_filter.config.er_period
+                )
 
         # 날짜 인덱스 정렬
         date_set: set[Any] = set()
@@ -183,7 +208,8 @@ class TurtleBacktester:
                     entry_signal = self._check_entry_signal(row, prev_row, symbol)
                     if entry_signal:
                         direction = Direction.LONG if entry_signal == SignalType.ENTRY_LONG else Direction.SHORT
-                        self._open_position(symbol, date, row["close"], n_value, direction)
+                        er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
+                        self._open_position(symbol, date, row["close"], n_value, direction, er_value)
 
             # 일일 자본 기록
             self._record_equity(date, data)
@@ -191,7 +217,15 @@ class TurtleBacktester:
         # 결과 계산
         return self._calculate_results()
 
-    def _open_position(self, symbol: str, date: datetime, price: float, n_value: float, direction: Direction):
+    def _open_position(
+        self,
+        symbol: str,
+        date: datetime,
+        price: float,
+        n_value: float,
+        direction: Direction,
+        er_value: Optional[float] = None,
+    ):
         unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
@@ -214,6 +248,7 @@ class TurtleBacktester:
             self.risk_manager.add_position(symbol, 1, n_value, direction)
         direction_label = "롱" if direction == Direction.LONG else "숏"
         self.entry_reasons[symbol] = f"System {self.config.system} {direction_label} 진입: {price:.2f} 돌파"
+        self._er_at_entry[symbol] = er_value
         logger.debug(f"진입: {symbol} {direction.value} @ {price:.2f} x {unit_size}")
 
     def _add_pyramid(self, symbol: str, date: datetime, price: float, n_value: float):
@@ -268,6 +303,7 @@ class TurtleBacktester:
             pnl_pct=pnl_pct,
             exit_reason=reason,
             entry_reason=self.entry_reasons.pop(symbol, ""),
+            er_at_entry=self._er_at_entry.pop(symbol, None),
         )
         self.trades.append(trade)
 
@@ -301,8 +337,9 @@ class TurtleBacktester:
 
     def _calculate_results(self) -> BacktestResult:
         equity_df = pd.DataFrame(self.equity_history)
+        filter_stats = self.trend_filter.get_filter_stats() if self.trend_filter else None
         if equity_df.empty:
-            return BacktestResult(config=self.config)
+            return BacktestResult(config=self.config, filter_stats=filter_stats)
 
         final_equity = equity_df["equity"].iloc[-1]
         total_return = (final_equity - self.config.initial_capital) / self.config.initial_capital
@@ -353,4 +390,5 @@ class TurtleBacktester:
             losing_trades=losing_trades,
             avg_win=avg_win,
             avg_loss=avg_loss,
+            filter_stats=filter_stats,
         )
