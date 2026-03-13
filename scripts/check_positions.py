@@ -19,7 +19,7 @@ from typing import Optional
 from src.cost_analyzer import CostAnalyzer
 from src.data_fetcher import DataFetcher
 from src.data_store import ParquetDataStore
-from src.indicators import add_turtle_indicators
+from src.indicators import add_turtle_indicators, calculate_efficiency_ratio
 from src.inverse_filter import InverseETFFilter
 from src.kill_switch import KillSwitch
 from src.kis_api import KISAPIClient
@@ -27,7 +27,8 @@ from src.market_calendar import get_market_status, infer_market, should_check_si
 from src.position_tracker import PositionTracker
 from src.script_helpers import create_kis_client, load_config, setup_notifier, setup_risk_manager
 from src.trading_guard import TradingGuard, TradingLimits
-from src.types import Direction, SignalType
+from src.trend_filter import TrendFilter
+from src.types import Direction, MarketRegime, SignalType
 from src.universe_manager import Asset, UniverseManager
 from src.vi_cb_detector import VICBDetector
 
@@ -132,6 +133,7 @@ def check_entry_signals(
     system: int = 1,
     tracker: "PositionTracker | None" = None,
     asset: Optional[Asset] = None,
+    trend_filter: Optional["TrendFilter"] = None,
 ) -> list:
     """진입 시그널 확인"""
     signals: list[dict] = []
@@ -140,6 +142,15 @@ def check_entry_signals(
 
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
+
+    # Trend Quality Filter
+    if trend_filter:
+        er_value = today.get("er", 0.0)
+        regime = MarketRegime.SIDEWAYS
+        tf_result = trend_filter.should_enter(regime, er_value)
+        if not tf_result.allowed:
+            logger.info(f"[TrendFilter] {symbol} 진입 차단: {tf_result.reason}")
+            return signals  # empty list
 
     # System 1 필터: 직전 거래가 수익이면 스킵 (Curtis Faith 원칙)
     # System 2는 필터 없음
@@ -303,6 +314,18 @@ async def _run_checks():
     tracker = PositionTracker()
     risk_manager = setup_risk_manager()
     vi_cb_detector = VICBDetector()
+
+    # Trend Quality Filter (config YAML의 trend_filter 섹션으로 활성화)
+    tf_config_section = config.get("trend_filter", {})
+    use_trend_filter = tf_config_section.get("enabled", False)
+    trend_filter: Optional[TrendFilter] = None
+    if use_trend_filter:
+        from src.trend_filter import TrendFilterConfig
+        tf_config = TrendFilterConfig(
+            er_threshold=tf_config_section.get("er_threshold", 0.3),
+        )
+        trend_filter = TrendFilter(tf_config)
+        logger.info(f"[TrendFilter] 활성화 (ER threshold={tf_config.er_threshold})")
 
     # 안전 가드 초기화
     kill_switch_guard = KillSwitch()
@@ -501,6 +524,9 @@ async def _run_checks():
 
                 df = add_turtle_indicators(df)
 
+                if trend_filter:
+                    df["er"] = calculate_efficiency_ratio(df["close"])
+
                 # System 1/2 독립 운영 - 각 시스템별로 기존 포지션 확인
                 existing_positions = tracker.get_open_positions(symbol)
                 existing_systems = {p.system for p in existing_positions}
@@ -511,12 +537,16 @@ async def _run_checks():
                 current_asset = universe.assets.get(symbol)
 
                 if 1 not in existing_systems:
-                    signals_s1 = check_entry_signals(df, symbol, system=1, tracker=tracker, asset=current_asset)
+                    signals_s1 = check_entry_signals(
+                        df, symbol, system=1, tracker=tracker, asset=current_asset, trend_filter=trend_filter
+                    )
                 else:
                     logger.info(f"System 1 포지션 보유 중: {symbol}")
 
                 if 2 not in existing_systems:
-                    signals_s2 = check_entry_signals(df, symbol, system=2, tracker=tracker, asset=current_asset)
+                    signals_s2 = check_entry_signals(
+                        df, symbol, system=2, tracker=tracker, asset=current_asset, trend_filter=trend_filter
+                    )
                 else:
                     logger.info(f"System 2 포지션 보유 중: {symbol}")
 
