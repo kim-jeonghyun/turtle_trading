@@ -205,14 +205,16 @@ class TestTradeEntryReason:
 
         # Create minimal OHLCV data with a breakout and then a close
         dates = pd.date_range("2026-01-01", periods=60, freq="B")
-        data = pd.DataFrame({
-            "date": dates,
-            "open": [100] * 60,
-            "high": [101] * 20 + [120] * 20 + [101] * 20,
-            "low": [99] * 20 + [99] * 20 + [80] * 20,
-            "close": [100] * 20 + [115] * 20 + [85] * 20,
-            "volume": [1000000] * 60,
-        })
+        data = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100] * 60,
+                "high": [101] * 20 + [120] * 20 + [101] * 20,
+                "low": [99] * 20 + [99] * 20 + [80] * 20,
+                "close": [100] * 20 + [115] * 20 + [85] * 20,
+                "volume": [1000000] * 60,
+            }
+        )
 
         config = BacktestConfig(
             initial_capital=100000,
@@ -430,14 +432,16 @@ class TestBacktesterRiskIntegration:
                 else:
                     price = base + 1.0 + (j - 60) * 0.1
                 prices.append(price)
-            df = pd.DataFrame({
-                "date": dates,
-                "open": prices,
-                "high": [p + 0.5 for p in prices],
-                "low": [p - 0.5 for p in prices],
-                "close": prices,
-                "volume": [1000000] * len(dates),
-            })
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": prices,
+                    "high": [p + 0.5 for p in prices],
+                    "low": [p - 0.5 for p in prices],
+                    "close": prices,
+                    "volume": [1000000] * len(dates),
+                }
+            )
             data[f"SYM{i}"] = df
         return data
 
@@ -455,10 +459,7 @@ class TestBacktesterRiskIntegration:
         bt.run(data)
 
         # 시그널이 발생했는지 확인 (trades + open positions)
-        symbols_traded = (
-            set(t.symbol for t in bt.trades)
-            | set(bt.pyramid_manager.positions.keys())
-        )
+        symbols_traded = set(t.symbol for t in bt.trades) | set(bt.pyramid_manager.positions.keys())
         assert len(symbols_traded) > 0, "시그널이 발생하지 않음"
         assert len(symbols_traded) <= 6, f"그룹 한도 6 초과: {len(symbols_traded)}개 종목 진입"
 
@@ -473,8 +474,405 @@ class TestBacktesterRiskIntegration:
         data = self._make_breakout_data(7)
         bt.run(data)
 
-        symbols_traded = (
-            set(t.symbol for t in bt.trades)
-            | set(bt.pyramid_manager.positions.keys())
-        )
+        symbols_traded = set(t.symbol for t in bt.trades) | set(bt.pyramid_manager.positions.keys())
         assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"
+
+
+class TestEquityInvariants:
+    """에쿼티 추적 불변 조건 (Issue #216)"""
+
+    @staticmethod
+    def _make_volatile_data() -> dict[str, pd.DataFrame]:
+        """큰 변동이 있는 단일 종목 데이터 (진입→하락→청산 유도)"""
+        np.random.seed(42)
+        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
+        prices = []
+        p = 100.0
+        for i in range(120):
+            if i < 30:
+                p += np.random.normal(0, 0.3)
+            elif i < 60:
+                p += abs(np.random.normal(1.0, 0.3))
+            elif i < 90:
+                p -= abs(np.random.normal(1.5, 0.5))
+            else:
+                p += np.random.normal(0, 0.3)
+            p = max(p, 1.0)
+            prices.append(p)
+
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": prices,
+                "high": [p + abs(np.random.normal(0.5, 0.2)) for p in prices],
+                "low": [p - abs(np.random.normal(0.5, 0.2)) for p in prices],
+                "close": prices,
+                "volume": [1_000_000] * 120,
+            }
+        )
+        return {"TEST": df}
+
+    @staticmethod
+    def _make_multi_symbol_data() -> dict[str, pd.DataFrame]:
+        """3종목 데이터"""
+        np.random.seed(99)
+        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
+        data = {}
+        for sym_idx, sym in enumerate(["AAA", "BBB", "CCC"]):
+            base = 50.0 + sym_idx * 20
+            prices = []
+            p = base
+            for i in range(120):
+                if i < 30:
+                    p += np.random.normal(0, 0.2)
+                elif i < 60:
+                    p += abs(np.random.normal(0.8, 0.2))
+                elif i < 90:
+                    p -= abs(np.random.normal(1.2, 0.4))
+                else:
+                    p += np.random.normal(0, 0.2)
+                p = max(p, 1.0)
+                prices.append(p)
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": prices,
+                    "high": [p + abs(np.random.normal(0.4, 0.1)) for p in prices],
+                    "low": [p - abs(np.random.normal(0.4, 0.1)) for p in prices],
+                    "close": prices,
+                    "volume": [1_000_000] * 120,
+                }
+            )
+            data[sym] = df
+        return data
+
+    def test_i1_equity_non_negative(self):
+        """I1: Long-only 무레버리지에서 equity는 항상 >= 0"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_volatile_data())
+
+        assert not result.equity_curve.empty, "equity curve가 비어있음"
+        neg = result.equity_curve[result.equity_curve["equity"] < 0]
+        assert neg.empty, (
+            f"I1 위반: {len(neg)}개 시점에서 음수 equity 발생. 최솟값: {result.equity_curve['equity'].min():.2f}"
+        )
+
+    def test_i2_mdd_bounded(self):
+        """I2: 0 <= MDD <= 1.0"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_volatile_data())
+
+        assert 0 <= result.max_drawdown <= 1.0, f"I2 위반: MDD = {result.max_drawdown:.4f} (범위 초과)"
+
+    def test_i3_cash_reconciliation_when_flat(self):
+        """I3: 모든 포지션 청산 후 equity == cash == initial + realized_pnl"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+        bt.run(self._make_volatile_data())
+
+        assert len(bt.trades) > 0, "I3 전제조건 불충족: 거래가 발생하지 않음"
+        assert len(bt.pyramid_manager.positions) == 0, (
+            "I3 전제조건 불충족: 열린 포지션 존재 — 모든 포지션이 청산되어야 함"
+        )
+
+        expected = config.initial_capital + bt.account.realized_pnl
+        actual_cash = bt.account.cash
+        assert abs(actual_cash - expected) < 0.01, (
+            f"I3 위반: cash={actual_cash:.2f}, expected={expected:.2f} (initial + realized_pnl)"
+        )
+
+    def test_i4_current_equity_consistent(self):
+        """I4: account.current_equity == equity_curve 마지막 값"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_volatile_data())
+
+        if not result.equity_curve.empty:
+            curve_last = result.equity_curve["equity"].iloc[-1]
+            assert abs(bt.account.current_equity - curve_last) < 0.01, (
+                f"I4 위반: current_equity={bt.account.current_equity:.2f}, curve_last={curve_last:.2f}"
+            )
+
+    def test_i5_peak_monotonic(self):
+        """I5: equity peak는 단조증가"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_volatile_data())
+
+        assert not result.equity_curve.empty, "equity curve가 비어있음"
+        assert "peak" in result.equity_curve.columns, "peak 컬럼이 없음"
+        peaks = result.equity_curve["peak"]
+        diffs = peaks.diff().dropna()
+        violations = diffs[diffs < -0.001]
+        assert violations.empty, f"I5 위반: peak가 {len(violations)}개 시점에서 감소"
+
+    def test_multi_symbol_equity_non_negative(self):
+        """I1 확장: 다중 종목에서도 equity >= 0"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_multi_symbol_data())
+
+        assert not result.equity_curve.empty
+        neg = result.equity_curve[result.equity_curve["equity"] < 0]
+        assert neg.empty, (
+            f"I1 위반 (다중 종목): {len(neg)}개 시점에서 음수. 최솟값: {result.equity_curve['equity'].min():.2f}"
+        )
+
+    def test_multi_symbol_mdd_bounded(self):
+        """I2 확장: 다중 종목에서도 MDD <= 1.0"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+        )
+        bt = TurtleBacktester(config)
+        result = bt.run(self._make_multi_symbol_data())
+
+        assert 0 <= result.max_drawdown <= 1.0, f"I2 위반 (다중 종목): MDD = {result.max_drawdown:.4f}"
+
+
+class TestEquityFormula:
+    """B1 수정 검증: _record_equity()가 market value를 사용하는지 확인"""
+
+    def test_equity_at_entry_equals_initial_minus_commission(self):
+        """진입 직후 equity = initial_capital - commission (not initial - notional)"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.001,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+
+        position = bt.pyramid_manager.get_position("TEST")
+        assert position is not None, "포지션이 생성되지 않음"
+        qty = position.total_units
+
+        mock_data = {
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-01")],
+                    "close": [100.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-01"), mock_data)
+
+        recorded_equity = bt.equity_history[-1]["equity"]
+        expected = 100_000.0 - qty * 100.0 * config.commission_pct
+        assert abs(recorded_equity - expected) < 1.0, (
+            f"진입 직후 equity={recorded_equity:.2f}, expected={expected:.2f}. "
+            f"차이={recorded_equity - expected:.2f} (B1 버그 시 ~{qty * 100:.0f} 부족)"
+        )
+
+    def test_equity_tracks_price_movement(self):
+        """가격 상승 시 equity가 정확히 반영"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+        qty = position.total_units
+
+        mock_data = {
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-02")],
+                    "close": [110.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        recorded = bt.equity_history[-1]["equity"]
+        expected = 100_000.0 + qty * 10.0
+        assert abs(recorded - expected) < 0.01, f"equity={recorded:.2f}, expected={expected:.2f}"
+
+
+class TestRoundTripCommission:
+    """B1+B3 통합 검증: 진입→청산 왕복 수수료가 정확히 차감되는지 확인"""
+
+    def test_round_trip_cash_equals_initial_minus_commissions(self):
+        """가격 변동 없이 왕복 시 cash = initial - entry_commission - exit_commission"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.001,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+        qty = position.total_units
+
+        bt._close_position("TEST", pd.Timestamp("2025-01-10"), 100.0, "EXIT_LONG")
+
+        entry_comm = qty * 100.0 * config.commission_pct
+        exit_comm = qty * 100.0 * config.commission_pct
+        expected = 100_000.0 - entry_comm - exit_comm
+        assert abs(bt.account.cash - expected) < 0.01, (
+            f"왕복 수수료 불일치: cash={bt.account.cash:.2f}, expected={expected:.2f}"
+        )
+
+    def test_short_round_trip_equity(self):
+        """SHORT 왕복: equity가 정확하게 추적되는지 검증"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.SHORT)
+        position = bt.pyramid_manager.get_position("TEST")
+        assert position is not None, "SHORT 포지션 미생성"
+        qty = position.total_units
+
+        # 가격 하락 → 숏 수익
+        mock_data = {
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-02")],
+                    "close": [90.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        recorded = bt.equity_history[-1]["equity"]
+        # cash = 100000 - qty*100, positions_value = qty*(2*100 - 90) = qty*110
+        # equity = (100000 - qty*100) + qty*110 = 100000 + qty*10
+        expected = 100_000.0 + qty * 10.0
+        assert abs(recorded - expected) < 0.01, f"SHORT equity 오류: {recorded:.2f}, expected={expected:.2f}"
+
+        # 가격 상승 → 숏 손실
+        mock_data2 = {
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-03")],
+                    "close": [110.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-03"), mock_data2)
+
+        recorded2 = bt.equity_history[-1]["equity"]
+        # positions_value = qty*(2*100 - 110) = qty*90
+        expected2 = 100_000.0 - qty * 10.0
+        assert abs(recorded2 - expected2) < 0.01, f"SHORT equity 오류 (상승): {recorded2:.2f}, expected={expected2:.2f}"
+
+
+class TestExitCommission:
+    """B3 수정 검증: 청산 시 수수료가 cash에서 차감되는지 확인"""
+
+    def test_exit_commission_deducted_from_cash(self):
+        """청산 시 cash += qty * price * (1 - commission)"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.001,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+        qty = position.total_units
+        cash_before_close = bt.account.cash
+
+        bt._close_position("TEST", pd.Timestamp("2025-01-10"), 110.0, "EXIT_LONG")
+
+        expected_cash = cash_before_close + qty * 110.0 * (1 - config.commission_pct)
+        assert abs(bt.account.cash - expected_cash) < 0.01, (
+            f"cash={bt.account.cash:.2f}, expected={expected_cash:.2f}. "
+            f"차이={bt.account.cash - expected_cash:.2f} (B3: 청산 수수료 미차감)"
+        )
+
+
+class TestCurrentEquityUpdate:
+    """B2 수정 검증: current_equity가 매 바마다 갱신되는지 확인"""
+
+    def test_current_equity_updated_after_record(self):
+        """_record_equity() 호출 후 account.current_equity가 갱신"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        qty = bt.pyramid_manager.get_position("TEST").total_units
+
+        mock_data = {
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-02")],
+                    "close": [90.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        expected = bt.account.cash + qty * 90.0
+        assert abs(bt.account.current_equity - expected) < 0.01, (
+            f"current_equity={bt.account.current_equity:.2f}, expected={expected:.2f}. "
+            f"B2 버그: initial_capital에서 변경 안 됨"
+        )
+
+    def test_position_sizing_uses_updated_equity(self):
+        """손실 후 두 번째 포지션이 줄어든 equity로 사이징"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("AAA", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        qty1 = bt.pyramid_manager.get_position("AAA").total_units
+
+        mock_data = {
+            "AAA": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-02")],
+                    "close": [80.0],
+                }
+            )
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        bt._open_position("BBB", pd.Timestamp("2025-01-02"), 50.0, 5.0, Direction.LONG)
+        pos_bbb = bt.pyramid_manager.get_position("BBB")
+
+        assert pos_bbb is not None, "BBB 포지션이 생성되지 않음 (cash 부족 가능)"
+        qty2 = pos_bbb.total_units
+        assert qty2 <= qty1, f"B2 버그: 손실 후에도 동일 사이즈 {qty2} >= {qty1}"
