@@ -237,6 +237,68 @@ class TestPositionERRoundTrip:
         assert restored.er_at_entry is None
 
 
+import pandas as pd
+from datetime import datetime
+
+from src.backtester import BacktestConfig, TurtleBacktester
+from src.types import MarketRegime
+
+
+def _make_test_data(n_days=60):
+    """직선 상승 테스트 데이터 생성 (ER ≈ 1.0)."""
+    dates = pd.date_range("2025-01-01", periods=n_days, freq="B")
+    data = {
+        "date": dates,
+        "open": [100 + i * 0.5 for i in range(n_days)],
+        "high": [101 + i * 0.5 for i in range(n_days)],
+        "low": [99 + i * 0.5 for i in range(n_days)],
+        "close": [100 + i * 0.5 for i in range(n_days)],
+        "volume": [1000000] * n_days,
+    }
+    return pd.DataFrame(data)
+
+
+class TestBacktesterTrendFilterIntegration:
+    def test_filter_off_by_default(self):
+        """use_trend_quality_filter=False → TrendFilter 미생성."""
+        config = BacktestConfig()
+        bt = TurtleBacktester(config)
+        assert bt.trend_filter is None
+
+    def test_filter_on_creates_trend_filter(self):
+        """use_trend_quality_filter=True → TrendFilter 생성."""
+        config = BacktestConfig(use_trend_quality_filter=True)
+        bt = TurtleBacktester(config)
+        assert bt.trend_filter is not None
+
+    def test_filter_on_vs_off_trade_count(self):
+        """필터 ON 시 거래 수 ≤ 필터 OFF 거래 수."""
+        data = {"SPY": _make_test_data()}
+
+        config_off = BacktestConfig(use_trend_quality_filter=False)
+        result_off = TurtleBacktester(config_off).run(data.copy())
+
+        config_on = BacktestConfig(use_trend_quality_filter=True)
+        result_on = TurtleBacktester(config_on).run(data.copy())
+
+        assert result_on.total_trades <= result_off.total_trades
+
+    def test_filter_stats_populated_when_enabled(self):
+        """필터 활성화 시 BacktestResult에 FilterStats 포함."""
+        data = {"SPY": _make_test_data()}
+        config = BacktestConfig(use_trend_quality_filter=True)
+        result = TurtleBacktester(config).run(data)
+        assert result.filter_stats is not None
+        assert result.filter_stats.total_checked >= 0
+
+    def test_filter_stats_none_when_disabled(self):
+        """필터 비활성화 시 FilterStats = None."""
+        data = {"SPY": _make_test_data()}
+        config = BacktestConfig(use_trend_quality_filter=False)
+        result = TurtleBacktester(config).run(data)
+        assert result.filter_stats is None
+
+
 from src.backtester import BacktestConfig, BacktestResult
 
 
