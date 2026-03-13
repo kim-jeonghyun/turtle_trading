@@ -16,9 +16,7 @@ class TrendFilterConfig:
 
     er_period: int = 20
     er_threshold: float = 0.3
-    blocked_regimes: list[MarketRegime] = field(
-        default_factory=lambda: [MarketRegime.BEAR, MarketRegime.DECLINE]
-    )
+    blocked_regimes: list[MarketRegime] = field(default_factory=lambda: [MarketRegime.BEAR, MarketRegime.DECLINE])
     sideways_er_boost: float = 0.1
 
 
@@ -63,9 +61,7 @@ DEFAULT_REGIME_PROXIES: dict[AssetGroup, str] = {
 }
 
 
-def resolve_regime_proxy(
-    asset_group: AssetGroup, config_override: Optional[str] = None
-) -> Optional[str]:
+def resolve_regime_proxy(asset_group: AssetGroup, config_override: Optional[str] = None) -> Optional[str]:
     """레짐 프록시 심볼 해석.
 
     config_override > 자산군 기본값 > None(SIDEWAYS 폴백).
@@ -98,9 +94,7 @@ class TrendFilter:
             block_rate=blocked / total if total > 0 else 0.0,
         )
 
-    def should_enter(
-        self, regime: MarketRegime, er_value: float
-    ) -> TrendFilterResult:
+    def should_enter(self, regime: MarketRegime, er_value: float) -> TrendFilterResult:
         """진입 허용 여부 판단.
 
         Args:

@@ -218,8 +218,13 @@ class TurtleBacktester:
         return self._calculate_results()
 
     def _open_position(
-        self, symbol: str, date: datetime, price: float,
-        n_value: float, direction: Direction, er_value: Optional[float] = None
+        self,
+        symbol: str,
+        date: datetime,
+        price: float,
+        n_value: float,
+        direction: Direction,
+        er_value: Optional[float] = None,
     ):
         unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:

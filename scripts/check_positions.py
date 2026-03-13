@@ -321,6 +321,7 @@ async def _run_checks():
     trend_filter: Optional[TrendFilter] = None
     if use_trend_filter:
         from src.trend_filter import TrendFilterConfig
+
         tf_config = TrendFilterConfig(
             er_threshold=tf_config_section.get("er_threshold", 0.3),
             sideways_er_boost=0.0,  # regime 미확인 시 boost 비적용
