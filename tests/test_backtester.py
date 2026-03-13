@@ -606,11 +606,11 @@ class TestEquityInvariants:
         bt = TurtleBacktester(config)
         result = bt.run(self._make_volatile_data())
 
-        if not result.equity_curve.empty:
-            curve_last = result.equity_curve["equity"].iloc[-1]
-            assert abs(bt.account.current_equity - curve_last) < 0.01, (
-                f"I4 위반: current_equity={bt.account.current_equity:.2f}, curve_last={curve_last:.2f}"
-            )
+        assert not result.equity_curve.empty, "equity curve가 비어있음"
+        curve_last = result.equity_curve["equity"].iloc[-1]
+        assert abs(bt.account.current_equity - curve_last) < 0.01, (
+            f"I4 위반: current_equity={bt.account.current_equity:.2f}, curve_last={curve_last:.2f}"
+        )
 
     def test_i5_peak_monotonic(self):
         """I5: equity peak는 단조증가"""
@@ -816,6 +816,31 @@ class TestExitCommission:
         assert abs(bt.account.cash - expected_cash) < 0.01, (
             f"cash={bt.account.cash:.2f}, expected={expected_cash:.2f}. "
             f"차이={bt.account.cash - expected_cash:.2f} (B3: 청산 수수료 미차감)"
+        )
+
+    def test_short_exit_commission_deducted_from_cash(self):
+        """SHORT 청산 시 수수료가 cash에서 정확히 차감"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.001,
+        )
+        bt = TurtleBacktester(config)
+
+        entry_price = 100.0
+        exit_price = 90.0
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), entry_price, 5.0, Direction.SHORT)
+        position = bt.pyramid_manager.get_position("TEST")
+        qty = position.total_units
+        cash_before_close = bt.account.cash
+
+        bt._close_position("TEST", pd.Timestamp("2025-01-10"), exit_price, "EXIT_SHORT")
+
+        # SHORT close: cash += (2*entry - exit)*qty - exit*qty*commission
+        collateral_return = (2 * entry_price - exit_price) * qty
+        exit_comm = exit_price * qty * config.commission_pct
+        expected_cash = cash_before_close + collateral_return - exit_comm
+        assert abs(bt.account.cash - expected_cash) < 0.01, (
+            f"SHORT 청산 수수료 불일치: cash={bt.account.cash:.2f}, expected={expected_cash:.2f}"
         )
 
 
