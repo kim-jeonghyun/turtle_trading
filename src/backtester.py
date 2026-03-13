@@ -307,7 +307,13 @@ class TurtleBacktester:
         )
         self.trades.append(trade)
 
-        self.account.cash += price * total_quantity
+        if position.direction == Direction.LONG:
+            self.account.cash += price * total_quantity * (1 - self.config.commission_pct)
+        else:
+            # SHORT collateral model: return collateral + pnl, deduct exit commission
+            self.account.cash += (
+                2 * avg_entry - price
+            ) * total_quantity - price * total_quantity * self.config.commission_pct
         self.account.realized_pnl += pnl
         self.last_trade_profitable[symbol] = pnl > 0
 
@@ -319,20 +325,22 @@ class TurtleBacktester:
         logger.debug(f"청산: {symbol} @ {price:.2f}, PnL: {pnl:.2f} ({reason})")
 
     def _record_equity(self, date: datetime, data: Optional[Dict[str, pd.DataFrame]] = None):
-        unrealized = 0.0
+        positions_value = 0.0
         for symbol, position in self.pyramid_manager.positions.items():
             if data and symbol in data:
                 df_slice = data[symbol][data[symbol]["date"] <= date]
                 if not df_slice.empty:
                     current_price = df_slice.iloc[-1]["close"]
-                    avg_entry = position.average_entry_price
                     qty = position.total_units
                     if position.direction == Direction.LONG:
-                        unrealized += (current_price - avg_entry) * qty
+                        positions_value += current_price * qty
                     else:
-                        unrealized += (avg_entry - current_price) * qty
+                        # SHORT collateral model: value = Q*(2*P_entry - P_current)
+                        avg_entry = position.average_entry_price
+                        positions_value += qty * (2 * avg_entry - current_price)
 
-        equity = self.account.cash + unrealized
+        equity = self.account.cash + positions_value
+        self.account.current_equity = equity  # Fix B2: update on every bar
         self.equity_history.append({"date": date, "equity": equity, "cash": self.account.cash})
 
     def _calculate_results(self) -> BacktestResult:
