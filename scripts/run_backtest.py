@@ -47,6 +47,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--commission", type=float, default=0.001, help="수수료 비율 (0.001 = 0.1%%)")
     parser.add_argument("--no-filter", action="store_true", help="System 1 필터 비활성화")
     parser.add_argument("--no-risk-limits", action="store_true", help="포트폴리오 리스크 한도 비활성화")
+    parser.add_argument("--trend-filter", action="store_true", help="트렌드 품질 필터 활성화 (기본: OFF)")
+    parser.add_argument("--er-threshold", type=float, default=0.3, help="ER 임계값 오버라이드")
+    parser.add_argument("--regime-proxy", type=str, default=None, help="레짐 판별용 인덱스 프록시 심볼")
 
     # 출력 옵션
     parser.add_argument("--plot", action="store_true", help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)")
@@ -98,6 +101,9 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
         stop_distance_n=2.0,
         use_filter=not args.no_filter,
         commission_pct=args.commission,
+        use_trend_quality_filter=args.trend_filter,
+        er_threshold=args.er_threshold,
+        regime_proxy_symbol=args.regime_proxy,
     )
 
     logger.info(f"백테스트 시작 - System {config.system}, 초기 자본: ${config.initial_capital:,.0f}")
@@ -146,6 +152,14 @@ def print_results(result: BacktestResult):
 
     print(f"\n평균 승리:         ${result.avg_win:,.2f}")
     print(f"평균 손실:         ${result.avg_loss:,.2f}")
+
+    if result.filter_stats:
+        print("\n--- Trend Quality Filter ---")
+        print(f"검사 시그널:       {result.filter_stats.total_checked}")
+        print(f"레짐 차단:         {result.filter_stats.blocked_by_regime}")
+        print(f"ER 차단:           {result.filter_stats.blocked_by_er}")
+        print(f"통과:             {result.filter_stats.passed}")
+        print(f"차단율:           {result.filter_stats.block_rate * 100:.1f}%")
 
     print("\n" + "=" * 60)
 
@@ -215,6 +229,7 @@ def export_trades_csv(result: BacktestResult, csv_path: str):
                 "pnl": trade.pnl,
                 "pnl_pct": trade.pnl_pct * 100,  # 백분율로 변환
                 "entry_reason": trade.entry_reason,
+                "er_at_entry": trade.er_at_entry,
                 "exit_reason": trade.exit_reason,
             }
         )
