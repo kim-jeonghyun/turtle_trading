@@ -216,6 +216,7 @@ class TurtleBacktester:
 
         for i, date in enumerate(all_dates[1:], 1):
             _daily_pnl = 0.0
+            pending_entries = []
 
             for symbol, df in data.items():
                 df_slice = df[df["date"] <= date]
@@ -229,10 +230,9 @@ class TurtleBacktester:
                 position = self.pyramid_manager.get_position(symbol)
 
                 if position:
-                    # 청산 확인
+                    # 청산 확인 (즉시 처리)
                     exit_signal = self._check_exit_signal(row, prev_row, position)
                     if exit_signal:
-                        # 원본 규칙: 청산가는 시그널 유형에 따라 결정
                         if exit_signal == SignalType.STOP_LOSS:
                             exit_price = position.current_stop
                         elif exit_signal in (SignalType.EXIT_LONG, SignalType.EXIT_SHORT):
@@ -246,25 +246,33 @@ class TurtleBacktester:
                         self._close_position(symbol, date, exit_price, exit_signal.value)
                         continue
 
-                    # 피라미딩 확인 — 돌파 가격 사용
+                    # 피라미딩 확인 (즉시 처리)
                     pyramid_signal = self._check_pyramid_signal(row, position, n_value)
                     if pyramid_signal:
                         pyramid_price = position.get_next_pyramid_price(n_value)
                         self._add_pyramid(symbol, date, pyramid_price, n_value)
 
                 else:
-                    # 진입 신호 확인
+                    # 진입 신호 수집 (나중에 강도순 처리)
                     entry_signal = self._check_entry_signal(row, prev_row, symbol)
                     if entry_signal:
                         direction = Direction.LONG if entry_signal == SignalType.ENTRY_LONG else Direction.SHORT
-                        er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
-                        # 원본 규칙: 진입가는 돌파 가격 (Donchian boundary)
                         entry_high, entry_low, _, _ = self._get_entry_exit_columns()
                         if direction == Direction.LONG:
                             entry_price = prev_row[entry_high]
+                            strength = (row["high"] - entry_price) / n_value if n_value > 0 else 0
                         else:
                             entry_price = prev_row[entry_low]
-                        self._open_position(symbol, date, entry_price, n_value, direction, er_value)
+                            strength = (entry_price - row["low"]) / n_value if n_value > 0 else 0
+                        er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
+                        pending_entries.append((
+                            strength, symbol, date, entry_price, n_value, direction, er_value
+                        ))
+
+            # 강도순 진입 처리
+            pending_entries.sort(key=lambda x: x[0], reverse=True)
+            for _, symbol, entry_date, price, n_val, direction, er_val in pending_entries:
+                self._open_position(symbol, entry_date, price, n_val, direction, er_val)
 
             # 가상 브레이크아웃 청산 확인 (S1 필터)
             for hyp_symbol in list(self._hypothetical_breakouts.keys()):

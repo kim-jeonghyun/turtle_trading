@@ -11,6 +11,7 @@ import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.indicators import calculate_unit_size
+from src.position_sizer import AccountState
 from src.types import AssetGroup, Direction, SignalType
 
 
@@ -758,3 +759,53 @@ class TestDrawdownSizingIntegration:
             f"peak_equity should be updated above initial, got {bt.account.peak_equity}"
         )
         assert bt.account.peak_equity == bt.account.current_equity
+
+
+class TestSignalPrioritization:
+    """원본 규칙: 동시 시그널 시 돌파 강도 순으로 우선순위"""
+
+    def test_entries_sorted_by_strength(self):
+        """pending_entries가 강도순으로 정렬되어 처리됨을 검증"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+            use_drawdown_reduction=False,
+        )
+        bt = TurtleBacktester(config)
+
+        # Use very low capital so only 1 position can be opened
+        config.initial_capital = 60_000.0
+        bt.account = AccountState(initial_capital=60_000.0)
+
+        np.random.seed(42)
+        dates = pd.date_range(start="2024-01-01", periods=80, freq="B")
+
+        def make_breakout_data(base, excess):
+            """Flat for 60 days then breakout"""
+            prices = [base] * 60
+            for i in range(20):
+                prices.append(base + excess + i * 0.5)
+            return pd.DataFrame({
+                "date": dates,
+                "open": prices,
+                "high": [p + 1.0 for p in prices],
+                "low": [p - 1.0 for p in prices],
+                "close": prices,
+                "volume": [1_000_000] * 80,
+            })
+
+        # Process order: dict preserves insertion order, so WEAK first
+        data = {
+            "WEAK": make_breakout_data(100.0, 2.0),    # small excess
+            "STRONG": make_breakout_data(100.0, 10.0),  # large excess
+        }
+        result = bt.run(data)
+
+        traded = set(t.symbol for t in result.trades) | set(bt.pyramid_manager.positions.keys())
+        assert len(traded) > 0, "시그널이 발생하지 않음"
+        # With only 1 position possible, STRONG should be chosen
+        assert "STRONG" in traded, (
+            f"자본 제한 시 강한 돌파가 우선되어야 함. 실제 진입: {traded}"
+        )
