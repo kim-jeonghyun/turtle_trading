@@ -537,7 +537,7 @@ class TestBreakoutEntryPrice:
 
         bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
         position = bt.pyramid_manager.get_position("TEST")
-        stop_price = position.current_stop  # 100 - 2*5 = 90.0
+        assert position.current_stop == 90.0  # 100 - 2*5 = 90.0
 
         dates = pd.date_range("2025-01-01", periods=2, freq="B")
         mock_data = {
