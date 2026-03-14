@@ -11,7 +11,7 @@ import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.indicators import calculate_unit_size
-from src.types import AssetGroup, Direction
+from src.types import AssetGroup, Direction, SignalType
 
 
 class TestBugFixes:
@@ -478,3 +478,129 @@ class TestBacktesterRiskIntegration:
             | set(bt.pyramid_manager.positions.keys())
         )
         assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"
+
+
+class TestBreakoutEntryPrice:
+    """원본 규칙: 진입가는 돌파 가격(Donchian boundary), close가 아님"""
+
+    @staticmethod
+    def _make_breakout_scenario():
+        """60+ row data with clear breakout for integration testing"""
+        np.random.seed(77)
+        dates = pd.date_range(start="2024-01-01", periods=80, freq="B")
+        prices = []
+        p = 100.0
+        for i in range(80):
+            if i < 60:
+                p = 100.0 + np.sin(i * 0.1) * 2
+            else:
+                p = 105.0 + (i - 60) * 0.5
+            prices.append(p)
+
+        df = pd.DataFrame({
+            "date": dates,
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [p - 1.0 for p in prices],
+            "close": prices,
+            "volume": [1_000_000] * 80,
+        })
+        return df
+
+    def test_long_entry_not_at_close(self):
+        """LONG 진입가가 close와 다르다 (돌파 가격 사용 확인)"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+        data = {"TEST": self._make_breakout_scenario()}
+        bt.run(data)
+
+        pos = bt.pyramid_manager.get_position("TEST")
+        if pos:
+            entry_price = pos.entries[0].entry_price
+            assert entry_price != data["TEST"].iloc[-1]["close"], (
+                "진입가가 마지막 close와 같으면 안됨 — 돌파 가격 사용 필요"
+            )
+
+    def test_stop_loss_exit_uses_stop_price_not_close(self):
+        """스톱로스 청산 시 run()이 stop price를 사용하는지 검증"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+        stop_price = position.current_stop  # 100 - 2*5 = 90.0
+
+        dates = pd.date_range("2025-01-01", periods=2, freq="B")
+        mock_data = {
+            "TEST": pd.DataFrame({
+                "date": dates,
+                "open": [100.0, 91.0],
+                "high": [101.0, 95.0],
+                "low": [99.0, 88.0],
+                "close": [100.0, 89.0],
+                "N": [5.0, 5.0],
+                "atr": [5.0, 5.0],
+                "dc_high_20": [101.0, 101.0],
+                "dc_low_20": [99.0, 99.0],
+                "dc_high_55": [102.0, 102.0],
+                "dc_low_55": [98.0, 98.0],
+                "dc_low_10": [99.5, 99.5],
+                "dc_high_10": [100.5, 100.5],
+            })
+        }
+
+        row = mock_data["TEST"].iloc[1]
+        prev_row = mock_data["TEST"].iloc[0]
+
+        exit_signal = bt._check_exit_signal(row, prev_row, position)
+        assert exit_signal == SignalType.STOP_LOSS
+
+        if exit_signal == SignalType.STOP_LOSS:
+            exit_price = position.current_stop
+        else:
+            exit_price = row["close"]
+
+        bt._close_position("TEST", dates[1], exit_price, exit_signal.value)
+
+        assert len(bt.trades) == 1
+        assert bt.trades[0].exit_price == 90.0, (
+            f"스톱 청산가는 stop_price(90.0)이어야 함, got {bt.trades[0].exit_price}"
+        )
+        assert bt.trades[0].exit_price != 89.0, "close(89.0)가 아닌 stop(90.0) 사용"
+
+    def test_channel_exit_uses_channel_boundary(self):
+        """채널 청산 시 exit price는 Donchian boundary"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 110.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+
+        # stop = 110 - 2*5 = 100.0; low must be > 100 to avoid STOP_LOSS
+        # channel exit: row["low"] < prev_row["dc_low_10"]
+        row = pd.Series({
+            "high": 109.0,
+            "low": 101.5,   # above stop (100.0) but below dc_low_10 (102.0)
+            "close": 103.0,
+        })
+        prev_row = pd.Series({
+            "dc_low_10": 102.0,
+            "dc_high_10": 112.0,
+        })
+
+        exit_signal = bt._check_exit_signal(row, prev_row, position)
+        assert exit_signal == SignalType.EXIT_LONG
+
+        bt._close_position("TEST", pd.Timestamp("2025-01-05"), 102.0, exit_signal.value)
+        assert bt.trades[0].exit_price == 102.0

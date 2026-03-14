@@ -195,13 +195,25 @@ class TurtleBacktester:
                     # 청산 확인
                     exit_signal = self._check_exit_signal(row, prev_row, position)
                     if exit_signal:
-                        self._close_position(symbol, date, row["close"], exit_signal.value)
+                        # 원본 규칙: 청산가는 시그널 유형에 따라 결정
+                        if exit_signal == SignalType.STOP_LOSS:
+                            exit_price = position.current_stop
+                        elif exit_signal in (SignalType.EXIT_LONG, SignalType.EXIT_SHORT):
+                            _, _, exit_low, exit_high = self._get_entry_exit_columns()
+                            if position.direction == Direction.LONG:
+                                exit_price = prev_row[exit_low]
+                            else:
+                                exit_price = prev_row[exit_high]
+                        else:
+                            exit_price = row["close"]
+                        self._close_position(symbol, date, exit_price, exit_signal.value)
                         continue
 
-                    # 피라미딩 확인
+                    # 피라미딩 확인 — 돌파 가격 사용
                     pyramid_signal = self._check_pyramid_signal(row, position, n_value)
                     if pyramid_signal:
-                        self._add_pyramid(symbol, date, row["close"], n_value)
+                        pyramid_price = position.get_next_pyramid_price(n_value)
+                        self._add_pyramid(symbol, date, pyramid_price, n_value)
 
                 else:
                     # 진입 신호 확인
@@ -209,7 +221,13 @@ class TurtleBacktester:
                     if entry_signal:
                         direction = Direction.LONG if entry_signal == SignalType.ENTRY_LONG else Direction.SHORT
                         er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
-                        self._open_position(symbol, date, row["close"], n_value, direction, er_value)
+                        # 원본 규칙: 진입가는 돌파 가격 (Donchian boundary)
+                        entry_high, entry_low, _, _ = self._get_entry_exit_columns()
+                        if direction == Direction.LONG:
+                            entry_price = prev_row[entry_high]
+                        else:
+                            entry_price = prev_row[entry_low]
+                        self._open_position(symbol, date, entry_price, n_value, direction, er_value)
 
             # 일일 자본 기록
             self._record_equity(date, data)
