@@ -229,6 +229,42 @@ class TestPyramidPosition:
             assert entry.stop_price == last_stop
 
 
+    def test_is_full_counts_entries_not_shares(self):
+        """is_full은 진입 횟수를 카운트해야 하며, 주식 수량이 아니다"""
+        pos = PyramidPosition(symbol="SPY", direction=Direction.LONG, max_units=4)
+        pos.add_entry(datetime.now(), 100.0, 200, 2.5)
+        assert not pos.is_full, "1 entry with 200 shares should NOT be full (max_units=4 means 4 entries)"
+        assert pos.entry_count == 1
+
+        pos.add_entry(datetime.now(), 101.25, 180, 2.5)
+        assert not pos.is_full, "2 entries should NOT be full"
+        assert pos.entry_count == 2
+
+        pos.add_entry(datetime.now(), 102.50, 190, 2.5)
+        assert not pos.is_full, "3 entries should NOT be full"
+
+        pos.add_entry(datetime.now(), 103.75, 170, 2.5)
+        assert pos.is_full, "4 entries should be full"
+        assert pos.entry_count == 4
+
+    def test_can_pyramid_not_blocked_by_share_count(self):
+        """can_pyramid은 주식 수량이 아닌 진입 횟수로 판단"""
+        pos = PyramidPosition(symbol="SPY", direction=Direction.LONG, max_units=4)
+        pos.add_entry(datetime.now(), 100.0, 200, 2.5)
+
+        can, msg = pos.can_pyramid(101.25, 2.5)
+        assert can, f"200 shares != 4 entries. Should allow pyramid. Got: {msg}"
+
+    def test_is_full_message_shows_entry_count(self):
+        """is_full 시 에러 메시지가 진입 횟수를 표시"""
+        pos = PyramidPosition(symbol="SPY", direction=Direction.LONG, max_units=2)
+        pos.add_entry(datetime.now(), 100.0, 200, 2.5)
+        pos.add_entry(datetime.now(), 101.25, 180, 2.5)
+        can, msg = pos.can_pyramid(105.0, 2.5)
+        assert not can
+        assert "2/2" in msg, f"메시지에 진입 횟수(2/2) 표시 필요, got: {msg}"
+
+
 class TestPyramidManager:
     def test_create_position(self):
         pm = PyramidManager()
