@@ -50,6 +50,7 @@ class BacktestConfig:
     use_trend_quality_filter: bool = False
     er_threshold: float = 0.3
     regime_proxy_symbol: Optional[str] = None
+    use_drawdown_reduction: bool = True
 
 
 @dataclass
@@ -306,7 +307,11 @@ class TurtleBacktester:
         direction: Direction,
         er_value: Optional[float] = None,
     ):
-        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
+        sizing_equity = (
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction
+            else self.account.current_equity
+        )
+        unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
 
@@ -344,7 +349,11 @@ class TurtleBacktester:
                 logger.debug(f"리스크 한도 차단 (피라미딩): {symbol} - {reason}")
                 return
 
-        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
+        sizing_equity = (
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction
+            else self.account.current_equity
+        )
+        unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         cost = unit_size * price * (1 + self.config.commission_pct)
         if cost > self.account.cash:
             return
@@ -413,6 +422,9 @@ class TurtleBacktester:
                         unrealized += (avg_entry - current_price) * qty
 
         equity = self.account.cash + unrealized
+        self.account.current_equity = equity
+        if equity > self.account.peak_equity:
+            self.account.peak_equity = equity
         self.equity_history.append({"date": date, "equity": equity, "cash": self.account.cash})
 
     def _calculate_results(self) -> BacktestResult:

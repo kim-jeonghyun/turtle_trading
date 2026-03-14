@@ -280,3 +280,61 @@ class TestPositionSnapshot:
             ),
             PositionSnapshot,
         )
+
+
+class TestDrawdownEquityReduction:
+    """Curtis Faith 원서: 10% DD마다 가상 계좌 20% 감소 (peak 기준)"""
+
+    def test_no_reduction_at_peak(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 100_000.0
+
+    def test_10pct_drawdown_reduces_to_80k(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 100_000.0
+        state.current_equity = 90_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 80_000.0, f"10% DD → 80k expected, got {adjusted}"
+
+    def test_20pct_drawdown_reduces_to_60k(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 100_000.0
+        state.current_equity = 80_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 60_000.0, f"20% DD → 60k expected, got {adjusted}"
+
+    def test_5pct_drawdown_no_reduction(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 100_000.0
+        state.current_equity = 95_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 95_000.0, f"5% DD → current equity, got {adjusted}"
+
+    def test_15pct_drawdown(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 100_000.0
+        state.current_equity = 85_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 80_000.0, f"15% DD → 80k expected, got {adjusted}"
+
+    def test_reduction_floor_at_zero(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 100_000.0
+        state.current_equity = 40_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 0.0, f"60% DD → 0 floor expected, got {adjusted}"
+
+    def test_peak_above_initial(self):
+        from src.position_sizer import AccountState
+        state = AccountState(initial_capital=100_000.0)
+        state.peak_equity = 150_000.0
+        state.current_equity = 135_000.0
+        adjusted = state.get_sizing_equity()
+        assert adjusted == 120_000.0, f"peak>initial, 10% DD → 120k, got {adjusted}"

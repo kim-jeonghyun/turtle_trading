@@ -66,6 +66,24 @@ class AccountState:
         current_dd = (self.peak_equity - self.current_equity) / self.peak_equity
         self.max_drawdown = max(self.max_drawdown, current_dd)
 
+    def get_sizing_equity(self, dd_step: float = 0.10, reduction_per_step: float = 0.20) -> float:
+        """드로다운 기반 가상 계좌 크기 (Curtis Faith 원서)
+
+        매 dd_step(기본 10%) 드로다운마다 peak_equity에서 reduction_per_step(기본 20%)만큼 감소.
+        sizing_equity = min(current_equity, peak_equity * (1 - steps * reduction))
+        """
+        if self.peak_equity <= 0:
+            return 0.0
+        dd_pct = (self.peak_equity - self.current_equity) / self.peak_equity
+        if dd_pct <= 0:
+            return self.current_equity
+        steps = int(dd_pct / dd_step)
+        if steps <= 0:
+            return self.current_equity
+        reduction = steps * reduction_per_step
+        notional = self.peak_equity * max(0.0, 1.0 - reduction)
+        return min(self.current_equity, notional)
+
 
 # Backward compatibility alias (deprecated, will be removed in v4.0)
 Position = LivePosition

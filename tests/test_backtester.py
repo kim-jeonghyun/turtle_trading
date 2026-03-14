@@ -688,3 +688,73 @@ class TestS1HypotheticalFilter:
 
         bt._close_position("TEST", pd.Timestamp("2025-01-05"), 102.0, exit_signal.value)
         assert bt.trades[0].exit_price == 102.0
+
+
+class TestDrawdownSizingIntegration:
+    """백테스터에서 DD 감소 규칙이 적용되는지 통합 검증"""
+
+    def test_position_size_reduces_after_drawdown(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+            use_drawdown_reduction=True,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("AAA", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        qty1 = bt.pyramid_manager.get_position("AAA").total_units
+
+        bt.account.current_equity = 85_000.0
+        bt.account.peak_equity = 100_000.0
+
+        bt._open_position("BBB", pd.Timestamp("2025-01-02"), 100.0, 5.0, Direction.LONG)
+        pos_bbb = bt.pyramid_manager.get_position("BBB")
+        assert pos_bbb is not None, "BBB position should be created"
+        qty2 = pos_bbb.total_units
+
+        assert qty2 < qty1, f"DD 감소 미적용: qty2={qty2} >= qty1={qty1}"
+        expected_qty2 = int(80_000 * 0.01 / 5.0)
+        assert qty2 == expected_qty2, f"qty2={qty2}, expected={expected_qty2}"
+
+    def test_drawdown_reduction_disabled(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+            use_drawdown_reduction=False,
+        )
+        bt = TurtleBacktester(config)
+
+        bt.account.current_equity = 85_000.0
+        bt.account.peak_equity = 100_000.0
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        pos = bt.pyramid_manager.get_position("TEST")
+        assert pos is not None
+        expected = int(85_000 * 0.01 / 5.0)
+        assert pos.total_units == expected
+
+    def test_peak_equity_updated_in_record_equity(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+
+        # unit_size = int(100_000 * 0.01 / 5.0) = 200, cost = 200 * 100 = 20_000
+        # cash after open = 80_000; need unrealized > 20_000 to exceed peak
+        # close=200 → unrealized = (200-100)*200 = 20_000; equity = 100_000 (equal, not greater)
+        # close=201 → unrealized = (201-100)*200 = 20_200; equity = 100_200 > 100_000
+        mock_data = {
+            "TEST": pd.DataFrame({
+                "date": [pd.Timestamp("2025-01-02")],
+                "close": [201.0],
+            })
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        assert bt.account.peak_equity > 100_000.0, (
+            f"peak_equity should be updated above initial, got {bt.account.peak_equity}"
+        )
+        assert bt.account.peak_equity == bt.account.current_equity
