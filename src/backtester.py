@@ -362,6 +362,8 @@ class TurtleBacktester:
             else self.account.current_equity
         )
         unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
+        if unit_size <= 0:
+            return
         cost = unit_size * price * (1 + self.config.commission_pct)
         if cost > self.account.cash:
             return
@@ -404,7 +406,12 @@ class TurtleBacktester:
         )
         self.trades.append(trade)
 
-        self.account.cash += price * total_quantity
+        # LONG: 주식 매도 → exit_price * qty 회수
+        # SHORT: 담보금(entry*qty) 반환 + PnL → (2*entry - exit) * qty
+        if position.direction == Direction.LONG:
+            self.account.cash += price * total_quantity
+        else:
+            self.account.cash += (2 * avg_entry - price) * total_quantity
         self.account.realized_pnl += pnl
         self.last_trade_profitable[symbol] = pnl > 0
 
@@ -424,10 +431,11 @@ class TurtleBacktester:
                     current_price = df_slice.iloc[-1]["close"]
                     avg_entry = position.average_entry_price
                     qty = position.total_units
+                    # 포지션 청산 가치 (cash에서 entry*qty를 뺐으므로 full value 반환)
                     if position.direction == Direction.LONG:
-                        unrealized += (current_price - avg_entry) * qty
+                        unrealized += current_price * qty
                     else:
-                        unrealized += (avg_entry - current_price) * qty
+                        unrealized += (2 * avg_entry - current_price) * qty
 
         equity = self.account.cash + unrealized
         self.account.current_equity = equity
