@@ -576,6 +576,90 @@ class TestBreakoutEntryPrice:
         )
         assert bt.trades[0].exit_price != 89.0, "close(89.0)가 아닌 stop(90.0) 사용"
 
+class TestS1HypotheticalFilter:
+    """System 1 필터: 스킵된 브레이크아웃의 가상 결과 추적"""
+
+    def test_skipped_breakout_tracked_as_hypothetical(self):
+        """스킵된 20일 돌파의 가상 결과를 추적해야 함"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        assert hasattr(bt, "_hypothetical_breakouts"), (
+            "TurtleBacktester should have _hypothetical_breakouts dict"
+        )
+
+    def test_filter_resets_after_hypothetical_loss(self):
+        """가상 브레이크아웃이 손실이면 다음 20일 돌파 허용"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
+        bt._resolve_hypothetical("TEST", exit_price=97.0)  # loss
+
+        assert not bt.last_trade_profitable.get("TEST", False), (
+            "가상 손실 후 필터가 리셋되어야 함"
+        )
+
+    def test_filter_persists_after_hypothetical_win(self):
+        """가상 브레이크아웃이 수익이면 필터 유지"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
+        bt._resolve_hypothetical("TEST", exit_price=115.0)  # win
+
+        assert bt.last_trade_profitable.get("TEST", False), (
+            "가상 수익 후 필터가 유지되어야 함"
+        )
+
+    def test_hypothetical_stop_loss_tracked(self):
+        """가상 포지션의 2N 스톱로스도 추적"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        # Record hypothetical LONG entry at 105 with N=2.5
+        # Stop = 105 - 2*2.5 = 100.0
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG, n_value=2.5)
+        hyp = bt._hypothetical_breakouts["TEST"]
+        assert "stop_price" in hyp, "가상 포지션에 스톱 가격이 있어야 함"
+        assert hyp["stop_price"] == 100.0, f"stop = 105 - 2*2.5 = 100.0, got {hyp['stop_price']}"
+
+    def test_hypothetical_short_loss_resets_filter(self):
+        """SHORT 가상 브레이크아웃 손실 시 필터 리셋"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 95.0, Direction.SHORT)
+        bt._resolve_hypothetical("TEST", exit_price=100.0)  # short loss
+
+        assert not bt.last_trade_profitable.get("TEST", False)
+
+
     def test_channel_exit_uses_channel_boundary(self):
         """채널 청산 시 exit price는 Donchian boundary"""
         config = BacktestConfig(

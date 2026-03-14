@@ -80,6 +80,7 @@ class TurtleBacktester:
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
+        self._hypothetical_breakouts: Dict[str, Dict] = {}
         self.entry_reasons: Dict[str, str] = {}
         self._er_at_entry: Dict[str, Optional[float]] = {}
         self.trend_filter: Optional[TrendFilter] = None
@@ -118,6 +119,10 @@ class TurtleBacktester:
             if self.config.system == 1 and self.config.use_filter:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["high"] <= prev_row.get("dc_high_55", float("inf")):
+                        self._record_hypothetical_breakout(
+                            symbol, prev_row[entry_high], Direction.LONG,
+                            n_value=float(row.get("N", row.get("atr", 0))),
+                        )
                         return None
             return SignalType.ENTRY_LONG
 
@@ -126,6 +131,10 @@ class TurtleBacktester:
             if self.config.system == 1 and self.config.use_filter:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["low"] >= prev_row.get("dc_low_55", 0):
+                        self._record_hypothetical_breakout(
+                            symbol, prev_row[entry_low], Direction.SHORT,
+                            n_value=float(row.get("N", row.get("atr", 0))),
+                        )
                         return None
             return SignalType.ENTRY_SHORT
 
@@ -158,6 +167,33 @@ class TurtleBacktester:
                 return SignalType.PYRAMID_LONG
             return SignalType.PYRAMID_SHORT
         return None
+
+    def _record_hypothetical_breakout(
+        self, symbol: str, price: float, direction: Direction,
+        n_value: float = 0.0,
+    ):
+        """S1 필터에 의해 스킵된 브레이크아웃의 가상 진입을 기록"""
+        stop_distance = n_value * self.config.stop_distance_n
+        if direction == Direction.LONG:
+            stop_price = price - stop_distance
+        else:
+            stop_price = price + stop_distance
+        self._hypothetical_breakouts[symbol] = {
+            "price": price,
+            "direction": direction,
+            "stop_price": stop_price,
+        }
+
+    def _resolve_hypothetical(self, symbol: str, exit_price: float):
+        """가상 브레이크아웃의 결과를 판정하고 필터 상태를 갱신"""
+        hyp = self._hypothetical_breakouts.pop(symbol, None)
+        if hyp is None:
+            return
+        if hyp["direction"] == Direction.LONG:
+            profitable = exit_price > hyp["price"]
+        else:
+            profitable = exit_price < hyp["price"]
+        self.last_trade_profitable[symbol] = profitable
 
     def run(self, data: Dict[str, pd.DataFrame]) -> BacktestResult:
         """백테스트 실행"""
@@ -228,6 +264,32 @@ class TurtleBacktester:
                         else:
                             entry_price = prev_row[entry_low]
                         self._open_position(symbol, date, entry_price, n_value, direction, er_value)
+
+            # 가상 브레이크아웃 청산 확인 (S1 필터)
+            for hyp_symbol in list(self._hypothetical_breakouts.keys()):
+                if hyp_symbol not in data:
+                    continue
+                df_slice = data[hyp_symbol][data[hyp_symbol]["date"] <= date]
+                if len(df_slice) < 2:
+                    continue
+                hyp_row = df_slice.iloc[-1]
+                hyp_prev = df_slice.iloc[-2]
+                hyp = self._hypothetical_breakouts[hyp_symbol]
+                _, _, exit_low, exit_high = self._get_entry_exit_columns()
+
+                # 2N 스톱로스 확인
+                if hyp["direction"] == Direction.LONG:
+                    if hyp_row["low"] <= hyp["stop_price"]:
+                        self._resolve_hypothetical(hyp_symbol, hyp["stop_price"])
+                        continue
+                    if hyp_row["low"] < hyp_prev[exit_low]:
+                        self._resolve_hypothetical(hyp_symbol, hyp_prev[exit_low])
+                else:
+                    if hyp_row["high"] >= hyp["stop_price"]:
+                        self._resolve_hypothetical(hyp_symbol, hyp["stop_price"])
+                        continue
+                    if hyp_row["high"] > hyp_prev[exit_high]:
+                        self._resolve_hypothetical(hyp_symbol, hyp_prev[exit_high])
 
             # 일일 자본 기록
             self._record_equity(date, data)
