@@ -416,7 +416,7 @@ symbols:
 
 
 class TestUniverseExpansion:
-    """확장된 42개 심볼 유니버스 테스트"""
+    """확장된 57개 심볼 유니버스 테스트"""
 
     YAML_PATH = str(Path(__file__).parent.parent / "config" / "universe.yaml")
 
@@ -424,18 +424,42 @@ class TestUniverseExpansion:
         return UniverseManager(yaml_path=self.YAML_PATH)
 
     def test_total_symbol_count(self):
-        """총 심볼 수 42개 검증"""
+        """총 심볼 수 57개 검증"""
         um = self._load()
-        assert len(um.get_enabled_symbols()) == 42
+        assert len(um.get_enabled_symbols()) == 57
 
     def test_all_new_symbols_present(self):
-        """신규 추가된 24개 심볼 존재 확인"""
+        """신규 추가된 39개 심볼 존재 확인"""
         um = self._load()
         symbols = set(um.get_enabled_symbols())
         new_symbols = [
-            # kr_equity 신규
+            # kr_index
             "069500.KS",
             "229200.KS",
+            # kr_battery
+            "373220.KS",
+            "006400.KS",
+            # kr_bio
+            "207940.KS",
+            "068270.KS",
+            # kr_finance
+            "105560.KS",
+            "055550.KS",
+            # kr_auto
+            "005380.KS",
+            "000270.KS",
+            # kr_chemical
+            "051910.KS",
+            "010130.KS",
+            # kr_telecom
+            "017670.KS",
+            "030200.KS",
+            # kr_conglomerate
+            "034730.KS",
+            "003550.KS",
+            # kr_platform
+            "035420.KS",
+            "035720.KS",
             # asia_equity
             "EWJ",
             "EWT",
@@ -471,6 +495,7 @@ class TestUniverseExpansion:
             "BITO",
             "ETHA",
         ]
+        assert len(new_symbols) > 0
         for sym in new_symbols:
             assert sym in symbols, f"{sym} not found in universe"
 
@@ -489,6 +514,12 @@ class TestUniverseExpansion:
         assert mapping["UUP"] == AssetGroup.CURRENCY
         assert mapping["COPX"] == AssetGroup.COMMODITY
         assert mapping["AAPL"] == AssetGroup.US_TECH
+        # KR sector groups
+        assert mapping["035420.KS"] == AssetGroup.KR_PLATFORM
+        assert mapping["069500.KS"] == AssetGroup.KR_INDEX
+        assert mapping["373220.KS"] == AssetGroup.KR_BATTERY
+        assert mapping["005380.KS"] == AssetGroup.KR_AUTO
+        assert mapping["105560.KS"] == AssetGroup.KR_FINANCE
 
     def test_existing_symbols_unchanged(self):
         """기존 심볼 그룹 변경 없음 검증"""
@@ -501,6 +532,16 @@ class TestUniverseExpansion:
         assert mapping["SH"] == AssetGroup.INVERSE
         # Issue #166: AAPL intentionally moved from US_EQUITY to US_TECH
         assert mapping["AAPL"] == AssetGroup.US_TECH
+
+    def test_krw_universe_has_20_symbols(self):
+        um = self._load()
+        krw = um.get_symbols_by_currency("KRW")
+        assert len(krw) == 20
+
+    def test_kr_sector_groups_exist(self):
+        um = self._load()
+        kr_groups = {a.group for a in um.assets.values() if a.currency == "KRW"}
+        assert len(kr_groups) >= 5
 
     def test_no_silent_fallback_to_default_group(self):
         """US_EQUITY로 fallback된 심볼이 실제 us_equity 카테고리 심볼만인지 검증"""

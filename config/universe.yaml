@@ -1,4 +1,4 @@
-# 거래 유니버스 설정 - 총 42개 심볼 (2026-03-06 확장)
+# 거래 유니버스 설정 - 총 57개 심볼 (2026-03-06 확장, 2026-03-15 KRW 확대)
 # 모든 거래 스크립트가 이 파일을 단일 심볼 소스로 사용
 
 symbols:
@@ -15,9 +15,33 @@ symbols:
   kr_equity:
     - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
     - {symbol: "000660.KS", name: "SK하이닉스", group: kr_equity, short_restricted: true}
-    - {symbol: "035420.KS", name: "NAVER", group: kr_equity, short_restricted: true}
-    - {symbol: "069500.KS", name: "KODEX 200", group: kr_equity, short_restricted: true}
-    - {symbol: "229200.KS", name: "KODEX 코스닥150", group: kr_equity, short_restricted: true}
+  kr_battery:
+    - {symbol: "373220.KS", name: "LG에너지솔루션", group: kr_battery, short_restricted: true}
+    - {symbol: "006400.KS", name: "삼성SDI", group: kr_battery, short_restricted: true}
+  kr_bio:
+    - {symbol: "207940.KS", name: "삼성바이오로직스", group: kr_bio, short_restricted: true}
+    - {symbol: "068270.KS", name: "셀트리온", group: kr_bio, short_restricted: true}
+  kr_finance:
+    - {symbol: "105560.KS", name: "KB금융", group: kr_finance, short_restricted: true}
+    - {symbol: "055550.KS", name: "신한지주", group: kr_finance, short_restricted: true}
+  kr_auto:
+    - {symbol: "005380.KS", name: "현대차", group: kr_auto, short_restricted: true}
+    - {symbol: "000270.KS", name: "기아", group: kr_auto, short_restricted: true}
+  kr_chemical:
+    - {symbol: "051910.KS", name: "LG화학", group: kr_chemical, short_restricted: true}
+    - {symbol: "010130.KS", name: "고려아연", group: kr_chemical, short_restricted: true}
+  kr_telecom:
+    - {symbol: "017670.KS", name: "SK텔레콤", group: kr_telecom, short_restricted: true}
+    - {symbol: "030200.KS", name: "KT", group: kr_telecom, short_restricted: true}
+  kr_conglomerate:
+    - {symbol: "034730.KS", name: "SK", group: kr_conglomerate, short_restricted: true}
+    - {symbol: "003550.KS", name: "LG", group: kr_conglomerate, short_restricted: true}
+  kr_platform:
+    - {symbol: "035420.KS", name: "NAVER", group: kr_platform, short_restricted: true}
+    - {symbol: "035720.KS", name: "카카오", group: kr_platform, short_restricted: true}
+  kr_index:
+    - {symbol: "069500.KS", name: "KODEX 200", group: kr_index, short_restricted: true}
+    - {symbol: "229200.KS", name: "KODEX 코스닥150", group: kr_index, short_restricted: true}
   asia_equity:
     - {symbol: EWJ, name: "Japan ETF", group: asia_equity, short_restricted: false}
     - {symbol: EWT, name: "Taiwan ETF", group: asia_equity, short_restricted: false}

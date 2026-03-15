@@ -1,6 +1,7 @@
 # Asset correlation groups for portfolio risk management
 # Each symbol maps to a group - grouped assets share the correlated group limit (6 units)
 # Redesigned 2026-03-06: 6 → 16 groups for universe expansion (18 → 42 symbols)
+# Updated 2026-03-15: KRW universe expanded (5 → 20 symbols, 1 → 10 KR sector groups)
 #
 # Cross-group correlation warnings (|r| >= 0.75, 1Y):
 #   EEM ↔ EWT (0.873), MCHI (0.836), VGK (0.803) — broad EM overlaps multiple regions
@@ -22,7 +23,31 @@ groups:
   kr_equity:
     - "005930.KS"
     - "000660.KS"
+  kr_battery:
+    - "373220.KS"
+    - "006400.KS"
+  kr_bio:
+    - "207940.KS"
+    - "068270.KS"
+  kr_finance:
+    - "105560.KS"
+    - "055550.KS"
+  kr_auto:
+    - "005380.KS"
+    - "000270.KS"
+  kr_chemical:
+    - "051910.KS"
+    - "010130.KS"
+  kr_telecom:
+    - "017670.KS"
+    - "030200.KS"
+  kr_conglomerate:
+    - "034730.KS"
+    - "003550.KS"
+  kr_platform:
     - "035420.KS"
+    - "035720.KS"
+  kr_index:
     - "069500.KS"
     - "229200.KS"
   asia_equity:
