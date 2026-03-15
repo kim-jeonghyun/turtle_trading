@@ -306,9 +306,14 @@ class TestBacktesterRiskIntegration:
         for i in range(13):
             groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
 
-        # N=0.8 × 12 = 9.6 < 10.0, price=1.0으로 비용 최소화
+        # N-노출 = 유닛 수이므로 12유닛이면 한도(10)를 넘음
+        # max_total_n_exposure를 50으로 올려 방향 한도(12)만 테스트
+        from src.risk_manager import RiskLimits
+
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
+        # 방향 한도(12) 테스트를 위해 N-노출 한도를 완화
+        bt.risk_manager.limits = RiskLimits(max_total_n_exposure=50.0)
 
         for i in range(12):
             bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 0.8, Direction.LONG)
@@ -320,23 +325,23 @@ class TestBacktesterRiskIntegration:
         assert bt.account.cash == cash_before
 
     def test_n_exposure_cap_enforced(self):
-        """N-exposure 10.0 상한 초과 시 진입 차단"""
+        """N-exposure 10.0 상한 초과 시 진입 차단 (N-노출 = 유닛 수 기준)"""
         asset_groups = list(AssetGroup)
         groups = {}
-        for i in range(5):
+        for i in range(11):
             groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
 
-        # N=3.0 × 3 = 9.0, 4번째 추가 시 12.0 > 10.0
+        # N-노출 = 유닛 수이므로 10유닛 추가 후 11번째가 차단됨
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
 
-        for i in range(3):
+        for i in range(10):
             bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
 
-        assert abs(bt.risk_manager.state.total_n_exposure - 9.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 10.0) < 0.01
 
         cash_before = bt.account.cash
-        bt._open_position("SYM3", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
+        bt._open_position("SYM10", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
         assert bt.account.cash == cash_before
 
     def test_pyramid_respects_risk_limits(self):
@@ -365,10 +370,10 @@ class TestBacktesterRiskIntegration:
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
 
-        # N=2.0, price=1.0
+        # N-노출 = 유닛 수 (ATR 무관), 1유닛 추가 → N-노출 = 1.0
         bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 1
-        assert abs(bt.risk_manager.state.total_n_exposure - 2.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 1.0) < 0.01
 
         bt._close_position("SPY", pd.Timestamp("2025-01-10"), 1.5, "EXIT_LONG")
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
@@ -404,9 +409,9 @@ class TestBacktesterRiskIntegration:
         bt._add_pyramid("SPY", pd.Timestamp("2025-01-03"), 2.0, 2.2)
 
         assert bt.risk_manager.state.units_by_symbol["SPY"] == 3
-        assert abs(bt.risk_manager.state.total_n_exposure - 6.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 3.0) < 0.01  # N-노출 = 유닛 수
 
-        # 청산 → avg_n = (2.0+1.8+2.2)/3 = 2.0, remove 3 × 2.0 = 6.0
+        # 청산 → 3 유닛 제거 → N-노출 0.0
         bt._close_position("SPY", pd.Timestamp("2025-01-10"), 2.5, "EXIT_LONG")
 
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0

@@ -121,7 +121,8 @@ class PortfolioRiskManager:
         else:
             self.state.short_units = max(0, self.state.short_units - actual_units)
 
-        self.state.total_n_exposure = max(0.0, self.state.total_n_exposure - actual_units)  # Curtis Faith: N-노출 = 유닛 수 (ATR 무관)
+        # Curtis Faith: N-노출 = 유닛 수 (ATR 무관)
+        self.state.total_n_exposure = max(0.0, self.state.total_n_exposure - actual_units)
 
     def get_risk_summary(self) -> Dict:
         return {
