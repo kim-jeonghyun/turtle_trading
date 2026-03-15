@@ -434,11 +434,18 @@ class TestUniverseExpansion:
         symbols = set(um.get_enabled_symbols())
         new_symbols = [
             # kr_equity 신규
-            "069500.KS", "229200.KS",
+            "069500.KS",
+            "229200.KS",
             # asia_equity
-            "EWJ", "EWT", "EWA", "VNM", "EEM", "INDA",
+            "EWJ",
+            "EWT",
+            "EWA",
+            "VNM",
+            "EEM",
+            "INDA",
             # china_equity
-            "MCHI", "ASHR",
+            "MCHI",
+            "ASHR",
             # eu_equity
             "VGK",
             # commodity
@@ -446,19 +453,23 @@ class TestUniverseExpansion:
             # commodity_industrial
             "COPX",
             # commodity_energy
-            "USO", "UNG",
+            "USO",
+            "UNG",
             # commodity_agri
             "DBA",
             # bond
-            "SHY", "TIP",
+            "SHY",
+            "TIP",
             # currency
-            "UUP", "FXY",
+            "UUP",
+            "FXY",
             # reit
             "VNQ",
             # alternatives
             "DBMF",
             # crypto
-            "BITO", "ETHA",
+            "BITO",
+            "ETHA",
         ]
         for sym in new_symbols:
             assert sym in symbols, f"{sym} not found in universe"
@@ -501,9 +512,57 @@ class TestUniverseExpansion:
         )
         expected_us_tech = {"AAPL", "NVDA", "TSLA", "MSFT"}
         actual_us_tech = set(um.get_symbols_by_group(AssetGroup.US_TECH))
-        assert actual_us_tech == expected_us_tech, (
-            f"Unexpected US_TECH symbols: {actual_us_tech - expected_us_tech}"
-        )
+        assert actual_us_tech == expected_us_tech, f"Unexpected US_TECH symbols: {actual_us_tech - expected_us_tech}"
+
+
+class TestCurrencyField:
+    """currency 필드 및 통화별 필터링 테스트"""
+
+    def test_asset_has_currency_field(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        spy = um.assets["SPY"]
+        assert spy.currency == "USD"
+        samsung = um.assets["005930.KS"]
+        assert samsung.currency == "KRW"
+
+    def test_get_symbols_by_currency(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        krw_symbols = um.get_symbols_by_currency("KRW")
+        usd_symbols = um.get_symbols_by_currency("USD")
+        assert "005930.KS" in krw_symbols
+        assert "SPY" in usd_symbols
+        assert len(krw_symbols) + len(usd_symbols) == len(um.get_enabled_symbols())
+
+    def test_get_currency_map(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        cmap = um.get_currency_map()
+        assert cmap["SPY"] == "USD"
+        assert cmap["005930.KS"] == "KRW"
+        assert len(cmap) == len(um.assets)
+
+    def test_default_assets_currency_usd(self):
+        """기본 유니버스(YAML 없음) 심볼은 USD"""
+        um = UniverseManager()
+        for symbol in um.get_enabled_symbols():
+            assert um.assets[symbol].currency == "USD"
+
+    def test_kq_suffix_currency_krw(self):
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
+"""
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["035420.KQ"].currency == "KRW"
+            finally:
+                os.unlink(f.name)
 
 
 class TestRealConfigConsistency:
