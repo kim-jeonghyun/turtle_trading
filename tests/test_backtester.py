@@ -306,9 +306,14 @@ class TestBacktesterRiskIntegration:
         for i in range(13):
             groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
 
-        # N=0.8 × 12 = 9.6 < 10.0, price=1.0으로 비용 최소화
+        # N-노출 = 유닛 수이므로 12유닛이면 한도(10)를 넘음
+        # max_total_n_exposure를 50으로 올려 방향 한도(12)만 테스트
+        from src.risk_manager import RiskLimits
+
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
+        # 방향 한도(12) 테스트를 위해 N-노출 한도를 완화
+        bt.risk_manager.limits = RiskLimits(max_total_n_exposure=50.0)
 
         for i in range(12):
             bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 0.8, Direction.LONG)
@@ -320,23 +325,23 @@ class TestBacktesterRiskIntegration:
         assert bt.account.cash == cash_before
 
     def test_n_exposure_cap_enforced(self):
-        """N-exposure 10.0 상한 초과 시 진입 차단"""
+        """N-exposure 10.0 상한 초과 시 진입 차단 (N-노출 = 유닛 수 기준)"""
         asset_groups = list(AssetGroup)
         groups = {}
-        for i in range(5):
+        for i in range(11):
             groups[f"SYM{i}"] = asset_groups[i % len(asset_groups)]
 
-        # N=3.0 × 3 = 9.0, 4번째 추가 시 12.0 > 10.0
+        # N-노출 = 유닛 수이므로 10유닛 추가 후 11번째가 차단됨
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
 
-        for i in range(3):
+        for i in range(10):
             bt._open_position(f"SYM{i}", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
 
-        assert abs(bt.risk_manager.state.total_n_exposure - 9.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 10.0) < 0.01
 
         cash_before = bt.account.cash
-        bt._open_position("SYM3", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
+        bt._open_position("SYM10", pd.Timestamp("2025-01-01"), 1.0, 3.0, Direction.LONG)
         assert bt.account.cash == cash_before
 
     def test_pyramid_respects_risk_limits(self):
@@ -365,10 +370,10 @@ class TestBacktesterRiskIntegration:
         config = BacktestConfig(initial_capital=10_000_000.0)
         bt = TurtleBacktester(config, symbol_groups=groups)
 
-        # N=2.0, price=1.0
+        # N-노출 = 유닛 수 (ATR 무관), 1유닛 추가 → N-노출 = 1.0
         bt._open_position("SPY", pd.Timestamp("2025-01-01"), 1.0, 2.0, Direction.LONG)
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 1
-        assert abs(bt.risk_manager.state.total_n_exposure - 2.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 1.0) < 0.01
 
         bt._close_position("SPY", pd.Timestamp("2025-01-10"), 1.5, "EXIT_LONG")
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
@@ -404,9 +409,9 @@ class TestBacktesterRiskIntegration:
         bt._add_pyramid("SPY", pd.Timestamp("2025-01-03"), 2.0, 2.2)
 
         assert bt.risk_manager.state.units_by_symbol["SPY"] == 3
-        assert abs(bt.risk_manager.state.total_n_exposure - 6.0) < 0.01
+        assert abs(bt.risk_manager.state.total_n_exposure - 3.0) < 0.01  # N-노출 = 유닛 수
 
-        # 청산 → avg_n = (2.0+1.8+2.2)/3 = 2.0, remove 3 × 2.0 = 6.0
+        # 청산 → 3 유닛 제거 → N-노출 0.0
         bt._close_position("SPY", pd.Timestamp("2025-01-10"), 2.5, "EXIT_LONG")
 
         assert bt.risk_manager.state.units_by_symbol.get("SPY", 0) == 0
@@ -834,3 +839,97 @@ class TestCommissionModelIntegration:
         config = BacktestConfig(commission_pct=0.005)
         bt = TurtleBacktester(config, currency="KRW")
         assert isinstance(bt.commission_model, KRXCommissionModel)
+
+
+class TestShortRestricted:
+    """short_restricted 심볼의 ENTRY_SHORT 차단 검증."""
+
+    def test_default_no_restriction(self):
+        """short_restricted_symbols 미전달 시 숏 제한 없음 (역호환)."""
+        config = BacktestConfig(initial_capital=100000, system=1)
+        bt = TurtleBacktester(config)
+        assert len(bt.short_restricted_symbols) == 0
+
+    def test_stores_short_restricted_symbols(self):
+        """short_restricted_symbols 파라미터가 저장됨."""
+        config = BacktestConfig(initial_capital=100000, system=2)
+        restricted = {"005930.KS", "000660.KS"}
+        bt = TurtleBacktester(config, short_restricted_symbols=restricted)
+        assert bt.short_restricted_symbols == restricted
+
+    def test_short_restricted_blocks_short_entry(self):
+        """short_restricted=True인 심볼은 ENTRY_SHORT 생성하지 않음."""
+        # 결정론적 하락→반등 데이터: 80일 횡보 → 60일 급락 → 60일 반등
+        # System 2 (55일 Donchian) 기준, 횡보 후 dc_low_55 이탈로 숏 진입,
+        # 반등 시 dc_high_20 이탈로 숏 청산 → trades에 기록됨
+        dates = pd.date_range(start="2024-01-01", periods=200, freq="B")
+        rows = []
+        for i, date in enumerate(dates):
+            if i < 80:
+                price = 100.0
+            elif i < 140:
+                # 급락: 매일 1.0씩 하락
+                price = 100.0 - (i - 80) * 1.0
+            else:
+                # 반등: 매일 1.5씩 상승 (숏 청산 유도)
+                price = 100.0 - 60 * 1.0 + (i - 140) * 1.5
+            rows.append(
+                {
+                    "date": date,
+                    "open": round(price + 0.5, 2),
+                    "high": round(price + 1.0, 2),
+                    "low": round(price - 1.0, 2),
+                    "close": round(price, 2),
+                    "volume": 1000000,
+                }
+            )
+
+        df = pd.DataFrame(rows)
+        symbol = "005930.KS"
+
+        # short_restricted 없이 실행 → 숏 거래 발생 가능
+        config = BacktestConfig(initial_capital=100_000_000, system=2, use_filter=False)
+        bt_unrestricted = TurtleBacktester(config, currency="KRW")
+        result_unrestricted = bt_unrestricted.run({symbol: df.copy()})
+
+        # short_restricted 적용 → 해당 심볼 숏 거래 없음
+        bt_restricted = TurtleBacktester(
+            config, currency="KRW", short_restricted_symbols={symbol}
+        )
+        result_restricted = bt_restricted.run({symbol: df.copy()})
+
+        # 미제한 백테스터에서 숏 거래가 있었다면, 제한 백테스터에서 없어야 함
+        unrestricted_shorts = [t for t in result_unrestricted.trades if t.direction == "SHORT"]
+        restricted_shorts = [t for t in result_restricted.trades if t.direction == "SHORT"]
+
+        assert len(unrestricted_shorts) > 0, "테스트 데이터가 숏 시그널을 생성해야 의미있는 비교 가능"
+        assert len(restricted_shorts) == 0, "short_restricted 심볼에서 숏 거래가 발생하면 안 됨"
+
+    def test_short_restricted_allows_long_entry(self):
+        """short_restricted 심볼도 LONG 진입은 정상 허용."""
+        # 상승 추세 데이터: LONG 진입 유도
+        dates = pd.date_range(start="2024-01-01", periods=200, freq="B")
+        rows = []
+        for i, date in enumerate(dates):
+            if i < 80:
+                price = 100.0
+            elif i < 140:
+                price = 100.0 + (i - 80) * 1.0  # 상승
+            else:
+                price = 100.0 + 60 * 1.0 - (i - 140) * 1.5  # 하락(청산 유도)
+            rows.append({
+                "date": date, "open": round(price - 0.5, 2),
+                "high": round(price + 1.0, 2), "low": round(price - 1.0, 2),
+                "close": round(price, 2), "volume": 1000000,
+            })
+        df = pd.DataFrame(rows)
+        symbol = "005930.KS"
+
+        config = BacktestConfig(initial_capital=100_000_000, system=2, use_filter=False)
+        bt = TurtleBacktester(config, currency="KRW", short_restricted_symbols={symbol})
+        result = bt.run({symbol: df.copy()})
+
+        long_trades = [t for t in result.trades if t.direction == "LONG"]
+        short_trades = [t for t in result.trades if t.direction == "SHORT"]
+        assert len(long_trades) > 0, "short_restricted여도 LONG 진입은 허용해야 함"
+        assert len(short_trades) == 0, "short_restricted 심볼은 SHORT 불가"

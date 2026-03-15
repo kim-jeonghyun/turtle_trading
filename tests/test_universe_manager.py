@@ -199,6 +199,56 @@ other_key: value
             assert len(symbols) > 5
 
 
+class TestGetShortRestrictedSymbols:
+    def test_defaults_have_no_restricted_symbols(self):
+        """기본 유니버스는 모두 short_restricted=False → 빈 집합 반환."""
+        um = UniverseManager()
+        restricted = um.get_short_restricted_symbols()
+        assert isinstance(restricted, set)
+        assert len(restricted) == 0
+
+    def test_returns_restricted_symbols_from_yaml(self):
+        """YAML에서 short_restricted=True인 심볼만 반환."""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "005930.KS", name: "삼성전자", group: kr_equity, short_restricted: true}
+    - {symbol: "000660.KS", name: "SK하이닉스", group: kr_equity, short_restricted: false}
+  us_equity:
+    - {symbol: SPY, name: "S&P 500", group: us_equity, short_restricted: false}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                restricted = um.get_short_restricted_symbols()
+                assert len(restricted) > 0  # vacuous-pass 방지
+                assert "005930.KS" in restricted
+                assert "000660.KS" not in restricted
+                assert "SPY" not in restricted
+            finally:
+                os.unlink(f.name)
+
+    def test_yaml_default_short_restricted_is_true(self):
+        """YAML에서 short_restricted 미지정 시 기본값 True (안전한 기본값)."""
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                restricted = um.get_short_restricted_symbols()
+                assert len(restricted) > 0  # vacuous-pass 방지
+                assert "035420.KQ" in restricted
+            finally:
+                os.unlink(f.name)
+
+
 class TestCSVLoading:
     def test_load_from_csv(self):
         csv_content = "Ticker,Name,Country,Type\nAAPL,Apple,US,Stock\nMSFT,Microsoft,US,Stock\n"

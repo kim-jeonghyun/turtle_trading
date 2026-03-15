@@ -200,3 +200,7 @@ class UniverseManager:
 
     def get_currency_map(self) -> Dict[str, str]:
         return {s: a.currency for s, a in self.assets.items()}
+
+    def get_short_restricted_symbols(self) -> set[str]:
+        """short_restricted=True인 심볼 집합 반환."""
+        return {s for s, a in self.assets.items() if a.short_restricted}

@@ -117,9 +117,12 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
 
     logger.info(f"백테스트 시작 - System {config.system}, 초기 자본: ${config.initial_capital:,.0f}")
 
+    # short_restricted는 시장 실현가능성 제약이므로 항상 로드
+    um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
+    short_restricted_symbols = um.get_short_restricted_symbols()
+
     symbol_groups = None
     if not args.no_risk_limits:
-        um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
         full_mapping = um.get_group_mapping()
         symbol_groups = {s: full_mapping[s] for s in data.keys() if s in full_mapping}
         unmapped = set(data.keys()) - set(full_mapping.keys())
@@ -134,7 +137,11 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
     else:
         logger.info("리스크 한도 미적용 (--no-risk-limits 또는 미등록 종목)")
 
-    backtester = TurtleBacktester(config, symbol_groups=symbol_groups)
+    backtester = TurtleBacktester(
+        config,
+        symbol_groups=symbol_groups,
+        short_restricted_symbols=short_restricted_symbols,
+    )
     result = backtester.run(data)
 
     return result
@@ -281,12 +288,6 @@ def main():
         sys.exit(2)
 
     if args.multi_currency:
-        if not args.no_risk_limits:
-            logger.warning(
-                "--multi-currency 모드에서 리스크 한도(N-노출)는 KRW ATR 스케일 차이로 인해 "
-                "예상대로 작동하지 않을 수 있습니다. --no-risk-limits 사용을 권장합니다."
-            )
-
         from src.multi_currency_backtester import MultiCurrencyBacktester
 
         um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
@@ -341,6 +342,7 @@ def main():
             krw_config=krw_config,
             usd_symbol_groups=usd_groups if not args.no_risk_limits else None,
             krw_symbol_groups=krw_groups if not args.no_risk_limits else None,
+            short_restricted_symbols=um.get_short_restricted_symbols(),
         )
         mc_result = mcbt.run(data, currency_map)
         print_multi_currency_results(mc_result)

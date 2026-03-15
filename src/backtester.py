@@ -80,9 +80,11 @@ class TurtleBacktester:
         config: BacktestConfig,
         symbol_groups: Optional[Dict[str, AssetGroup]] = None,
         currency: str = "USD",
+        short_restricted_symbols: Optional[set[str]] = None,
     ):
         self.config = config
         self.currency = currency
+        self.short_restricted_symbols: set[str] = short_restricted_symbols or set()
         self.commission_model = CommissionModel.for_currency(currency, commission_rate=config.commission_pct)
         self.account = AccountState(initial_capital=config.initial_capital, currency=currency)
         self.pyramid_manager = PyramidManager(max_units=config.max_units, pyramid_interval_n=config.pyramid_interval_n)
@@ -139,6 +141,9 @@ class TurtleBacktester:
 
         # 숏 진입 신호
         if row["low"] < prev_row[entry_low]:
+            # short_restricted 체크 (screener.py:172와 동일 패턴)
+            if symbol in self.short_restricted_symbols:
+                return None
             if self.config.system == 1 and self.config.use_filter:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["low"] >= prev_row.get("dc_low_55", 0):
