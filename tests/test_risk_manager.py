@@ -603,3 +603,71 @@ class TestShortDirectionLimit:
         risk_manager.add_position("BTC-USD", 2, 1.0, Direction.SHORT)
         ok, msg = risk_manager.can_add_position("005930.KS", 2, 1.0, Direction.SHORT)
         assert ok is True
+
+
+class TestNExposureUnitBased:
+    """N-노출이 유닛 수 기반으로 계산되는지 검증.
+    Curtis Faith: N-노출 한도 = 유닛 수 한도. ATR(n_value) 크기와 무관.
+    """
+
+    def test_krw_single_unit_not_blocked(self):
+        """KRW ATR=2500이어도 1유닛 = N-노출 1.0, 한도(10) 내."""
+        rm = PortfolioRiskManager(symbol_groups={"005930.KS": AssetGroup.KR_EQUITY})
+        allowed, _ = rm.can_add_position("005930.KS", 1, n_value=2500.0, direction=Direction.LONG)
+        assert allowed, "KRW 1유닛이 N-노출 한도에 차단되면 안 됨"
+
+    def test_n_exposure_equals_unit_count(self):
+        """N-노출 = 추가된 유닛 수의 합."""
+        rm = PortfolioRiskManager(symbol_groups={
+            "A": AssetGroup.US_EQUITY,
+            "B": AssetGroup.COMMODITY,
+            "C": AssetGroup.BOND,
+        })
+        rm.add_position("A", 2, n_value=4.5, direction=Direction.LONG)
+        rm.add_position("B", 1, n_value=50.0, direction=Direction.LONG)
+        rm.add_position("C", 3, n_value=0.5, direction=Direction.SHORT)
+        summary = rm.get_risk_summary()
+        assert summary["total_n_exposure"] == 6.0  # 2+1+3, ATR 무관
+
+    def test_n_exposure_currency_agnostic(self):
+        """KRW(ATR=2500)와 USD(ATR=4.5) 각 1유닛 → N-노출 동일하게 1.0씩."""
+        rm = PortfolioRiskManager(symbol_groups={
+            "005930.KS": AssetGroup.KR_EQUITY,
+            "SPY": AssetGroup.US_EQUITY,
+        })
+        rm.add_position("005930.KS", 1, n_value=2500.0, direction=Direction.LONG)
+        rm.add_position("SPY", 1, n_value=4.5, direction=Direction.LONG)
+        summary = rm.get_risk_summary()
+        assert summary["total_n_exposure"] == 2.0  # 1+1
+
+    def test_remove_position_restores_n_exposure(self):
+        """remove_position 후 N-노출이 정확히 감소."""
+        rm = PortfolioRiskManager(symbol_groups={"SPY": AssetGroup.US_EQUITY})
+        rm.add_position("SPY", 3, n_value=4.5, direction=Direction.LONG)
+        assert rm.get_risk_summary()["total_n_exposure"] == 3.0
+        rm.remove_position("SPY", 2, Direction.LONG, n_value=4.5)
+        assert rm.get_risk_summary()["total_n_exposure"] == 1.0
+        rm.remove_position("SPY", 1, Direction.LONG, n_value=4.5)
+        assert rm.get_risk_summary()["total_n_exposure"] == 0.0
+
+    def test_add_remove_symmetry(self):
+        """add → remove 왕복 후 N-노출 = 0."""
+        rm = PortfolioRiskManager(symbol_groups={"SPY": AssetGroup.US_EQUITY})
+        rm.add_position("SPY", 4, n_value=4.5, direction=Direction.LONG)
+        rm.remove_position("SPY", 4, Direction.LONG, n_value=4.5)
+        assert rm.get_risk_summary()["total_n_exposure"] == 0.0
+
+    def test_blocks_at_max_n_exposure(self):
+        """10유닛 초과 시 차단 (max_total_n_exposure=10.0)."""
+        groups = {f"SYM{i}": [
+            AssetGroup.US_EQUITY, AssetGroup.COMMODITY, AssetGroup.BOND,
+            AssetGroup.CURRENCY, AssetGroup.REIT, AssetGroup.ASIA_EQUITY,
+            AssetGroup.EU_EQUITY, AssetGroup.CHINA_EQUITY,
+            AssetGroup.COMMODITY_ENERGY, AssetGroup.COMMODITY_AGRI,
+        ][i] for i in range(10)}
+        rm = PortfolioRiskManager(symbol_groups=groups)
+        for i in range(10):
+            rm.add_position(f"SYM{i}", 1, n_value=100.0, direction=Direction.LONG)
+        allowed, msg = rm.can_add_position("SYM0", 1, n_value=100.0, direction=Direction.LONG)
+        assert not allowed
+        assert "N 노출" in msg
