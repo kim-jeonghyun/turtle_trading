@@ -667,17 +667,26 @@ class TestTrendFilterEquivalence:
         n_value = 2.0
         yesterday = {
             "date": pd.Timestamp("2025-03-01"),
-            "high": 100.0, "low": 98.0, "close": 99.0, "N": n_value,
-            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
-            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
+            "high": 100.0,
+            "low": 98.0,
+            "close": 99.0,
+            "N": n_value,
+            "dc_high_20": DC_HIGH_20,
+            "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55,
+            "dc_low_55": DC_LOW_55,
             "er": er_value,
         }
         today = {
             "date": pd.Timestamp("2025-03-02"),
-            "high": ABOVE_20_ONLY, "low": NEUTRAL_LOW,
-            "close": (ABOVE_20_ONLY + NEUTRAL_LOW) / 2, "N": n_value,
-            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
-            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
+            "high": ABOVE_20_ONLY,
+            "low": NEUTRAL_LOW,
+            "close": (ABOVE_20_ONLY + NEUTRAL_LOW) / 2,
+            "N": n_value,
+            "dc_high_20": DC_HIGH_20,
+            "dc_low_20": DC_LOW_20,
+            "dc_high_55": DC_HIGH_55,
+            "dc_low_55": DC_LOW_55,
             "er": er_value,
         }
         return pd.DataFrame([yesterday, today])
@@ -712,10 +721,14 @@ class TestTrendFilterEquivalence:
         config = BacktestConfig(system=1, use_trend_quality_filter=True)
         bt = TurtleBacktester(config)
         bt.last_trade_profitable[SYMBOL] = False
-        prev_row = pd.Series({
-            "dc_high_20": DC_HIGH_20, "dc_low_20": DC_LOW_20,
-            "dc_high_55": DC_HIGH_55, "dc_low_55": DC_LOW_55,
-        })
+        prev_row = pd.Series(
+            {
+                "dc_high_20": DC_HIGH_20,
+                "dc_low_20": DC_LOW_20,
+                "dc_high_55": DC_HIGH_55,
+                "dc_low_55": DC_LOW_55,
+            }
+        )
         row = pd.Series({"high": ABOVE_20_ONLY, "low": NEUTRAL_LOW, "er": low_er})
         bt_signal = bt._check_entry_signal(row, prev_row, SYMBOL)
 

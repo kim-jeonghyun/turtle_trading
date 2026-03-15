@@ -441,5 +441,55 @@ class TestPathResolution:
         assert kwargs["symbol_groups"] is not None
 
 
+class TestMultiCurrencyArgs:
+    """다통화 모드 인자 테스트"""
+
+    def test_multi_currency_flag_requires_no_symbols(self, monkeypatch):
+        """--multi-currency는 --symbols 없이도 동작"""
+        monkeypatch.setattr("sys.argv", ["run_backtest.py", "--multi-currency"])
+        args = parse_args()
+        assert args.multi_currency is True
+        assert args.symbols is None
+
+    def test_multi_currency_with_symbols(self, monkeypatch):
+        """--multi-currency + --symbols 조합"""
+        monkeypatch.setattr("sys.argv", ["run_backtest.py", "--multi-currency", "--symbols", "SPY", "005930.KS"])
+        args = parse_args()
+        assert args.multi_currency is True
+        assert args.symbols == ["SPY", "005930.KS"]
+
+    def test_multi_currency_capital_defaults(self, monkeypatch):
+        """다통화 자본 기본값"""
+        monkeypatch.setattr("sys.argv", ["run_backtest.py", "--multi-currency"])
+        args = parse_args()
+        assert args.krw_capital == 100_000_000.0
+        assert args.usd_capital == 100_000.0
+
+    def test_multi_currency_custom_capital(self, monkeypatch):
+        """다통화 자본 커스텀"""
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "run_backtest.py",
+                "--multi-currency",
+                "--krw-capital",
+                "50000000",
+                "--usd-capital",
+                "200000",
+            ],
+        )
+        args = parse_args()
+        assert args.krw_capital == 50_000_000.0
+        assert args.usd_capital == 200_000.0
+
+    def test_no_symbols_no_multi_currency_exits(self, monkeypatch):
+        """--symbols도 --multi-currency도 없으면 종료"""
+        monkeypatch.setattr("sys.argv", ["run_backtest.py"])
+        from scripts.run_backtest import main
+
+        with pytest.raises(SystemExit):
+            main()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -34,6 +34,7 @@ class LivePosition:
 @dataclass
 class AccountState:
     initial_capital: float
+    currency: str = "USD"
     current_equity: float = 0.0
     cash: float = 0.0
     positions: Dict[str, LivePosition] = field(default_factory=dict)

@@ -228,7 +228,6 @@ class TestPyramidPosition:
         for entry in pos.entries:
             assert entry.stop_price == last_stop
 
-
     def test_is_full_counts_entries_not_shares(self):
         """is_full은 진입 횟수를 카운트해야 하며, 주식 수량이 아니다"""
         pos = PyramidPosition(symbol="SPY", direction=Direction.LONG, max_units=4)

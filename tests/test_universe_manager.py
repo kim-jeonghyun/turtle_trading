@@ -416,7 +416,7 @@ symbols:
 
 
 class TestUniverseExpansion:
-    """확장된 42개 심볼 유니버스 테스트"""
+    """확장된 57개 심볼 유니버스 테스트"""
 
     YAML_PATH = str(Path(__file__).parent.parent / "config" / "universe.yaml")
 
@@ -424,21 +424,52 @@ class TestUniverseExpansion:
         return UniverseManager(yaml_path=self.YAML_PATH)
 
     def test_total_symbol_count(self):
-        """총 심볼 수 42개 검증"""
+        """총 심볼 수 57개 검증"""
         um = self._load()
-        assert len(um.get_enabled_symbols()) == 42
+        assert len(um.get_enabled_symbols()) == 57
 
     def test_all_new_symbols_present(self):
-        """신규 추가된 24개 심볼 존재 확인"""
+        """신규 추가된 39개 심볼 존재 확인"""
         um = self._load()
         symbols = set(um.get_enabled_symbols())
         new_symbols = [
-            # kr_equity 신규
-            "069500.KS", "229200.KS",
+            # kr_index
+            "069500.KS",
+            "229200.KS",
+            # kr_battery
+            "373220.KS",
+            "006400.KS",
+            # kr_bio
+            "207940.KS",
+            "068270.KS",
+            # kr_finance
+            "105560.KS",
+            "055550.KS",
+            # kr_auto
+            "005380.KS",
+            "000270.KS",
+            # kr_chemical
+            "051910.KS",
+            "010130.KS",
+            # kr_telecom
+            "017670.KS",
+            "030200.KS",
+            # kr_conglomerate
+            "034730.KS",
+            "003550.KS",
+            # kr_platform
+            "035420.KS",
+            "035720.KS",
             # asia_equity
-            "EWJ", "EWT", "EWA", "VNM", "EEM", "INDA",
+            "EWJ",
+            "EWT",
+            "EWA",
+            "VNM",
+            "EEM",
+            "INDA",
             # china_equity
-            "MCHI", "ASHR",
+            "MCHI",
+            "ASHR",
             # eu_equity
             "VGK",
             # commodity
@@ -446,20 +477,25 @@ class TestUniverseExpansion:
             # commodity_industrial
             "COPX",
             # commodity_energy
-            "USO", "UNG",
+            "USO",
+            "UNG",
             # commodity_agri
             "DBA",
             # bond
-            "SHY", "TIP",
+            "SHY",
+            "TIP",
             # currency
-            "UUP", "FXY",
+            "UUP",
+            "FXY",
             # reit
             "VNQ",
             # alternatives
             "DBMF",
             # crypto
-            "BITO", "ETHA",
+            "BITO",
+            "ETHA",
         ]
+        assert len(new_symbols) > 0
         for sym in new_symbols:
             assert sym in symbols, f"{sym} not found in universe"
 
@@ -478,6 +514,12 @@ class TestUniverseExpansion:
         assert mapping["UUP"] == AssetGroup.CURRENCY
         assert mapping["COPX"] == AssetGroup.COMMODITY
         assert mapping["AAPL"] == AssetGroup.US_TECH
+        # KR sector groups
+        assert mapping["035420.KS"] == AssetGroup.KR_PLATFORM
+        assert mapping["069500.KS"] == AssetGroup.KR_INDEX
+        assert mapping["373220.KS"] == AssetGroup.KR_BATTERY
+        assert mapping["005380.KS"] == AssetGroup.KR_AUTO
+        assert mapping["105560.KS"] == AssetGroup.KR_FINANCE
 
     def test_existing_symbols_unchanged(self):
         """기존 심볼 그룹 변경 없음 검증"""
@@ -491,6 +533,16 @@ class TestUniverseExpansion:
         # Issue #166: AAPL intentionally moved from US_EQUITY to US_TECH
         assert mapping["AAPL"] == AssetGroup.US_TECH
 
+    def test_krw_universe_has_20_symbols(self):
+        um = self._load()
+        krw = um.get_symbols_by_currency("KRW")
+        assert len(krw) == 20
+
+    def test_kr_sector_groups_exist(self):
+        um = self._load()
+        kr_groups = {a.group for a in um.assets.values() if a.currency == "KRW"}
+        assert len(kr_groups) >= 5
+
     def test_no_silent_fallback_to_default_group(self):
         """US_EQUITY로 fallback된 심볼이 실제 us_equity 카테고리 심볼만인지 검증"""
         um = self._load()
@@ -501,9 +553,57 @@ class TestUniverseExpansion:
         )
         expected_us_tech = {"AAPL", "NVDA", "TSLA", "MSFT"}
         actual_us_tech = set(um.get_symbols_by_group(AssetGroup.US_TECH))
-        assert actual_us_tech == expected_us_tech, (
-            f"Unexpected US_TECH symbols: {actual_us_tech - expected_us_tech}"
-        )
+        assert actual_us_tech == expected_us_tech, f"Unexpected US_TECH symbols: {actual_us_tech - expected_us_tech}"
+
+
+class TestCurrencyField:
+    """currency 필드 및 통화별 필터링 테스트"""
+
+    def test_asset_has_currency_field(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        spy = um.assets["SPY"]
+        assert spy.currency == "USD"
+        samsung = um.assets["005930.KS"]
+        assert samsung.currency == "KRW"
+
+    def test_get_symbols_by_currency(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        krw_symbols = um.get_symbols_by_currency("KRW")
+        usd_symbols = um.get_symbols_by_currency("USD")
+        assert "005930.KS" in krw_symbols
+        assert "SPY" in usd_symbols
+        assert len(krw_symbols) + len(usd_symbols) == len(um.get_enabled_symbols())
+
+    def test_get_currency_map(self):
+        um = UniverseManager(yaml_path="config/universe.yaml")
+        cmap = um.get_currency_map()
+        assert cmap["SPY"] == "USD"
+        assert cmap["005930.KS"] == "KRW"
+        assert len(cmap) == len(um.assets)
+
+    def test_default_assets_currency_usd(self):
+        """기본 유니버스(YAML 없음) 심볼은 USD"""
+        um = UniverseManager()
+        for symbol in um.get_enabled_symbols():
+            assert um.assets[symbol].currency == "USD"
+
+    def test_kq_suffix_currency_krw(self):
+        yaml_content = """
+symbols:
+  kr_equity:
+    - {symbol: "035420.KQ", name: "NAVER", group: kr_equity}
+"""
+        import os
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            try:
+                um = UniverseManager(yaml_path=f.name)
+                assert um.assets["035420.KQ"].currency == "KRW"
+            finally:
+                os.unlink(f.name)
 
 
 class TestRealConfigConsistency:
@@ -530,3 +630,18 @@ class TestRealConfigConsistency:
 
         missing = universe_symbols - corr_symbols
         assert not missing, f"Symbols in universe but not in correlation_groups: {missing}"
+
+
+def test_kr_asset_groups_exist():
+    """KR 섹터 AssetGroup이 존재"""
+    from src.types import AssetGroup
+
+    assert hasattr(AssetGroup, "KR_BATTERY")
+    assert hasattr(AssetGroup, "KR_BIO")
+    assert hasattr(AssetGroup, "KR_FINANCE")
+    assert hasattr(AssetGroup, "KR_AUTO")
+    assert hasattr(AssetGroup, "KR_CHEMICAL")
+    assert hasattr(AssetGroup, "KR_TELECOM")
+    assert hasattr(AssetGroup, "KR_CONGLOMERATE")
+    assert hasattr(AssetGroup, "KR_PLATFORM")
+    assert hasattr(AssetGroup, "KR_INDEX")

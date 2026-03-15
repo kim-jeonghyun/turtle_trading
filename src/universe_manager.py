@@ -19,6 +19,7 @@ class Asset:
     country: str
     asset_type: str
     group: AssetGroup
+    currency: str = "USD"
     leverage: float = 1.0
     underlying: Optional[str] = None
     enabled: bool = True
@@ -70,6 +71,15 @@ class UniverseManager:
             "currency": AssetGroup.CURRENCY,
             "reit": AssetGroup.REIT,
             "alternatives": AssetGroup.ALTERNATIVES,
+            "kr_battery": AssetGroup.KR_BATTERY,
+            "kr_bio": AssetGroup.KR_BIO,
+            "kr_finance": AssetGroup.KR_FINANCE,
+            "kr_auto": AssetGroup.KR_AUTO,
+            "kr_chemical": AssetGroup.KR_CHEMICAL,
+            "kr_telecom": AssetGroup.KR_TELECOM,
+            "kr_conglomerate": AssetGroup.KR_CONGLOMERATE,
+            "kr_platform": AssetGroup.KR_PLATFORM,
+            "kr_index": AssetGroup.KR_INDEX,
         }
 
         for category, items in config["symbols"].items():
@@ -78,11 +88,13 @@ class UniverseManager:
                 group_str = item.get("group", category)
                 asset_group = group_mapping.get(group_str, AssetGroup.US_EQUITY)
 
-                # Determine country from symbol
+                # Determine country and currency from symbol
                 if symbol.endswith(".KS") or symbol.endswith(".KQ"):
                     country = "KR"
+                    currency = "KRW"
                 else:
                     country = "US"
+                    currency = "USD"
 
                 # Determine leverage for inverse ETFs
                 leverage = 1.0
@@ -98,6 +110,7 @@ class UniverseManager:
                     country=country,
                     asset_type=category,
                     group=asset_group,
+                    currency=currency,
                     leverage=leverage,
                     underlying=item.get("underlying"),
                     enabled=True,
@@ -109,12 +122,14 @@ class UniverseManager:
         df = pd.read_csv(self.csv_path)
         for _, row in df.iterrows():
             symbol = str(row.get("Ticker", row.get("symbol", ""))).strip()
+            currency = "KRW" if (symbol.endswith(".KS") or symbol.endswith(".KQ")) else "USD"
             asset = Asset(
                 symbol=symbol,
                 name=str(row.get("Name", row.get("name", ""))).strip(),
                 country=str(row.get("Country", row.get("country", "US"))).strip(),
                 asset_type=str(row.get("Type", row.get("type", ""))).strip(),
                 group=AssetGroup.US_EQUITY,
+                currency=currency,
                 enabled=True,
             )
             self.assets[symbol] = asset
@@ -127,9 +142,25 @@ class UniverseManager:
             Asset("IWM", "Russell 2000 ETF", "US", "Index ETF", AssetGroup.US_EQUITY, short_restricted=False),
             Asset("GLD", "Gold ETF", "US", "Commodity ETF", AssetGroup.COMMODITY, short_restricted=False),
             Asset("TLT", "Treasury 20+ ETF", "US", "Bond ETF", AssetGroup.BOND, short_restricted=False),
-            Asset("SH", "S&P 500 Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -1, "SPY", short_restricted=False),
             Asset(
-                "SQQQ", "Nasdaq 3x Inverse", "US", "Inverse ETF", AssetGroup.INVERSE, -3, "QQQ", short_restricted=False
+                "SH",
+                "S&P 500 Inverse",
+                "US",
+                "Inverse ETF",
+                AssetGroup.INVERSE,
+                leverage=-1,
+                underlying="SPY",
+                short_restricted=False,
+            ),
+            Asset(
+                "SQQQ",
+                "Nasdaq 3x Inverse",
+                "US",
+                "Inverse ETF",
+                AssetGroup.INVERSE,
+                leverage=-3,
+                underlying="QQQ",
+                short_restricted=False,
             ),
         ]
         for asset in defaults:
@@ -163,3 +194,9 @@ class UniverseManager:
 
     def get_group_mapping(self) -> Dict[str, AssetGroup]:
         return {s: a.group for s, a in self.assets.items()}
+
+    def get_symbols_by_currency(self, currency: str) -> List[str]:
+        return [s for s, a in self.assets.items() if a.currency == currency and a.enabled]
+
+    def get_currency_map(self) -> Dict[str, str]:
+        return {s: a.currency for s, a in self.assets.items()}

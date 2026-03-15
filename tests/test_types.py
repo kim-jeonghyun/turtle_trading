@@ -148,7 +148,7 @@ class TestAssetGroup:
         assert AssetGroup("us_tech") == AssetGroup.US_TECH
 
     def test_count(self):
-        assert len(list(AssetGroup)) == 15
+        assert len(list(AssetGroup)) == 24
 
     def test_from_value(self):
         assert AssetGroup("us_equity") == AssetGroup.US_EQUITY

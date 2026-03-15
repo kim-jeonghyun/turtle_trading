@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
+from src.commission import KRXCommissionModel, USCommissionModel
 from src.indicators import calculate_unit_size
 from src.position_sizer import AccountState
 from src.types import AssetGroup, Direction, SignalType
@@ -206,14 +207,16 @@ class TestTradeEntryReason:
 
         # Create minimal OHLCV data with a breakout and then a close
         dates = pd.date_range("2026-01-01", periods=60, freq="B")
-        data = pd.DataFrame({
-            "date": dates,
-            "open": [100] * 60,
-            "high": [101] * 20 + [120] * 20 + [101] * 20,
-            "low": [99] * 20 + [99] * 20 + [80] * 20,
-            "close": [100] * 20 + [115] * 20 + [85] * 20,
-            "volume": [1000000] * 60,
-        })
+        data = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100] * 60,
+                "high": [101] * 20 + [120] * 20 + [101] * 20,
+                "low": [99] * 20 + [99] * 20 + [80] * 20,
+                "close": [100] * 20 + [115] * 20 + [85] * 20,
+                "volume": [1000000] * 60,
+            }
+        )
 
         config = BacktestConfig(
             initial_capital=100000,
@@ -431,14 +434,16 @@ class TestBacktesterRiskIntegration:
                 else:
                     price = base + 1.0 + (j - 60) * 0.1
                 prices.append(price)
-            df = pd.DataFrame({
-                "date": dates,
-                "open": prices,
-                "high": [p + 0.5 for p in prices],
-                "low": [p - 0.5 for p in prices],
-                "close": prices,
-                "volume": [1000000] * len(dates),
-            })
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": prices,
+                    "high": [p + 0.5 for p in prices],
+                    "low": [p - 0.5 for p in prices],
+                    "close": prices,
+                    "volume": [1000000] * len(dates),
+                }
+            )
             data[f"SYM{i}"] = df
         return data
 
@@ -456,10 +461,7 @@ class TestBacktesterRiskIntegration:
         bt.run(data)
 
         # 시그널이 발생했는지 확인 (trades + open positions)
-        symbols_traded = (
-            set(t.symbol for t in bt.trades)
-            | set(bt.pyramid_manager.positions.keys())
-        )
+        symbols_traded = set(t.symbol for t in bt.trades) | set(bt.pyramid_manager.positions.keys())
         assert len(symbols_traded) > 0, "시그널이 발생하지 않음"
         assert len(symbols_traded) <= 6, f"그룹 한도 6 초과: {len(symbols_traded)}개 종목 진입"
 
@@ -474,10 +476,7 @@ class TestBacktesterRiskIntegration:
         data = self._make_breakout_data(7)
         bt.run(data)
 
-        symbols_traded = (
-            set(t.symbol for t in bt.trades)
-            | set(bt.pyramid_manager.positions.keys())
-        )
+        symbols_traded = set(t.symbol for t in bt.trades) | set(bt.pyramid_manager.positions.keys())
         assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"
 
 
@@ -498,14 +497,16 @@ class TestBreakoutEntryPrice:
                 p = 105.0 + (i - 60) * 0.5
             prices.append(p)
 
-        df = pd.DataFrame({
-            "date": dates,
-            "open": prices,
-            "high": [p + 1.0 for p in prices],
-            "low": [p - 1.0 for p in prices],
-            "close": prices,
-            "volume": [1_000_000] * 80,
-        })
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": prices,
+                "high": [p + 1.0 for p in prices],
+                "low": [p - 1.0 for p in prices],
+                "close": prices,
+                "volume": [1_000_000] * 80,
+            }
+        )
         return df
 
     def test_long_entry_not_at_close(self):
@@ -541,21 +542,23 @@ class TestBreakoutEntryPrice:
 
         dates = pd.date_range("2025-01-01", periods=2, freq="B")
         mock_data = {
-            "TEST": pd.DataFrame({
-                "date": dates,
-                "open": [100.0, 91.0],
-                "high": [101.0, 95.0],
-                "low": [99.0, 88.0],
-                "close": [100.0, 89.0],
-                "N": [5.0, 5.0],
-                "atr": [5.0, 5.0],
-                "dc_high_20": [101.0, 101.0],
-                "dc_low_20": [99.0, 99.0],
-                "dc_high_55": [102.0, 102.0],
-                "dc_low_55": [98.0, 98.0],
-                "dc_low_10": [99.5, 99.5],
-                "dc_high_10": [100.5, 100.5],
-            })
+            "TEST": pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": [100.0, 91.0],
+                    "high": [101.0, 95.0],
+                    "low": [99.0, 88.0],
+                    "close": [100.0, 89.0],
+                    "N": [5.0, 5.0],
+                    "atr": [5.0, 5.0],
+                    "dc_high_20": [101.0, 101.0],
+                    "dc_low_20": [99.0, 99.0],
+                    "dc_high_55": [102.0, 102.0],
+                    "dc_low_55": [98.0, 98.0],
+                    "dc_low_10": [99.5, 99.5],
+                    "dc_high_10": [100.5, 100.5],
+                }
+            )
         }
 
         row = mock_data["TEST"].iloc[1]
@@ -577,6 +580,7 @@ class TestBreakoutEntryPrice:
         )
         assert bt.trades[0].exit_price != 89.0, "close(89.0)가 아닌 stop(90.0) 사용"
 
+
 class TestS1HypotheticalFilter:
     """System 1 필터: 스킵된 브레이크아웃의 가상 결과 추적"""
 
@@ -590,9 +594,7 @@ class TestS1HypotheticalFilter:
         bt = TurtleBacktester(config)
         bt.last_trade_profitable["TEST"] = True
 
-        assert hasattr(bt, "_hypothetical_breakouts"), (
-            "TurtleBacktester should have _hypothetical_breakouts dict"
-        )
+        assert hasattr(bt, "_hypothetical_breakouts"), "TurtleBacktester should have _hypothetical_breakouts dict"
 
     def test_filter_resets_after_hypothetical_loss(self):
         """가상 브레이크아웃이 손실이면 다음 20일 돌파 허용"""
@@ -607,9 +609,7 @@ class TestS1HypotheticalFilter:
         bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
         bt._resolve_hypothetical("TEST", exit_price=97.0)  # loss
 
-        assert not bt.last_trade_profitable.get("TEST", False), (
-            "가상 손실 후 필터가 리셋되어야 함"
-        )
+        assert not bt.last_trade_profitable.get("TEST", False), "가상 손실 후 필터가 리셋되어야 함"
 
     def test_filter_persists_after_hypothetical_win(self):
         """가상 브레이크아웃이 수익이면 필터 유지"""
@@ -624,9 +624,7 @@ class TestS1HypotheticalFilter:
         bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
         bt._resolve_hypothetical("TEST", exit_price=115.0)  # win
 
-        assert bt.last_trade_profitable.get("TEST", False), (
-            "가상 수익 후 필터가 유지되어야 함"
-        )
+        assert bt.last_trade_profitable.get("TEST", False), "가상 수익 후 필터가 유지되어야 함"
 
     def test_hypothetical_stop_loss_tracked(self):
         """가상 포지션의 2N 스톱로스도 추적"""
@@ -660,7 +658,6 @@ class TestS1HypotheticalFilter:
 
         assert not bt.last_trade_profitable.get("TEST", False)
 
-
     def test_channel_exit_uses_channel_boundary(self):
         """채널 청산 시 exit price는 Donchian boundary"""
         config = BacktestConfig(
@@ -674,15 +671,19 @@ class TestS1HypotheticalFilter:
 
         # stop = 110 - 2*5 = 100.0; low must be > 100 to avoid STOP_LOSS
         # channel exit: row["low"] < prev_row["dc_low_10"]
-        row = pd.Series({
-            "high": 109.0,
-            "low": 101.5,   # above stop (100.0) but below dc_low_10 (102.0)
-            "close": 103.0,
-        })
-        prev_row = pd.Series({
-            "dc_low_10": 102.0,
-            "dc_high_10": 112.0,
-        })
+        row = pd.Series(
+            {
+                "high": 109.0,
+                "low": 101.5,  # above stop (100.0) but below dc_low_10 (102.0)
+                "close": 103.0,
+            }
+        )
+        prev_row = pd.Series(
+            {
+                "dc_low_10": 102.0,
+                "dc_high_10": 112.0,
+            }
+        )
 
         exit_signal = bt._check_exit_signal(row, prev_row, position)
         assert exit_signal == SignalType.EXIT_LONG
@@ -748,10 +749,12 @@ class TestDrawdownSizingIntegration:
         # close=200 → unrealized = (200-100)*200 = 20_000; equity = 100_000 (equal, not greater)
         # close=201 → unrealized = (201-100)*200 = 20_200; equity = 100_200 > 100_000
         mock_data = {
-            "TEST": pd.DataFrame({
-                "date": [pd.Timestamp("2025-01-02")],
-                "close": [201.0],
-            })
+            "TEST": pd.DataFrame(
+                {
+                    "date": [pd.Timestamp("2025-01-02")],
+                    "close": [201.0],
+                }
+            )
         }
         bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
 
@@ -787,18 +790,20 @@ class TestSignalPrioritization:
             prices = [base] * 60
             for i in range(20):
                 prices.append(base + excess + i * 0.5)
-            return pd.DataFrame({
-                "date": dates,
-                "open": prices,
-                "high": [p + 1.0 for p in prices],
-                "low": [p - 1.0 for p in prices],
-                "close": prices,
-                "volume": [1_000_000] * 80,
-            })
+            return pd.DataFrame(
+                {
+                    "date": dates,
+                    "open": prices,
+                    "high": [p + 1.0 for p in prices],
+                    "low": [p - 1.0 for p in prices],
+                    "close": prices,
+                    "volume": [1_000_000] * 80,
+                }
+            )
 
         # Process order: dict preserves insertion order, so WEAK first
         data = {
-            "WEAK": make_breakout_data(100.0, 2.0),    # small excess
+            "WEAK": make_breakout_data(100.0, 2.0),  # small excess
             "STRONG": make_breakout_data(100.0, 10.0),  # large excess
         }
         result = bt.run(data)
@@ -806,6 +811,26 @@ class TestSignalPrioritization:
         traded = set(t.symbol for t in result.trades) | set(bt.pyramid_manager.positions.keys())
         assert len(traded) > 0, "시그널이 발생하지 않음"
         # With only 1 position possible, STRONG should be chosen
-        assert "STRONG" in traded, (
-            f"자본 제한 시 강한 돌파가 우선되어야 함. 실제 진입: {traded}"
-        )
+        assert "STRONG" in traded, f"자본 제한 시 강한 돌파가 우선되어야 함. 실제 진입: {traded}"
+
+
+class TestCommissionModelIntegration:
+    def test_default_config_uses_us_commission(self):
+        config = BacktestConfig()
+        bt = TurtleBacktester(config)
+        assert isinstance(bt.commission_model, USCommissionModel)
+
+    def test_commission_pct_passed_to_model(self):
+        config = BacktestConfig(commission_pct=0.002)
+        bt = TurtleBacktester(config)
+        assert bt.commission_model.entry_cost(100.0, 10) == 2.0
+
+    def test_krw_currency_uses_krx_commission(self):
+        config = BacktestConfig(initial_capital=100_000_000.0)
+        bt = TurtleBacktester(config, currency="KRW")
+        assert isinstance(bt.commission_model, KRXCommissionModel)
+
+    def test_krw_commission_ignores_commission_pct(self):
+        config = BacktestConfig(commission_pct=0.005)
+        bt = TurtleBacktester(config, currency="KRW")
+        assert isinstance(bt.commission_model, KRXCommissionModel)
