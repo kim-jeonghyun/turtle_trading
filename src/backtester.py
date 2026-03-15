@@ -13,6 +13,7 @@ import pandas as pd
 from src.trend_filter import FilterStats, TrendFilter, TrendFilterConfig
 from src.types import AssetGroup, Direction, MarketRegime, SignalType
 
+from .commission import CommissionModel
 from .indicators import add_turtle_indicators, calculate_efficiency_ratio, calculate_unit_size
 from .position_sizer import AccountState
 from .pyramid_manager import PyramidManager
@@ -74,9 +75,16 @@ class BacktestResult:
 
 
 class TurtleBacktester:
-    def __init__(self, config: BacktestConfig, symbol_groups: Optional[Dict[str, AssetGroup]] = None):
+    def __init__(
+        self,
+        config: BacktestConfig,
+        symbol_groups: Optional[Dict[str, AssetGroup]] = None,
+        currency: str = "USD",
+    ):
         self.config = config
-        self.account = AccountState(initial_capital=config.initial_capital)
+        self.currency = currency
+        self.commission_model = CommissionModel.for_currency(currency, commission_rate=config.commission_pct)
+        self.account = AccountState(initial_capital=config.initial_capital, currency=currency)
         self.pyramid_manager = PyramidManager(max_units=config.max_units, pyramid_interval_n=config.pyramid_interval_n)
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
@@ -335,7 +343,8 @@ class TurtleBacktester:
                 logger.debug(f"리스크 한도 차단: {symbol} - {reason}")
                 return
 
-        cost = unit_size * price * (1 + self.config.commission_pct)
+        commission = self.commission_model.entry_cost(price, unit_size)
+        cost = unit_size * price + commission
         if cost > self.account.cash:
             return
 
@@ -367,7 +376,8 @@ class TurtleBacktester:
         unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
-        cost = unit_size * price * (1 + self.config.commission_pct)
+        commission = self.commission_model.entry_cost(price, unit_size)
+        cost = unit_size * price + commission
         if cost > self.account.cash:
             return
 
@@ -390,7 +400,7 @@ class TurtleBacktester:
         else:
             pnl = (avg_entry - price) * total_quantity
 
-        pnl -= price * total_quantity * self.config.commission_pct
+        pnl -= self.commission_model.exit_cost(price, total_quantity)
         pnl_pct = pnl / (avg_entry * total_quantity) if avg_entry > 0 else 0
 
         trade = Trade(
