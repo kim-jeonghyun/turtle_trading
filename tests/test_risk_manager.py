@@ -193,13 +193,13 @@ class TestTotalNExposure:
         assert ok is True
 
     def test_exceeds_n_limit(self, risk_manager):
-        # SPY: 2.5 * 2 = 5.0
-        # 005930.KS: 2.5 * 2 = 5.0
-        # Total so far: 10.0 (at limit)
-        risk_manager.add_position("SPY", 2, 2.5, Direction.LONG)
-        risk_manager.add_position("005930.KS", 2, 2.5, Direction.LONG)
-        # BTC-USD: 2.0 * 1 = 2.0, total would be 12.0 > 10.0
-        ok, msg = risk_manager.can_add_position("BTC-USD", 1, 2.0, Direction.LONG)
+        # N-노출 = 유닛 수 (ATR 무관)
+        # SPY: 4 units + 005930.KS: 4 units + BTC-USD: 2 units = 10 units (at limit)
+        risk_manager.add_position("SPY", 4, 2.5, Direction.LONG)
+        risk_manager.add_position("005930.KS", 4, 2.5, Direction.LONG)
+        risk_manager.add_position("BTC-USD", 2, 2.0, Direction.LONG)
+        # 11th unit blocked: total would be 11 > 10 unit limit
+        ok, msg = risk_manager.can_add_position("AAPL", 1, 2.0, Direction.LONG)
         assert ok is False
         assert "N 노출" in msg
 
@@ -224,11 +224,11 @@ class TestRemovePosition:
         group = AssetGroup.US_EQUITY  # SPY의 그룹
         risk_manager.add_position("SPY", 3, 2.0, Direction.LONG)
 
-        # 사전 상태 확인
+        # 사전 상태 확인 (N-노출 = 유닛 수)
         assert risk_manager.state.units_by_symbol["SPY"] == 3
         assert risk_manager.state.units_by_group[group] == 3
         assert risk_manager.state.long_units == 3
-        assert risk_manager.state.total_n_exposure == 6.0
+        assert risk_manager.state.total_n_exposure == 3.0
 
         risk_manager.remove_position("SPY", 2, Direction.LONG, n_value=2.0)
 
@@ -236,7 +236,7 @@ class TestRemovePosition:
         assert risk_manager.state.units_by_symbol["SPY"] == 1
         assert risk_manager.state.units_by_group[group] == 1
         assert risk_manager.state.long_units == 1
-        assert risk_manager.state.total_n_exposure == pytest.approx(2.0)
+        assert risk_manager.state.total_n_exposure == pytest.approx(1.0)
 
     def test_remove_position_underflow_guard(self, risk_manager):
         """추가한 수량보다 많은 수량을 제거해도 모든 상태 필드가 0으로 바닥 처리된다"""
@@ -264,7 +264,7 @@ class TestRemovePosition:
         assert risk_manager.state.units_by_symbol["QQQ"] == 2
         assert risk_manager.state.units_by_group[group] == 2
         assert risk_manager.state.long_units == 2
-        assert risk_manager.state.total_n_exposure == pytest.approx(3.0)
+        assert risk_manager.state.total_n_exposure == pytest.approx(2.0)
 
     def test_remove_overremoval_cross_group_isolation(self, risk_manager):
         """과다 제거 시 다른 그룹의 units_by_group은 영향 없음"""
@@ -287,7 +287,7 @@ class TestRemovePosition:
         assert risk_manager.state.units_by_symbol.get("AAPL", 0) == 0
         assert risk_manager.state.units_by_symbol["SPY"] == 2
         assert risk_manager.state.long_units == 2
-        assert risk_manager.state.total_n_exposure == pytest.approx(3.0)
+        assert risk_manager.state.total_n_exposure == pytest.approx(2.0)
 
     def test_remove_double_removal_second_is_noop(self, risk_manager):
         """이미 제거된 포지션을 다시 제거해도 상태가 변하지 않는다"""
@@ -303,16 +303,15 @@ class TestRemovePosition:
         assert risk_manager.state.total_n_exposure == pytest.approx(0.0)
 
     def test_risk_summary(self, risk_manager):
-        # SPY: 3 units * 2.0 N = 6.0 N exposure
-        # BTC-USD: 2 units * 3.0 N = 6.0 N exposure
-        # Total N exposure: 12.0
+        # N-노출 = 유닛 수 (ATR 무관)
+        # SPY: 3 units, BTC-USD: 2 units → total N-노출 = 5.0
         risk_manager.add_position("SPY", 3, 2.0, Direction.LONG)
         risk_manager.add_position("BTC-USD", 2, 3.0, Direction.SHORT)
         summary = risk_manager.get_risk_summary()
         assert summary["long_units"] == 3
         assert summary["short_units"] == 2
         assert summary["positions_count"] == 2
-        assert summary["total_n_exposure"] == 12.0
+        assert summary["total_n_exposure"] == 5.0
 
 
 class TestInputValidation:
@@ -456,7 +455,7 @@ class TestExpandedUniverseRiskLimits:
         assert "그룹" in msg
 
     def test_n_exposure_cap_with_many_groups(self):
-        """N-exposure 10.0 캡은 다수 그룹에서도 작동"""
+        """N-exposure 10.0 캡은 다수 그룹에서도 작동 (N-노출 = 유닛 수 기준)"""
         symbol_groups = {
             "SPY": AssetGroup.US_EQUITY,
             "EWJ": AssetGroup.ASIA_EQUITY,
@@ -466,11 +465,13 @@ class TestExpandedUniverseRiskLimits:
         }
         rm = PortfolioRiskManager(symbol_groups=symbol_groups)
 
-        # 4 symbols × 1 unit × n_value=2.5 = 10.0 → exactly at limit
+        # 4 symbols × 2 units = 8 units, then VNQ 2 units = 10 → exactly at limit
         for sym in list(symbol_groups.keys())[:4]:
-            rm.add_position(sym, 1, 2.5, Direction.LONG)
+            rm.add_position(sym, 2, 2.5, Direction.LONG)
 
-        # 5th would exceed N-exposure
+        rm.add_position("VNQ", 2, 2.5, Direction.LONG)  # 10 units total (at limit)
+
+        # 11th unit blocked by N-exposure cap
         ok, msg = rm.can_add_position("VNQ", 1, 2.5, Direction.LONG)
         assert not ok
         assert "N 노출" in msg
