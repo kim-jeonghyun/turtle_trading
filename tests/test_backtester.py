@@ -834,3 +834,73 @@ class TestCommissionModelIntegration:
         config = BacktestConfig(commission_pct=0.005)
         bt = TurtleBacktester(config, currency="KRW")
         assert isinstance(bt.commission_model, KRXCommissionModel)
+
+
+class TestShortRestricted:
+    """short_restricted 심볼의 ENTRY_SHORT 차단 검증."""
+
+    def test_default_no_restriction(self):
+        """short_restricted_symbols 미전달 시 숏 제한 없음 (역호환)."""
+        config = BacktestConfig(initial_capital=100000, system=1)
+        bt = TurtleBacktester(config)
+        assert len(bt.short_restricted_symbols) == 0
+
+    def test_stores_short_restricted_symbols(self):
+        """short_restricted_symbols 파라미터가 저장됨."""
+        config = BacktestConfig(initial_capital=100000, system=2)
+        restricted = {"005930.KS", "000660.KS"}
+        bt = TurtleBacktester(config, short_restricted_symbols=restricted)
+        assert bt.short_restricted_symbols == restricted
+
+    def test_short_restricted_blocks_short_entry(self):
+        """short_restricted=True인 심볼은 ENTRY_SHORT 생성하지 않음."""
+        np.random.seed(42)
+        # 하락 추세 데이터: 55일 최저가 이탈로 숏 진입 유도 (System 2)
+        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
+        price = 100.0
+        rows = []
+        for i, date in enumerate(dates):
+            if i < 60:
+                # 횡보 구간
+                change = np.random.normal(0, 0.3)
+            else:
+                # 강한 하락 (55일 최저가 이탈 유도)
+                change = -abs(np.random.normal(1.5, 0.3))
+            open_price = price
+            close = price + change
+            high = max(open_price, close) + abs(np.random.normal(0.2, 0.05))
+            low = min(open_price, close) - abs(np.random.normal(0.2, 0.05))
+            rows.append(
+                {
+                    "date": date,
+                    "open": round(open_price, 2),
+                    "high": round(high, 2),
+                    "low": round(low, 2),
+                    "close": round(close, 2),
+                    "volume": 1000000,
+                }
+            )
+            price = close
+
+        df = pd.DataFrame(rows)
+        symbol = "005930.KS"
+
+        # short_restricted 없이 실행 → 숏 거래 발생 가능
+        config = BacktestConfig(initial_capital=100_000_000, system=2, use_filter=False)
+        bt_unrestricted = TurtleBacktester(config, currency="KRW")
+        result_unrestricted = bt_unrestricted.run({symbol: df.copy()})
+
+        # short_restricted 적용 → 해당 심볼 숏 거래 없음
+        bt_restricted = TurtleBacktester(
+            config, currency="KRW", short_restricted_symbols={symbol}
+        )
+        result_restricted = bt_restricted.run({symbol: df.copy()})
+
+        # 미제한 백테스터에서 숏 거래가 있었다면, 제한 백테스터에서 없어야 함
+        unrestricted_shorts = [t for t in result_unrestricted.trades if t.direction == "SHORT"]
+        restricted_shorts = [t for t in result_restricted.trades if t.direction == "SHORT"]
+
+        if len(unrestricted_shorts) > 0:
+            assert len(restricted_shorts) == 0, "short_restricted 심볼에서 숏 거래가 발생하면 안 됨"
+        # unrestricted에 숏이 없어도 restricted는 반드시 0
+        assert len(restricted_shorts) == 0
