@@ -251,6 +251,10 @@ def export_trades_csv(result: BacktestResult, csv_path: str):
 
 def print_multi_currency_results(mc_result):
     """통화별 백테스트 결과 출력"""
+    if not mc_result.results:
+        logger.warning("통화별 결과가 없습니다.")
+        return
+
     for currency, result in mc_result.results.items():
         symbol = "₩" if currency == "KRW" else "$"
         print(f"\n{'=' * 60}")
@@ -334,6 +338,9 @@ def main():
         )
         mc_result = mcbt.run(data, currency_map)
         print_multi_currency_results(mc_result)
+
+        if args.plot or args.csv:
+            logger.warning("--plot, --csv는 --multi-currency 모드에서 아직 지원되지 않습니다")
     else:
         # 기존 단일 통화 로직 (변경 없음)
         data = fetch_data(args.symbols, args.period, args.verbose)
