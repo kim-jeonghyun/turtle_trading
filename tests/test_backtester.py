@@ -859,33 +859,30 @@ class TestShortRestricted:
 
     def test_short_restricted_blocks_short_entry(self):
         """short_restricted=True인 심볼은 ENTRY_SHORT 생성하지 않음."""
-        np.random.seed(42)
-        # 하락 추세 데이터: 55일 최저가 이탈로 숏 진입 유도 (System 2)
-        dates = pd.date_range(start="2024-01-01", periods=120, freq="B")
-        price = 100.0
+        # 결정론적 하락→반등 데이터: 80일 횡보 → 60일 급락 → 60일 반등
+        # System 2 (55일 Donchian) 기준, 횡보 후 dc_low_55 이탈로 숏 진입,
+        # 반등 시 dc_high_20 이탈로 숏 청산 → trades에 기록됨
+        dates = pd.date_range(start="2024-01-01", periods=200, freq="B")
         rows = []
         for i, date in enumerate(dates):
-            if i < 60:
-                # 횡보 구간
-                change = np.random.normal(0, 0.3)
+            if i < 80:
+                price = 100.0
+            elif i < 140:
+                # 급락: 매일 1.0씩 하락
+                price = 100.0 - (i - 80) * 1.0
             else:
-                # 강한 하락 (55일 최저가 이탈 유도)
-                change = -abs(np.random.normal(1.5, 0.3))
-            open_price = price
-            close = price + change
-            high = max(open_price, close) + abs(np.random.normal(0.2, 0.05))
-            low = min(open_price, close) - abs(np.random.normal(0.2, 0.05))
+                # 반등: 매일 1.5씩 상승 (숏 청산 유도)
+                price = 100.0 - 60 * 1.0 + (i - 140) * 1.5
             rows.append(
                 {
                     "date": date,
-                    "open": round(open_price, 2),
-                    "high": round(high, 2),
-                    "low": round(low, 2),
-                    "close": round(close, 2),
+                    "open": round(price + 0.5, 2),
+                    "high": round(price + 1.0, 2),
+                    "low": round(price - 1.0, 2),
+                    "close": round(price, 2),
                     "volume": 1000000,
                 }
             )
-            price = close
 
         df = pd.DataFrame(rows)
         symbol = "005930.KS"
@@ -905,7 +902,5 @@ class TestShortRestricted:
         unrestricted_shorts = [t for t in result_unrestricted.trades if t.direction == "SHORT"]
         restricted_shorts = [t for t in result_restricted.trades if t.direction == "SHORT"]
 
-        if len(unrestricted_shorts) > 0:
-            assert len(restricted_shorts) == 0, "short_restricted 심볼에서 숏 거래가 발생하면 안 됨"
-        # unrestricted에 숏이 없어도 restricted는 반드시 0
-        assert len(restricted_shorts) == 0
+        assert len(unrestricted_shorts) > 0, "테스트 데이터가 숏 시그널을 생성해야 의미있는 비교 가능"
+        assert len(restricted_shorts) == 0, "short_restricted 심볼에서 숏 거래가 발생하면 안 됨"
