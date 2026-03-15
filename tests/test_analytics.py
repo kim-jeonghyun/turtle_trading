@@ -675,10 +675,7 @@ class TestEquityCurve:
 
     def test_max_trade_limit(self):
         """max_trades 제한 동작"""
-        many_trades = [
-            {**SAMPLE_TRADES[0], "exit_date": f"2025-01-{i+1:02d}"}
-            for i in range(20)
-        ]
+        many_trades = [{**SAMPLE_TRADES[0], "exit_date": f"2025-01-{i + 1:02d}"} for i in range(20)]
         analytics = TradeAnalytics(many_trades)
         curve = analytics.get_equity_curve(100000.0, max_trades=5)
         assert len(curve) == 5
@@ -724,14 +721,28 @@ class TestStrategyContribution:
 class TestDetectAnomalies:
     """이상 거래 감지 테스트"""
 
-    def _make_trade(self, symbol="SPY", pnl=100.0, exit_date="2026-03-05",
-                    entry_price=100.0, stop_loss=90.0, total_shares=10,
-                    system=1, direction="LONG"):
+    def _make_trade(
+        self,
+        symbol="SPY",
+        pnl=100.0,
+        exit_date="2026-03-05",
+        entry_price=100.0,
+        stop_loss=90.0,
+        total_shares=10,
+        system=1,
+        direction="LONG",
+    ):
         return {
-            "symbol": symbol, "system": system, "direction": direction,
-            "entry_price": entry_price, "exit_price": entry_price + pnl / max(total_shares, 1),
-            "stop_loss": stop_loss, "total_shares": total_shares,
-            "pnl": pnl, "entry_date": "2026-03-01", "exit_date": exit_date,
+            "symbol": symbol,
+            "system": system,
+            "direction": direction,
+            "entry_price": entry_price,
+            "exit_price": entry_price + pnl / max(total_shares, 1),
+            "stop_loss": stop_loss,
+            "total_shares": total_shares,
+            "pnl": pnl,
+            "entry_date": "2026-03-01",
+            "exit_date": exit_date,
         }
 
     def test_oversized_loss(self):
@@ -751,10 +762,7 @@ class TestDetectAnomalies:
 
     def test_consecutive_losses(self):
         """연속 5건 이상 손실 감지"""
-        trades = [
-            self._make_trade(pnl=-100.0, exit_date=f"2026-03-{i+1:02d}")
-            for i in range(6)
-        ]
+        trades = [self._make_trade(pnl=-100.0, exit_date=f"2026-03-{i + 1:02d}") for i in range(6)]
         anomalies = detect_anomalies(trades, account_equity=100000.0)
         types = [a["type"] for a in anomalies]
         assert "CONSECUTIVE_LOSSES" in types

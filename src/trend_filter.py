@@ -57,6 +57,16 @@ DEFAULT_REGIME_PROXIES: dict[AssetGroup, str] = {
     AssetGroup.REIT: "VNQ",
     AssetGroup.ALTERNATIVES: "SPY",
     AssetGroup.INVERSE: "SPY",
+    # KR 섹터: 모두 EWY (한국 시장 프록시)
+    AssetGroup.KR_BATTERY: "EWY",
+    AssetGroup.KR_BIO: "EWY",
+    AssetGroup.KR_FINANCE: "EWY",
+    AssetGroup.KR_AUTO: "EWY",
+    AssetGroup.KR_CHEMICAL: "EWY",
+    AssetGroup.KR_TELECOM: "EWY",
+    AssetGroup.KR_CONGLOMERATE: "EWY",
+    AssetGroup.KR_PLATFORM: "EWY",
+    AssetGroup.KR_INDEX: "EWY",
     # CRYPTO: 매핑 없음 → regime=SIDEWAYS 폴백
 }
 

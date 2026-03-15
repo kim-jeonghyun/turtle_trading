@@ -47,9 +47,7 @@ def _make_position(symbol: str, exit_date: str, pnl: float = 500.0, status: str 
 def _serialize_and_filter(positions, lookback_days=30):
     """check_positions.py 섹션 5의 직렬화/필터링 로직 재현"""
     lookback_cutoff = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    closed = [
-        p for p in positions if p.status == "closed" and p.exit_date and p.exit_date >= lookback_cutoff
-    ]
+    closed = [p for p in positions if p.status == "closed" and p.exit_date and p.exit_date >= lookback_cutoff]
     trade_dicts = []
     for p in closed:
         trade_dicts.append(

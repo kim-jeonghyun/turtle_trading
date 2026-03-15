@@ -14,7 +14,6 @@ from scripts.run_backtest import (
     fetch_data,
     parse_args,
     plot_equity_curve,
-    print_multi_currency_results,
     print_results,
     run_backtest,
 )
@@ -468,11 +467,17 @@ class TestMultiCurrencyArgs:
 
     def test_multi_currency_custom_capital(self, monkeypatch):
         """다통화 자본 커스텀"""
-        monkeypatch.setattr("sys.argv", [
-            "run_backtest.py", "--multi-currency",
-            "--krw-capital", "50000000",
-            "--usd-capital", "200000",
-        ])
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "run_backtest.py",
+                "--multi-currency",
+                "--krw-capital",
+                "50000000",
+                "--usd-capital",
+                "200000",
+            ],
+        )
         args = parse_args()
         assert args.krw_capital == 50_000_000.0
         assert args.usd_capital == 200_000.0
@@ -481,6 +486,7 @@ class TestMultiCurrencyArgs:
         """--symbols도 --multi-currency도 없으면 종료"""
         monkeypatch.setattr("sys.argv", ["run_backtest.py"])
         from scripts.run_backtest import main
+
         with pytest.raises(SystemExit):
             main()
 

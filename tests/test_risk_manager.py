@@ -569,9 +569,7 @@ class TestRealConfigGroupMapping:
 
         for symbol, expected_group in expected.items():
             actual = rm.symbol_groups.get(symbol)
-            assert actual == expected_group, (
-                f"{symbol}: expected {expected_group}, got {actual}"
-            )
+            assert actual == expected_group, f"{symbol}: expected {expected_group}, got {actual}"
 
 
 class TestShortDirectionLimit:

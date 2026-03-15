@@ -163,28 +163,33 @@ class TestResolveRegimeProxy:
     def test_us_equity_returns_spy(self):
         from src.trend_filter import resolve_regime_proxy
         from src.types import AssetGroup
+
         assert resolve_regime_proxy(AssetGroup.US_EQUITY) == "SPY"
 
     def test_kr_equity_returns_ewy(self):
         from src.trend_filter import resolve_regime_proxy
         from src.types import AssetGroup
+
         assert resolve_regime_proxy(AssetGroup.KR_EQUITY) == "EWY"
 
     def test_crypto_returns_none_for_sideways_fallback(self):
         """CRYPTO는 매핑 없음 → None 반환."""
         from src.trend_filter import resolve_regime_proxy
         from src.types import AssetGroup
+
         assert resolve_regime_proxy(AssetGroup.CRYPTO) is None
 
     def test_config_override_takes_precedence(self):
         from src.trend_filter import resolve_regime_proxy
         from src.types import AssetGroup
+
         assert resolve_regime_proxy(AssetGroup.US_EQUITY, config_override="QQQ") == "QQQ"
 
     def test_all_non_crypto_groups_have_proxy(self):
         """CRYPTO 제외 모든 AssetGroup에 프록시 매핑 존재."""
         from src.trend_filter import DEFAULT_REGIME_PROXIES
         from src.types import AssetGroup
+
         for group in AssetGroup:
             if group == AssetGroup.CRYPTO:
                 assert group not in DEFAULT_REGIME_PROXIES
@@ -199,6 +204,7 @@ class TestTradeERField:
 
     def test_trade_er_at_entry_set(self):
         from datetime import datetime
+
         trade = Trade(symbol="SPY", entry_date=datetime(2025, 1, 1), entry_price=100.0, er_at_entry=0.45)
         assert trade.er_at_entry == 0.45
 
@@ -207,11 +213,21 @@ class TestPositionERRoundTrip:
     def test_position_er_at_entry_to_dict_from_dict(self):
         pos = Position(
             position_id="SPY_1_LONG_20250301_120000",
-            symbol="SPY", system=1, direction=Direction.LONG,
-            entry_date="2025-03-01", entry_price=100.0, entry_n=2.0,
-            units=1, max_units=4, shares_per_unit=40, total_shares=40,
-            stop_loss=96.0, pyramid_level=0, exit_period=10,
-            status="open", last_update="2025-03-01T12:00:00",
+            symbol="SPY",
+            system=1,
+            direction=Direction.LONG,
+            entry_date="2025-03-01",
+            entry_price=100.0,
+            entry_n=2.0,
+            units=1,
+            max_units=4,
+            shares_per_unit=40,
+            total_shares=40,
+            stop_loss=96.0,
+            pyramid_level=0,
+            exit_period=10,
+            status="open",
+            last_update="2025-03-01T12:00:00",
             er_at_entry=0.42,
         )
         d = pos.to_dict()
@@ -222,11 +238,21 @@ class TestPositionERRoundTrip:
     def test_position_er_at_entry_none_roundtrip(self):
         pos = Position(
             position_id="SPY_1_LONG_20250301_120000",
-            symbol="SPY", system=1, direction=Direction.LONG,
-            entry_date="2025-03-01", entry_price=100.0, entry_n=2.0,
-            units=1, max_units=4, shares_per_unit=40, total_shares=40,
-            stop_loss=96.0, pyramid_level=0, exit_period=10,
-            status="open", last_update="2025-03-01T12:00:00",
+            symbol="SPY",
+            system=1,
+            direction=Direction.LONG,
+            entry_date="2025-03-01",
+            entry_price=100.0,
+            entry_n=2.0,
+            units=1,
+            max_units=4,
+            shares_per_unit=40,
+            total_shares=40,
+            stop_loss=96.0,
+            pyramid_level=0,
+            exit_period=10,
+            status="open",
+            last_update="2025-03-01T12:00:00",
         )
         d = pos.to_dict()
         assert d["er_at_entry"] is None

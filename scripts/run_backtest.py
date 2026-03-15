@@ -52,12 +52,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--regime-proxy", type=str, default=None, help="레짐 판별용 인덱스 프록시 심볼")
 
     # 다통화 모드
-    parser.add_argument("--multi-currency", action="store_true",
-                        help="통화별 분리 백테스트 (KRW/USD 독립 포트폴리오)")
-    parser.add_argument("--krw-capital", type=float, default=100_000_000.0,
-                        help="KRW 포트폴리오 초기 자본 (기본: 1억원)")
-    parser.add_argument("--usd-capital", type=float, default=100_000.0,
-                        help="USD 포트폴리오 초기 자본 (기본: $100,000)")
+    parser.add_argument("--multi-currency", action="store_true", help="통화별 분리 백테스트 (KRW/USD 독립 포트폴리오)")
+    parser.add_argument(
+        "--krw-capital", type=float, default=100_000_000.0, help="KRW 포트폴리오 초기 자본 (기본: 1억원)"
+    )
+    parser.add_argument(
+        "--usd-capital", type=float, default=100_000.0, help="USD 포트폴리오 초기 자본 (기본: $100,000)"
+    )
 
     # 출력 옵션
     parser.add_argument("--plot", action="store_true", help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)")
@@ -296,26 +297,34 @@ def main():
         usd_groups = {s: full_mapping[s] for s in usd_symbols if s in full_mapping} or None
         krw_groups = {s: full_mapping[s] for s in krw_symbols if s in full_mapping} or None
 
-        usd_config = BacktestConfig(
-            initial_capital=args.usd_capital,
-            risk_percent=args.risk,
-            system=args.system,
-            use_filter=not args.no_filter,
-            commission_pct=args.commission,
-            use_trend_quality_filter=args.trend_filter,
-            er_threshold=args.er_threshold,
-            regime_proxy_symbol=args.regime_proxy,
-        ) if usd_symbols else None
+        usd_config = (
+            BacktestConfig(
+                initial_capital=args.usd_capital,
+                risk_percent=args.risk,
+                system=args.system,
+                use_filter=not args.no_filter,
+                commission_pct=args.commission,
+                use_trend_quality_filter=args.trend_filter,
+                er_threshold=args.er_threshold,
+                regime_proxy_symbol=args.regime_proxy,
+            )
+            if usd_symbols
+            else None
+        )
 
-        krw_config = BacktestConfig(
-            initial_capital=args.krw_capital,
-            risk_percent=args.risk,
-            system=args.system,
-            use_filter=not args.no_filter,
-            use_trend_quality_filter=args.trend_filter,
-            er_threshold=args.er_threshold,
-            regime_proxy_symbol=args.regime_proxy,
-        ) if krw_symbols else None
+        krw_config = (
+            BacktestConfig(
+                initial_capital=args.krw_capital,
+                risk_percent=args.risk,
+                system=args.system,
+                use_filter=not args.no_filter,
+                use_trend_quality_filter=args.trend_filter,
+                er_threshold=args.er_threshold,
+                regime_proxy_symbol=args.regime_proxy,
+            )
+            if krw_symbols
+            else None
+        )
 
         mcbt = MultiCurrencyBacktester(
             usd_config=usd_config,
