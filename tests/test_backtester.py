@@ -904,3 +904,32 @@ class TestShortRestricted:
 
         assert len(unrestricted_shorts) > 0, "테스트 데이터가 숏 시그널을 생성해야 의미있는 비교 가능"
         assert len(restricted_shorts) == 0, "short_restricted 심볼에서 숏 거래가 발생하면 안 됨"
+
+    def test_short_restricted_allows_long_entry(self):
+        """short_restricted 심볼도 LONG 진입은 정상 허용."""
+        # 상승 추세 데이터: LONG 진입 유도
+        dates = pd.date_range(start="2024-01-01", periods=200, freq="B")
+        rows = []
+        for i, date in enumerate(dates):
+            if i < 80:
+                price = 100.0
+            elif i < 140:
+                price = 100.0 + (i - 80) * 1.0  # 상승
+            else:
+                price = 100.0 + 60 * 1.0 - (i - 140) * 1.5  # 하락(청산 유도)
+            rows.append({
+                "date": date, "open": round(price - 0.5, 2),
+                "high": round(price + 1.0, 2), "low": round(price - 1.0, 2),
+                "close": round(price, 2), "volume": 1000000,
+            })
+        df = pd.DataFrame(rows)
+        symbol = "005930.KS"
+
+        config = BacktestConfig(initial_capital=100_000_000, system=2, use_filter=False)
+        bt = TurtleBacktester(config, currency="KRW", short_restricted_symbols={symbol})
+        result = bt.run({symbol: df.copy()})
+
+        long_trades = [t for t in result.trades if t.direction == "LONG"]
+        short_trades = [t for t in result.trades if t.direction == "SHORT"]
+        assert len(long_trades) > 0, "short_restricted여도 LONG 진입은 허용해야 함"
+        assert len(short_trades) == 0, "short_restricted 심볼은 SHORT 불가"

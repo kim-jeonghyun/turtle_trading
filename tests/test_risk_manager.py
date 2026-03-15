@@ -182,13 +182,11 @@ class TestTotalNExposure:
     """전체 N 노출: <= 10"""
 
     def test_within_n_limit(self, risk_manager):
-        # N exposure = n_value * units
-        # SPY: 2.0 * 2 = 4.0
-        # 005930.KS: 2.0 * 2 = 4.0
-        # Total so far: 8.0
+        # N-노출 = 유닛 수 (Curtis Faith)
+        # SPY: 2 units, 005930.KS: 2 units → total 4
         risk_manager.add_position("SPY", 2, 2.0, Direction.LONG)
         risk_manager.add_position("005930.KS", 2, 2.0, Direction.LONG)
-        # BTC-USD: 2.0 * 1 = 2.0, total would be 10.0 (exactly at limit)
+        # BTC-USD: 1 unit → total 5 (한도 10 이내)
         ok, msg = risk_manager.can_add_position("BTC-USD", 1, 2.0, Direction.LONG)
         assert ok is True
 
@@ -672,3 +670,27 @@ class TestNExposureUnitBased:
         allowed, msg = rm.can_add_position("SYM0", 1, n_value=100.0, direction=Direction.LONG)
         assert not allowed
         assert "N 노출" in msg
+
+    def test_n_value_zero_allowed(self):
+        """n_value=0.0 (flat price)도 N-노출은 유닛 수 기반이므로 정상 동작."""
+        rm = PortfolioRiskManager(symbol_groups={"FLAT": AssetGroup.US_EQUITY})
+        allowed, _ = rm.can_add_position("FLAT", 1, n_value=0.0, direction=Direction.LONG)
+        assert allowed
+        rm.add_position("FLAT", 1, n_value=0.0, direction=Direction.LONG)
+        assert rm.get_risk_summary()["total_n_exposure"] == 1.0
+
+    def test_exactly_at_n_limit_allowed(self):
+        """정확히 max_total_n_exposure=10.0일 때 추가 불가 (초과만 차단)."""
+        groups = {f"S{i}": [
+            AssetGroup.US_EQUITY, AssetGroup.COMMODITY, AssetGroup.BOND,
+            AssetGroup.CURRENCY, AssetGroup.REIT, AssetGroup.ASIA_EQUITY,
+            AssetGroup.EU_EQUITY, AssetGroup.CHINA_EQUITY,
+            AssetGroup.COMMODITY_ENERGY, AssetGroup.COMMODITY_AGRI,
+        ][i] for i in range(10)}
+        rm = PortfolioRiskManager(symbol_groups=groups)
+        for i in range(10):
+            rm.add_position(f"S{i}", 1, n_value=5.0, direction=Direction.LONG)
+        # 10유닛 = 10.0, 추가 시 11.0 > 10.0이므로 차단
+        allowed, _ = rm.can_add_position("S0", 1, n_value=5.0, direction=Direction.LONG)
+        assert not allowed
+        assert rm.get_risk_summary()["total_n_exposure"] == 10.0
