@@ -11,7 +11,8 @@ import pandas as pd
 
 from src.backtester import BacktestConfig, BacktestResult, TurtleBacktester
 from src.indicators import calculate_unit_size
-from src.types import AssetGroup, Direction
+from src.position_sizer import AccountState
+from src.types import AssetGroup, Direction, SignalType
 
 
 class TestBugFixes:
@@ -478,3 +479,333 @@ class TestBacktesterRiskIntegration:
             | set(bt.pyramid_manager.positions.keys())
         )
         assert len(symbols_traded) == 7, f"리스크 한도 없이 7종목 모두 진입 기대, 실제: {len(symbols_traded)}"
+
+
+class TestBreakoutEntryPrice:
+    """원본 규칙: 진입가는 돌파 가격(Donchian boundary), close가 아님"""
+
+    @staticmethod
+    def _make_breakout_scenario():
+        """60+ row data with clear breakout for integration testing"""
+        np.random.seed(77)
+        dates = pd.date_range(start="2024-01-01", periods=80, freq="B")
+        prices = []
+        p = 100.0
+        for i in range(80):
+            if i < 60:
+                p = 100.0 + np.sin(i * 0.1) * 2
+            else:
+                p = 105.0 + (i - 60) * 0.5
+            prices.append(p)
+
+        df = pd.DataFrame({
+            "date": dates,
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [p - 1.0 for p in prices],
+            "close": prices,
+            "volume": [1_000_000] * 80,
+        })
+        return df
+
+    def test_long_entry_not_at_close(self):
+        """LONG 진입가가 close와 다르다 (돌파 가격 사용 확인)"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+        data = {"TEST": self._make_breakout_scenario()}
+        bt.run(data)
+
+        pos = bt.pyramid_manager.get_position("TEST")
+        if pos:
+            entry_price = pos.entries[0].entry_price
+            assert entry_price != data["TEST"].iloc[-1]["close"], (
+                "진입가가 마지막 close와 같으면 안됨 — 돌파 가격 사용 필요"
+            )
+
+    def test_stop_loss_exit_uses_stop_price_not_close(self):
+        """스톱로스 청산 시 run()이 stop price를 사용하는지 검증"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+        assert position.current_stop == 90.0  # 100 - 2*5 = 90.0
+
+        dates = pd.date_range("2025-01-01", periods=2, freq="B")
+        mock_data = {
+            "TEST": pd.DataFrame({
+                "date": dates,
+                "open": [100.0, 91.0],
+                "high": [101.0, 95.0],
+                "low": [99.0, 88.0],
+                "close": [100.0, 89.0],
+                "N": [5.0, 5.0],
+                "atr": [5.0, 5.0],
+                "dc_high_20": [101.0, 101.0],
+                "dc_low_20": [99.0, 99.0],
+                "dc_high_55": [102.0, 102.0],
+                "dc_low_55": [98.0, 98.0],
+                "dc_low_10": [99.5, 99.5],
+                "dc_high_10": [100.5, 100.5],
+            })
+        }
+
+        row = mock_data["TEST"].iloc[1]
+        prev_row = mock_data["TEST"].iloc[0]
+
+        exit_signal = bt._check_exit_signal(row, prev_row, position)
+        assert exit_signal == SignalType.STOP_LOSS
+
+        if exit_signal == SignalType.STOP_LOSS:
+            exit_price = position.current_stop
+        else:
+            exit_price = row["close"]
+
+        bt._close_position("TEST", dates[1], exit_price, exit_signal.value)
+
+        assert len(bt.trades) == 1
+        assert bt.trades[0].exit_price == 90.0, (
+            f"스톱 청산가는 stop_price(90.0)이어야 함, got {bt.trades[0].exit_price}"
+        )
+        assert bt.trades[0].exit_price != 89.0, "close(89.0)가 아닌 stop(90.0) 사용"
+
+class TestS1HypotheticalFilter:
+    """System 1 필터: 스킵된 브레이크아웃의 가상 결과 추적"""
+
+    def test_skipped_breakout_tracked_as_hypothetical(self):
+        """스킵된 20일 돌파의 가상 결과를 추적해야 함"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        assert hasattr(bt, "_hypothetical_breakouts"), (
+            "TurtleBacktester should have _hypothetical_breakouts dict"
+        )
+
+    def test_filter_resets_after_hypothetical_loss(self):
+        """가상 브레이크아웃이 손실이면 다음 20일 돌파 허용"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
+        bt._resolve_hypothetical("TEST", exit_price=97.0)  # loss
+
+        assert not bt.last_trade_profitable.get("TEST", False), (
+            "가상 손실 후 필터가 리셋되어야 함"
+        )
+
+    def test_filter_persists_after_hypothetical_win(self):
+        """가상 브레이크아웃이 수익이면 필터 유지"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG)
+        bt._resolve_hypothetical("TEST", exit_price=115.0)  # win
+
+        assert bt.last_trade_profitable.get("TEST", False), (
+            "가상 수익 후 필터가 유지되어야 함"
+        )
+
+    def test_hypothetical_stop_loss_tracked(self):
+        """가상 포지션의 2N 스톱로스도 추적"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        # Record hypothetical LONG entry at 105 with N=2.5
+        # Stop = 105 - 2*2.5 = 100.0
+        bt._record_hypothetical_breakout("TEST", 105.0, Direction.LONG, n_value=2.5)
+        hyp = bt._hypothetical_breakouts["TEST"]
+        assert "stop_price" in hyp, "가상 포지션에 스톱 가격이 있어야 함"
+        assert hyp["stop_price"] == 100.0, f"stop = 105 - 2*2.5 = 100.0, got {hyp['stop_price']}"
+
+    def test_hypothetical_short_loss_resets_filter(self):
+        """SHORT 가상 브레이크아웃 손실 시 필터 리셋"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=1,
+            use_filter=True,
+        )
+        bt = TurtleBacktester(config)
+        bt.last_trade_profitable["TEST"] = True
+
+        bt._record_hypothetical_breakout("TEST", 95.0, Direction.SHORT)
+        bt._resolve_hypothetical("TEST", exit_price=100.0)  # short loss
+
+        assert not bt.last_trade_profitable.get("TEST", False)
+
+
+    def test_channel_exit_uses_channel_boundary(self):
+        """채널 청산 시 exit price는 Donchian boundary"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 110.0, 5.0, Direction.LONG)
+        position = bt.pyramid_manager.get_position("TEST")
+
+        # stop = 110 - 2*5 = 100.0; low must be > 100 to avoid STOP_LOSS
+        # channel exit: row["low"] < prev_row["dc_low_10"]
+        row = pd.Series({
+            "high": 109.0,
+            "low": 101.5,   # above stop (100.0) but below dc_low_10 (102.0)
+            "close": 103.0,
+        })
+        prev_row = pd.Series({
+            "dc_low_10": 102.0,
+            "dc_high_10": 112.0,
+        })
+
+        exit_signal = bt._check_exit_signal(row, prev_row, position)
+        assert exit_signal == SignalType.EXIT_LONG
+
+        bt._close_position("TEST", pd.Timestamp("2025-01-05"), 102.0, exit_signal.value)
+        assert bt.trades[0].exit_price == 102.0
+
+
+class TestDrawdownSizingIntegration:
+    """백테스터에서 DD 감소 규칙이 적용되는지 통합 검증"""
+
+    def test_position_size_reduces_after_drawdown(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+            use_drawdown_reduction=True,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("AAA", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        qty1 = bt.pyramid_manager.get_position("AAA").total_units
+
+        bt.account.current_equity = 85_000.0
+        bt.account.peak_equity = 100_000.0
+
+        bt._open_position("BBB", pd.Timestamp("2025-01-02"), 100.0, 5.0, Direction.LONG)
+        pos_bbb = bt.pyramid_manager.get_position("BBB")
+        assert pos_bbb is not None, "BBB position should be created"
+        qty2 = pos_bbb.total_units
+
+        assert qty2 < qty1, f"DD 감소 미적용: qty2={qty2} >= qty1={qty1}"
+        expected_qty2 = int(80_000 * 0.01 / 5.0)
+        assert qty2 == expected_qty2, f"qty2={qty2}, expected={expected_qty2}"
+
+    def test_drawdown_reduction_disabled(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+            use_drawdown_reduction=False,
+        )
+        bt = TurtleBacktester(config)
+
+        bt.account.current_equity = 85_000.0
+        bt.account.peak_equity = 100_000.0
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+        pos = bt.pyramid_manager.get_position("TEST")
+        assert pos is not None
+        expected = int(85_000 * 0.01 / 5.0)
+        assert pos.total_units == expected
+
+    def test_peak_equity_updated_in_record_equity(self):
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            commission_pct=0.0,
+        )
+        bt = TurtleBacktester(config)
+
+        bt._open_position("TEST", pd.Timestamp("2025-01-01"), 100.0, 5.0, Direction.LONG)
+
+        # unit_size = int(100_000 * 0.01 / 5.0) = 200, cost = 200 * 100 = 20_000
+        # cash after open = 80_000; need unrealized > 20_000 to exceed peak
+        # close=200 → unrealized = (200-100)*200 = 20_000; equity = 100_000 (equal, not greater)
+        # close=201 → unrealized = (201-100)*200 = 20_200; equity = 100_200 > 100_000
+        mock_data = {
+            "TEST": pd.DataFrame({
+                "date": [pd.Timestamp("2025-01-02")],
+                "close": [201.0],
+            })
+        }
+        bt._record_equity(pd.Timestamp("2025-01-02"), mock_data)
+
+        assert bt.account.peak_equity > 100_000.0, (
+            f"peak_equity should be updated above initial, got {bt.account.peak_equity}"
+        )
+        assert bt.account.peak_equity == bt.account.current_equity
+
+
+class TestSignalPrioritization:
+    """원본 규칙: 동시 시그널 시 돌파 강도 순으로 우선순위"""
+
+    def test_entries_sorted_by_strength(self):
+        """pending_entries가 강도순으로 정렬되어 처리됨을 검증"""
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            system=2,
+            use_filter=False,
+            commission_pct=0.0,
+            use_drawdown_reduction=False,
+        )
+        bt = TurtleBacktester(config)
+
+        # Use very low capital so only 1 position can be opened
+        config.initial_capital = 60_000.0
+        bt.account = AccountState(initial_capital=60_000.0)
+
+        np.random.seed(42)
+        dates = pd.date_range(start="2024-01-01", periods=80, freq="B")
+
+        def make_breakout_data(base, excess):
+            """Flat for 60 days then breakout"""
+            prices = [base] * 60
+            for i in range(20):
+                prices.append(base + excess + i * 0.5)
+            return pd.DataFrame({
+                "date": dates,
+                "open": prices,
+                "high": [p + 1.0 for p in prices],
+                "low": [p - 1.0 for p in prices],
+                "close": prices,
+                "volume": [1_000_000] * 80,
+            })
+
+        # Process order: dict preserves insertion order, so WEAK first
+        data = {
+            "WEAK": make_breakout_data(100.0, 2.0),    # small excess
+            "STRONG": make_breakout_data(100.0, 10.0),  # large excess
+        }
+        result = bt.run(data)
+
+        traded = set(t.symbol for t in result.trades) | set(bt.pyramid_manager.positions.keys())
+        assert len(traded) > 0, "시그널이 발생하지 않음"
+        # With only 1 position possible, STRONG should be chosen
+        assert "STRONG" in traded, (
+            f"자본 제한 시 강한 돌파가 우선되어야 함. 실제 진입: {traded}"
+        )

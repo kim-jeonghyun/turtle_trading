@@ -36,8 +36,13 @@ class PyramidPosition:
         return sum(e.units for e in self.entries)
 
     @property
+    def entry_count(self) -> int:
+        """피라미딩 진입 횟수 (주식 수량이 아닌 진입 카운트)"""
+        return len(self.entries)
+
+    @property
     def is_full(self) -> bool:
-        return self.total_units >= self.max_units
+        return self.entry_count >= self.max_units
 
     @property
     def average_entry_price(self) -> float:
@@ -60,7 +65,7 @@ class PyramidPosition:
 
     def can_pyramid(self, current_price: float, current_n: float) -> Tuple[bool, str]:
         if self.is_full:
-            return False, f"최대 Unit 도달: {self.total_units}/{self.max_units}"
+            return False, f"최대 Unit 도달: {self.entry_count}/{self.max_units}"
         if not self.entries:
             return True, "초기 진입 가능"
 

@@ -50,6 +50,7 @@ class BacktestConfig:
     use_trend_quality_filter: bool = False
     er_threshold: float = 0.3
     regime_proxy_symbol: Optional[str] = None
+    use_drawdown_reduction: bool = True
 
 
 @dataclass
@@ -80,6 +81,7 @@ class TurtleBacktester:
         self.trades: List[Trade] = []
         self.equity_history: List[Dict] = []
         self.last_trade_profitable: Dict[str, bool] = {}
+        self._hypothetical_breakouts: Dict[str, Dict] = {}
         self.entry_reasons: Dict[str, str] = {}
         self._er_at_entry: Dict[str, Optional[float]] = {}
         self.trend_filter: Optional[TrendFilter] = None
@@ -118,6 +120,12 @@ class TurtleBacktester:
             if self.config.system == 1 and self.config.use_filter:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["high"] <= prev_row.get("dc_high_55", float("inf")):
+                        self._record_hypothetical_breakout(
+                            symbol,
+                            prev_row[entry_high],
+                            Direction.LONG,
+                            n_value=float(row.get("N", row.get("atr", 0))),
+                        )
                         return None
             return SignalType.ENTRY_LONG
 
@@ -126,6 +134,12 @@ class TurtleBacktester:
             if self.config.system == 1 and self.config.use_filter:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["low"] >= prev_row.get("dc_low_55", 0):
+                        self._record_hypothetical_breakout(
+                            symbol,
+                            prev_row[entry_low],
+                            Direction.SHORT,
+                            n_value=float(row.get("N", row.get("atr", 0))),
+                        )
                         return None
             return SignalType.ENTRY_SHORT
 
@@ -159,6 +173,36 @@ class TurtleBacktester:
             return SignalType.PYRAMID_SHORT
         return None
 
+    def _record_hypothetical_breakout(
+        self,
+        symbol: str,
+        price: float,
+        direction: Direction,
+        n_value: float = 0.0,
+    ):
+        """S1 필터에 의해 스킵된 브레이크아웃의 가상 진입을 기록"""
+        stop_distance = n_value * self.config.stop_distance_n
+        if direction == Direction.LONG:
+            stop_price = price - stop_distance
+        else:
+            stop_price = price + stop_distance
+        self._hypothetical_breakouts[symbol] = {
+            "price": price,
+            "direction": direction,
+            "stop_price": stop_price,
+        }
+
+    def _resolve_hypothetical(self, symbol: str, exit_price: float):
+        """가상 브레이크아웃의 결과를 판정하고 필터 상태를 갱신"""
+        hyp = self._hypothetical_breakouts.pop(symbol, None)
+        if hyp is None:
+            return
+        if hyp["direction"] == Direction.LONG:
+            profitable = exit_price > hyp["price"]
+        else:
+            profitable = exit_price < hyp["price"]
+        self.last_trade_profitable[symbol] = profitable
+
     def run(self, data: Dict[str, pd.DataFrame]) -> BacktestResult:
         """백테스트 실행"""
         # 모든 데이터에 지표 추가
@@ -179,6 +223,7 @@ class TurtleBacktester:
 
         for i, date in enumerate(all_dates[1:], 1):
             _daily_pnl = 0.0
+            pending_entries = []
 
             for symbol, df in data.items():
                 df_slice = df[df["date"] <= date]
@@ -192,24 +237,73 @@ class TurtleBacktester:
                 position = self.pyramid_manager.get_position(symbol)
 
                 if position:
-                    # 청산 확인
+                    # 청산 확인 (즉시 처리)
                     exit_signal = self._check_exit_signal(row, prev_row, position)
                     if exit_signal:
-                        self._close_position(symbol, date, row["close"], exit_signal.value)
+                        if exit_signal == SignalType.STOP_LOSS:
+                            exit_price = position.current_stop
+                        elif exit_signal in (SignalType.EXIT_LONG, SignalType.EXIT_SHORT):
+                            _, _, exit_low, exit_high = self._get_entry_exit_columns()
+                            if position.direction == Direction.LONG:
+                                exit_price = prev_row[exit_low]
+                            else:
+                                exit_price = prev_row[exit_high]
+                        else:
+                            exit_price = row["close"]
+                        self._close_position(symbol, date, exit_price, exit_signal.value)
                         continue
 
-                    # 피라미딩 확인
+                    # 피라미딩 확인 (즉시 처리)
                     pyramid_signal = self._check_pyramid_signal(row, position, n_value)
                     if pyramid_signal:
-                        self._add_pyramid(symbol, date, row["close"], n_value)
+                        pyramid_price = position.get_next_pyramid_price(n_value)
+                        self._add_pyramid(symbol, date, pyramid_price, n_value)
 
                 else:
-                    # 진입 신호 확인
+                    # 진입 신호 수집 (나중에 강도순 처리)
                     entry_signal = self._check_entry_signal(row, prev_row, symbol)
                     if entry_signal:
                         direction = Direction.LONG if entry_signal == SignalType.ENTRY_LONG else Direction.SHORT
+                        entry_high, entry_low, _, _ = self._get_entry_exit_columns()
+                        if direction == Direction.LONG:
+                            entry_price = prev_row[entry_high]
+                            strength = (row["high"] - entry_price) / n_value if n_value > 0 else 0
+                        else:
+                            entry_price = prev_row[entry_low]
+                            strength = (entry_price - row["low"]) / n_value if n_value > 0 else 0
                         er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
-                        self._open_position(symbol, date, row["close"], n_value, direction, er_value)
+                        pending_entries.append((strength, symbol, date, entry_price, n_value, direction, er_value))
+
+            # 강도순 진입 처리
+            pending_entries.sort(key=lambda x: x[0], reverse=True)
+            for _, symbol, entry_date, price, n_val, direction, er_val in pending_entries:
+                self._open_position(symbol, entry_date, price, n_val, direction, er_val)
+
+            # 가상 브레이크아웃 청산 확인 (S1 필터)
+            for hyp_symbol in list(self._hypothetical_breakouts.keys()):
+                if hyp_symbol not in data:
+                    continue
+                df_slice = data[hyp_symbol][data[hyp_symbol]["date"] <= date]
+                if len(df_slice) < 2:
+                    continue
+                hyp_row = df_slice.iloc[-1]
+                hyp_prev = df_slice.iloc[-2]
+                hyp = self._hypothetical_breakouts[hyp_symbol]
+                _, _, exit_low, exit_high = self._get_entry_exit_columns()
+
+                # 2N 스톱로스 확인
+                if hyp["direction"] == Direction.LONG:
+                    if hyp_row["low"] <= hyp["stop_price"]:
+                        self._resolve_hypothetical(hyp_symbol, hyp["stop_price"])
+                        continue
+                    if hyp_row["low"] < hyp_prev[exit_low]:
+                        self._resolve_hypothetical(hyp_symbol, hyp_prev[exit_low])
+                else:
+                    if hyp_row["high"] >= hyp["stop_price"]:
+                        self._resolve_hypothetical(hyp_symbol, hyp["stop_price"])
+                        continue
+                    if hyp_row["high"] > hyp_prev[exit_high]:
+                        self._resolve_hypothetical(hyp_symbol, hyp_prev[exit_high])
 
             # 일일 자본 기록
             self._record_equity(date, data)
@@ -226,7 +320,10 @@ class TurtleBacktester:
         direction: Direction,
         er_value: Optional[float] = None,
     ):
-        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
+        sizing_equity = (
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction else self.account.current_equity
+        )
+        unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
             return
 
@@ -264,7 +361,12 @@ class TurtleBacktester:
                 logger.debug(f"리스크 한도 차단 (피라미딩): {symbol} - {reason}")
                 return
 
-        unit_size = calculate_unit_size(n_value, self.account.current_equity, risk_per_unit=self.config.risk_percent)
+        sizing_equity = (
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction else self.account.current_equity
+        )
+        unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
+        if unit_size <= 0:
+            return
         cost = unit_size * price * (1 + self.config.commission_pct)
         if cost > self.account.cash:
             return
@@ -307,7 +409,12 @@ class TurtleBacktester:
         )
         self.trades.append(trade)
 
-        self.account.cash += price * total_quantity
+        # LONG: 주식 매도 → exit_price * qty 회수
+        # SHORT: 담보금(entry*qty) 반환 + PnL → (2*entry - exit) * qty
+        if position.direction == Direction.LONG:
+            self.account.cash += price * total_quantity
+        else:
+            self.account.cash += (2 * avg_entry - price) * total_quantity
         self.account.realized_pnl += pnl
         self.last_trade_profitable[symbol] = pnl > 0
 
@@ -327,12 +434,16 @@ class TurtleBacktester:
                     current_price = df_slice.iloc[-1]["close"]
                     avg_entry = position.average_entry_price
                     qty = position.total_units
+                    # 포지션 청산 가치 (cash에서 entry*qty를 뺐으므로 full value 반환)
                     if position.direction == Direction.LONG:
-                        unrealized += (current_price - avg_entry) * qty
+                        unrealized += current_price * qty
                     else:
-                        unrealized += (avg_entry - current_price) * qty
+                        unrealized += (2 * avg_entry - current_price) * qty
 
         equity = self.account.cash + unrealized
+        self.account.current_equity = equity
+        if equity > self.account.peak_equity:
+            self.account.peak_equity = equity
         self.equity_history.append({"date": date, "equity": equity, "cash": self.account.cash})
 
     def _calculate_results(self) -> BacktestResult:
