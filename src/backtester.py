@@ -121,7 +121,9 @@ class TurtleBacktester:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["high"] <= prev_row.get("dc_high_55", float("inf")):
                         self._record_hypothetical_breakout(
-                            symbol, prev_row[entry_high], Direction.LONG,
+                            symbol,
+                            prev_row[entry_high],
+                            Direction.LONG,
                             n_value=float(row.get("N", row.get("atr", 0))),
                         )
                         return None
@@ -133,7 +135,9 @@ class TurtleBacktester:
                 if self.last_trade_profitable.get(symbol, False):
                     if row["low"] >= prev_row.get("dc_low_55", 0):
                         self._record_hypothetical_breakout(
-                            symbol, prev_row[entry_low], Direction.SHORT,
+                            symbol,
+                            prev_row[entry_low],
+                            Direction.SHORT,
                             n_value=float(row.get("N", row.get("atr", 0))),
                         )
                         return None
@@ -170,7 +174,10 @@ class TurtleBacktester:
         return None
 
     def _record_hypothetical_breakout(
-        self, symbol: str, price: float, direction: Direction,
+        self,
+        symbol: str,
+        price: float,
+        direction: Direction,
         n_value: float = 0.0,
     ):
         """S1 필터에 의해 스킵된 브레이크아웃의 가상 진입을 기록"""
@@ -265,9 +272,7 @@ class TurtleBacktester:
                             entry_price = prev_row[entry_low]
                             strength = (entry_price - row["low"]) / n_value if n_value > 0 else 0
                         er_value = float(row.get("er", 0.0) or 0.0) if self.trend_filter else None
-                        pending_entries.append((
-                            strength, symbol, date, entry_price, n_value, direction, er_value
-                        ))
+                        pending_entries.append((strength, symbol, date, entry_price, n_value, direction, er_value))
 
             # 강도순 진입 처리
             pending_entries.sort(key=lambda x: x[0], reverse=True)
@@ -316,8 +321,7 @@ class TurtleBacktester:
         er_value: Optional[float] = None,
     ):
         sizing_equity = (
-            self.account.get_sizing_equity() if self.config.use_drawdown_reduction
-            else self.account.current_equity
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction else self.account.current_equity
         )
         unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
@@ -358,8 +362,7 @@ class TurtleBacktester:
                 return
 
         sizing_equity = (
-            self.account.get_sizing_equity() if self.config.use_drawdown_reduction
-            else self.account.current_equity
+            self.account.get_sizing_equity() if self.config.use_drawdown_reduction else self.account.current_equity
         )
         unit_size = calculate_unit_size(n_value, sizing_equity, risk_per_unit=self.config.risk_percent)
         if unit_size <= 0:
