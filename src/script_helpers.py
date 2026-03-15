@@ -50,6 +50,15 @@ _GROUP_MAPPING: dict[str, AssetGroup] = {
     "currency": AssetGroup.CURRENCY,
     "reit": AssetGroup.REIT,
     "alternatives": AssetGroup.ALTERNATIVES,
+    "kr_battery": AssetGroup.KR_BATTERY,
+    "kr_bio": AssetGroup.KR_BIO,
+    "kr_finance": AssetGroup.KR_FINANCE,
+    "kr_auto": AssetGroup.KR_AUTO,
+    "kr_chemical": AssetGroup.KR_CHEMICAL,
+    "kr_telecom": AssetGroup.KR_TELECOM,
+    "kr_conglomerate": AssetGroup.KR_CONGLOMERATE,
+    "kr_platform": AssetGroup.KR_PLATFORM,
+    "kr_index": AssetGroup.KR_INDEX,
 }
 
 

@@ -589,3 +589,18 @@ class TestRealConfigConsistency:
 
         missing = universe_symbols - corr_symbols
         assert not missing, f"Symbols in universe but not in correlation_groups: {missing}"
+
+
+def test_kr_asset_groups_exist():
+    """KR 섹터 AssetGroup이 존재"""
+    from src.types import AssetGroup
+
+    assert hasattr(AssetGroup, "KR_BATTERY")
+    assert hasattr(AssetGroup, "KR_BIO")
+    assert hasattr(AssetGroup, "KR_FINANCE")
+    assert hasattr(AssetGroup, "KR_AUTO")
+    assert hasattr(AssetGroup, "KR_CHEMICAL")
+    assert hasattr(AssetGroup, "KR_TELECOM")
+    assert hasattr(AssetGroup, "KR_CONGLOMERATE")
+    assert hasattr(AssetGroup, "KR_PLATFORM")
+    assert hasattr(AssetGroup, "KR_INDEX")

@@ -52,6 +52,15 @@ class AssetGroup(SerializableEnum):
     CURRENCY = "currency"
     REIT = "reit"
     ALTERNATIVES = "alternatives"
+    KR_BATTERY = "kr_battery"
+    KR_BIO = "kr_bio"
+    KR_FINANCE = "kr_finance"
+    KR_AUTO = "kr_auto"
+    KR_CHEMICAL = "kr_chemical"
+    KR_TELECOM = "kr_telecom"
+    KR_CONGLOMERATE = "kr_conglomerate"
+    KR_PLATFORM = "kr_platform"
+    KR_INDEX = "kr_index"
 
 
 class OrderStatus(SerializableEnum):
