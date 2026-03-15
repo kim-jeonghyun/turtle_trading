@@ -117,13 +117,14 @@ def run_backtest(data: Dict[str, pd.DataFrame], args: argparse.Namespace) -> Bac
 
     logger.info(f"백테스트 시작 - System {config.system}, 초기 자본: ${config.initial_capital:,.0f}")
 
+    # short_restricted는 시장 실현가능성 제약이므로 항상 로드
+    um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
+    short_restricted_symbols = um.get_short_restricted_symbols()
+
     symbol_groups = None
-    short_restricted_symbols: set[str] = set()
     if not args.no_risk_limits:
-        um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
         full_mapping = um.get_group_mapping()
         symbol_groups = {s: full_mapping[s] for s in data.keys() if s in full_mapping}
-        short_restricted_symbols = um.get_short_restricted_symbols()
         unmapped = set(data.keys()) - set(full_mapping.keys())
         if unmapped:
             logger.warning(f"universe.yaml에 미등록 종목 (US_EQUITY로 기본 분류): {', '.join(sorted(unmapped))}")

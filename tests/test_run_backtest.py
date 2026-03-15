@@ -372,8 +372,18 @@ class TestCLIRiskWiring:
         assert "QQQ" in kwargs["symbol_groups"]
 
     @patch("scripts.run_backtest.TurtleBacktester")
-    def test_run_backtest_no_risk_limits_skips_universe(self, mock_bt_cls, mock_data):
-        """--no-risk-limits 설정 시 symbol_groups=None으로 전달됨"""
+    @patch("scripts.run_backtest.UniverseManager")
+    def test_run_backtest_no_risk_limits_skips_universe(
+        self, mock_um_cls, mock_bt_cls, mock_data
+    ):
+        """--no-risk-limits 설정 시 symbol_groups=None이지만 short_restricted_symbols는 로드됨"""
+        from src.types import AssetGroup
+
+        mock_um = MagicMock()
+        mock_um.get_short_restricted_symbols.return_value = {"005930", "000660"}
+        mock_um.get_group_mapping.return_value = {"SPY": AssetGroup.US_EQUITY}
+        mock_um_cls.return_value = mock_um
+
         mock_bt = MagicMock()
         mock_bt.run.return_value = BacktestResult(config=BacktestConfig())
         mock_bt_cls.return_value = mock_bt
@@ -385,12 +395,53 @@ class TestCLIRiskWiring:
         args.no_filter = False
         args.commission = 0.001
         args.no_risk_limits = True
+        args.trend_filter = False
+        args.er_threshold = 0.0
+        args.regime_proxy = None
 
         run_backtest(mock_data, args)
 
-        # TurtleBacktester에 symbol_groups=None이 전달되었는지 확인
+        # symbol_groups는 여전히 None (리스크 한도 비활성)
         _, kwargs = mock_bt_cls.call_args
         assert kwargs["symbol_groups"] is None
+        # short_restricted_symbols는 비어 있지 않음 (항상 로드)
+        assert kwargs["short_restricted_symbols"] == {"005930", "000660"}
+
+    @patch("scripts.run_backtest.TurtleBacktester")
+    @patch("scripts.run_backtest.UniverseManager")
+    def test_no_risk_limits_still_loads_short_restricted(
+        self, mock_um_cls, mock_bt_cls, mock_data
+    ):
+        """회귀 테스트: --no-risk-limits 여도 short_restricted_symbols는 항상 UniverseManager에서 로드됨"""
+        from src.types import AssetGroup
+
+        mock_um = MagicMock()
+        mock_um.get_short_restricted_symbols.return_value = {"005930", "000660"}
+        mock_um.get_group_mapping.return_value = {"SPY": AssetGroup.US_EQUITY}
+        mock_um_cls.return_value = mock_um
+
+        mock_bt = MagicMock()
+        mock_bt.run.return_value = BacktestResult(config=BacktestConfig())
+        mock_bt_cls.return_value = mock_bt
+
+        args = MagicMock()
+        args.capital = 100000.0
+        args.risk = 0.01
+        args.system = 1
+        args.no_filter = False
+        args.commission = 0.001
+        args.no_risk_limits = True
+        args.trend_filter = False
+        args.er_threshold = 0.0
+        args.regime_proxy = None
+
+        run_backtest(mock_data, args)
+
+        _, kwargs = mock_bt_cls.call_args
+        # 리스크 한도 비활성화 시 symbol_groups는 None
+        assert kwargs["symbol_groups"] is None
+        # short_restricted_symbols는 --no-risk-limits와 무관하게 항상 로드됨
+        assert kwargs["short_restricted_symbols"] == {"005930", "000660"}
 
 
 class TestPathResolution:
