@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     # 필수 인자
-    parser.add_argument("--symbols", nargs="+", required=True, help="백테스트할 티커 심볼 (공백으로 구분)")
+    parser.add_argument("--symbols", nargs="+", required=False, help="백테스트할 티커 심볼 (공백으로 구분)")
 
     # 데이터 인자
     parser.add_argument("--period", default="2y", help="데이터 기간 (1y, 2y, 5y, max 등)")
@@ -50,6 +50,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trend-filter", action="store_true", help="트렌드 품질 필터 활성화 (기본: OFF)")
     parser.add_argument("--er-threshold", type=float, default=0.3, help="ER 임계값 오버라이드")
     parser.add_argument("--regime-proxy", type=str, default=None, help="레짐 판별용 인덱스 프록시 심볼")
+
+    # 다통화 모드
+    parser.add_argument("--multi-currency", action="store_true",
+                        help="통화별 분리 백테스트 (KRW/USD 독립 포트폴리오)")
+    parser.add_argument("--krw-capital", type=float, default=100_000_000.0,
+                        help="KRW 포트폴리오 초기 자본 (기본: 1억원)")
+    parser.add_argument("--usd-capital", type=float, default=100_000.0,
+                        help="USD 포트폴리오 초기 자본 (기본: $100,000)")
 
     # 출력 옵션
     parser.add_argument("--plot", action="store_true", help="자본 곡선 및 낙폭 차트 생성 (PNG 저장)")
@@ -240,32 +248,98 @@ def export_trades_csv(result: BacktestResult, csv_path: str):
     print(f"\n거래 내역 저장됨: {csv_path}")
 
 
+def print_multi_currency_results(mc_result):
+    """통화별 백테스트 결과 출력"""
+    for currency, result in mc_result.results.items():
+        symbol = "₩" if currency == "KRW" else "$"
+        print(f"\n{'=' * 60}")
+        print(f"[{currency} Portfolio]")
+        print(f"{'=' * 60}")
+        print(f"  초기 자본:      {symbol}{result.config.initial_capital:,.0f}")
+        print(f"  최종 자본:      {symbol}{result.final_equity:,.0f}")
+        print(f"  총 수익률:      {result.total_return:.1%}")
+        print(f"  CAGR:          {result.cagr:.1%}")
+        print(f"  최대 낙폭:      {result.max_drawdown:.1%}")
+        print(f"  샤프 비율:      {result.sharpe_ratio:.2f}")
+        print(f"  총 거래:        {result.total_trades}")
+        print(f"  승률:          {result.win_rate:.1%}")
+        print(f"  수익 팩터:      {result.profit_factor:.2f}")
+
+
 def main():
     """메인 함수"""
     args = parse_args()
     setup_logging(args.verbose)
 
-    # 데이터 수집
-    data = fetch_data(args.symbols, args.period, args.verbose)
-
-    # 백테스트 실행
-    result = run_backtest(data, args)
-
-    # 결과 출력
-    print_results(result)
-
-    # 차트 생성
-    if args.plot:
-        plot_equity_curve(result, args.symbols)
-
-    # CSV 저장
-    if args.csv:
-        export_trades_csv(result, args.csv)
-
-    # 종료 코드 결정
-    if result.total_trades == 0:
-        logger.warning("거래가 발생하지 않았습니다.")
+    if not args.multi_currency and not args.symbols:
+        print("error: --symbols is required unless --multi-currency is used", file=sys.stderr)
         sys.exit(2)
+
+    if args.multi_currency:
+        from src.multi_currency_backtester import MultiCurrencyBacktester
+
+        um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
+        currency_map = um.get_currency_map()
+
+        # 심볼 결정: --symbols 지정 시 해당 심볼만, 아니면 전체 유니버스
+        if args.symbols:
+            symbols = args.symbols
+        else:
+            symbols = um.get_enabled_symbols()
+
+        data = fetch_data(symbols, args.period, args.verbose)
+
+        full_mapping = um.get_group_mapping()
+        usd_symbols = {s for s in data if currency_map.get(s, "USD") == "USD"}
+        krw_symbols = {s for s in data if currency_map.get(s) == "KRW"}
+
+        usd_groups = {s: full_mapping[s] for s in usd_symbols if s in full_mapping} or None
+        krw_groups = {s: full_mapping[s] for s in krw_symbols if s in full_mapping} or None
+
+        usd_config = BacktestConfig(
+            initial_capital=args.usd_capital,
+            risk_percent=args.risk,
+            system=args.system,
+            use_filter=not args.no_filter,
+            commission_pct=args.commission,
+            use_trend_quality_filter=args.trend_filter,
+            er_threshold=args.er_threshold,
+            regime_proxy_symbol=args.regime_proxy,
+        ) if usd_symbols else None
+
+        krw_config = BacktestConfig(
+            initial_capital=args.krw_capital,
+            risk_percent=args.risk,
+            system=args.system,
+            use_filter=not args.no_filter,
+            use_trend_quality_filter=args.trend_filter,
+            er_threshold=args.er_threshold,
+            regime_proxy_symbol=args.regime_proxy,
+        ) if krw_symbols else None
+
+        mcbt = MultiCurrencyBacktester(
+            usd_config=usd_config,
+            krw_config=krw_config,
+            usd_symbol_groups=usd_groups if not args.no_risk_limits else None,
+            krw_symbol_groups=krw_groups if not args.no_risk_limits else None,
+        )
+        mc_result = mcbt.run(data, currency_map)
+        print_multi_currency_results(mc_result)
+    else:
+        # 기존 단일 통화 로직 (변경 없음)
+        data = fetch_data(args.symbols, args.period, args.verbose)
+        result = run_backtest(data, args)
+        print_results(result)
+
+        if args.plot:
+            plot_equity_curve(result, args.symbols)
+
+        if args.csv:
+            export_trades_csv(result, args.csv)
+
+        if result.total_trades == 0:
+            logger.warning("거래가 발생하지 않았습니다.")
+            sys.exit(2)
 
     logger.info("백테스트 완료")
 
