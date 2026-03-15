@@ -281,6 +281,12 @@ def main():
         sys.exit(2)
 
     if args.multi_currency:
+        if not args.no_risk_limits:
+            logger.warning(
+                "--multi-currency 모드에서 리스크 한도(N-노출)는 KRW ATR 스케일 차이로 인해 "
+                "예상대로 작동하지 않을 수 있습니다. --no-risk-limits 사용을 권장합니다."
+            )
+
         from src.multi_currency_backtester import MultiCurrencyBacktester
 
         um = UniverseManager(yaml_path=str(Path(__file__).parent.parent / "config" / "universe.yaml"))
