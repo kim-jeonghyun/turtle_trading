@@ -48,7 +48,10 @@ def render(data_fetcher, data_store, universe, **kwargs):
                 st.error("데이터를 가져올 수 없습니다.")
                 return
 
-            backtester = TurtleBacktester(config)
+            backtester = TurtleBacktester(
+                config,
+                short_restricted_symbols=universe.get_short_restricted_symbols(),
+            )
             result = backtester.run(data)
 
         # 결과 표시

@@ -67,3 +67,16 @@ class TestMultiCurrencyBacktester:
         )
         assert isinstance(mcbt.usd_backtester.commission_model, USCommissionModel)
         assert isinstance(mcbt.krw_backtester.commission_model, KRXCommissionModel)
+
+    def test_krw_backtester_receives_short_restricted(self):
+        krw_config = BacktestConfig(initial_capital=100_000_000)
+        restricted = {"005930.KS", "000660.KS"}
+        mcbt = MultiCurrencyBacktester(krw_config=krw_config, short_restricted_symbols=restricted)
+        assert mcbt.krw_backtester is not None
+        assert mcbt.krw_backtester.short_restricted_symbols == restricted
+
+    def test_usd_backtester_no_short_restriction(self):
+        usd_config = BacktestConfig(initial_capital=100_000)
+        mcbt = MultiCurrencyBacktester(usd_config=usd_config, short_restricted_symbols={"005930.KS"})
+        assert mcbt.usd_backtester is not None
+        assert len(mcbt.usd_backtester.short_restricted_symbols) == 0

@@ -44,6 +44,7 @@ class MultiCurrencyBacktester:
         krw_config: Optional[BacktestConfig] = None,
         usd_symbol_groups: Optional[Dict[str, AssetGroup]] = None,
         krw_symbol_groups: Optional[Dict[str, AssetGroup]] = None,
+        short_restricted_symbols: Optional[set[str]] = None,
     ):
         self.usd_backtester: Optional[TurtleBacktester] = None
         self.krw_backtester: Optional[TurtleBacktester] = None
@@ -60,6 +61,7 @@ class MultiCurrencyBacktester:
                 krw_config,
                 symbol_groups=krw_symbol_groups,
                 currency="KRW",
+                short_restricted_symbols=short_restricted_symbols,
             )
 
     def _split_by_currency(
